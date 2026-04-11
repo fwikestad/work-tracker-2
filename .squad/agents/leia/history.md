@@ -205,3 +205,19 @@ export const listCustomers = (includeArchived = false) =>
 
 **Commits**: `498ee92` (initial customer fix), `a08a26a` (comprehensive fix)
 
+### 2026-04-11 — Bug Fix: SearchableSelect Click-Outside Race Condition
+
+**Issue**: Customer dropdown in WorkOrder Add form opened and immediately closed — user could not select a customer.
+
+**Root Cause**: `SearchableSelect.svelte` used `document.addEventListener('click', ...)` for outside-click detection. Because Svelte 5 rune reactivity flushes synchronously on `isOpen = true`, the trigger `<button>` is removed from DOM and the `$effect` adds the `click` listener **before** the original click event bubbles to `document`. When `handleClickOutside` fires, `containerRef.contains(triggerButton)` returns `false` (element no longer in DOM) → `close()` called immediately.
+
+**Fix**: Switched to `mousedown` for outside-click detection. `mousedown` fires before `isOpen` changes, so no listener is attached when the trigger is clicked. Option selection remains safe: `mousedown` on an option has `containerRef.contains(e.target) === true`, so close is not triggered.
+
+**Additional Fixes**:
+- Added `catch` block to `WorkOrderList.loadData()` with `loadError` state variable and visible error banner in UI; `console.error` for debugging
+- Added "No customers yet" empty state in the Add Work Order form when `customers.length === 0`
+
+**Learning**: In Svelte 5, when a reactive state change synchronously replaces DOM elements (toggle between button and input), `click` event listeners added in the same `$effect` tick will catch the originating click after the DOM has already changed. Use `mousedown` for any "close on outside click" pattern in Svelte 5 — it fires before state mutations and DOM updates.
+
+**Commit**: `16f65b6`
+
