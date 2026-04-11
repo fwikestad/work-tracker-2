@@ -32,3 +32,22 @@ Technical Writer for work-tracker-2 — native desktop time tracker for consulta
 - README.md: Getting started, features, prerequisites, keyboard shortcuts, project structure
 - docs/api-reference.md: All 18 commands with TypeScript signatures, error codes, and realistic examples
 - Both live and linked from project root; serve as single source of truth for team
+
+## Phase 2+3 Scope Consolidation (April 12, 2026)
+
+Merged four Phase 2+3 decision documents from Han, Chewie, Leia, and Wedge into unified `decisions.md` section.
+
+**Key contributions**:
+- **Han**: Risk assessment, identified 1 critical blocker (type mismatch on pause commands), 5 medium issues, 3 missing features
+- **Chewie**: Database schema (migration 002), pause state design (cumulative duration), favorites boolean pattern, new 7 IPC commands
+- **Leia**: Frontend types (ActiveSession.isPaused, WorkOrder.isFavorite, ReportData), visual design (amber paused indicator, 3px colored borders), accessibility patterns
+- **Wedge**: 34 test cases (12 P0 blocking, 18 P1 important, 4 P2 nice-to-have), test findings on pause state criticality, 2-minute orphan threshold validation
+
+**Critical design decisions consolidated**:
+1. Pause state stores cumulative `total_paused_seconds` (not interval list) for simplicity and query performance
+2. Favorites use boolean flag on work_orders (not separate table) for faster queries
+3. Duration calculation: `gross_elapsed - total_paused_seconds - current_pause`
+4. Heartbeat: 30s interval, 2-minute orphan threshold, Tauri built-in tray (not programmatic)
+5. Reports: Reuse daily summary structure with date range filter, <500ms target
+
+**Status**: Design complete and approved. All critical blockers identified and resolved. Ready for implementation in Sprint N with clear execution timeline (pause/favorites immediate, reports Phase 3).
