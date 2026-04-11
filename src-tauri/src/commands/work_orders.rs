@@ -1,0 +1,194 @@
+use tauri::State;
+use rusqlite::params;
+use uuid::Uuid;
+use chrono::Utc;
+use crate::{AppState, models::{work_order::*, error::AppError}};
+
+#[tauri::command]
+pub fn create_work_order(state: State<AppState>, params: CreateWorkOrderParams) -> Result<WorkOrder, AppError> {
+    let conn = state.db.lock().unwrap();
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+    
+    // Verify customer exists
+    let customer_exists: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM customers WHERE id = ? AND archived_at IS NULL",
+        params![&params.customer_id],
+        |row| row.get(0)
+    )?;
+    
+    if customer_exists == 0 {
+        return Err(AppError::NotFound(format!("Customer {} not found", params.customer_id)));
+    }
+    
+    conn.execute(
+        "INSERT INTO work_orders (id, customer_id, name, code, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        rusqlite::params![&id, &params.customer_id, &params.name, &params.code, &params.description, &now, &now]
+    )?;
+    
+    // Fetch with customer info
+    conn.query_row(
+        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.created_at, wo.updated_at, wo.archived_at 
+         FROM work_orders wo 
+         JOIN customers c ON wo.customer_id = c.id 
+         WHERE wo.id = ?",
+        params![&id],
+        |row| {
+            Ok(WorkOrder {
+                id: row.get(0)?,
+                customer_id: row.get(1)?,
+                customer_name: row.get(2)?,
+                customer_color: row.get(3)?,
+                name: row.get(4)?,
+                code: row.get(5)?,
+                description: row.get(6)?,
+                status: row.get(7)?,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
+                archived_at: row.get(10)?,
+            })
+        }
+    ).map_err(AppError::Database)
+}
+
+#[tauri::command]
+pub fn list_work_orders(state: State<AppState>, customer_id: Option<String>) -> Result<Vec<WorkOrder>, AppError> {
+    let conn = state.db.lock().unwrap();
+    
+    let (sql, params_vec): (&str, Vec<String>) = if let Some(cid) = customer_id {
+        (
+            "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.created_at, wo.updated_at, wo.archived_at 
+             FROM work_orders wo 
+             JOIN customers c ON wo.customer_id = c.id 
+             WHERE wo.customer_id = ? AND wo.archived_at IS NULL 
+             ORDER BY wo.name",
+            vec![cid]
+        )
+    } else {
+        (
+            "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.created_at, wo.updated_at, wo.archived_at 
+             FROM work_orders wo 
+             JOIN customers c ON wo.customer_id = c.id 
+             WHERE wo.archived_at IS NULL 
+             ORDER BY c.name, wo.name",
+            vec![]
+        )
+    };
+    
+    let mut stmt = conn.prepare(sql)?;
+    
+    let work_orders: Result<Vec<_>, _> = if params_vec.is_empty() {
+        stmt.query_map([], |row| {
+            Ok(WorkOrder {
+                id: row.get(0)?,
+                customer_id: row.get(1)?,
+                customer_name: row.get(2)?,
+                customer_color: row.get(3)?,
+                name: row.get(4)?,
+                code: row.get(5)?,
+                description: row.get(6)?,
+                status: row.get(7)?,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
+                archived_at: row.get(10)?,
+            })
+        })?.collect()
+    } else {
+        stmt.query_map(params![&params_vec[0]], |row| {
+            Ok(WorkOrder {
+                id: row.get(0)?,
+                customer_id: row.get(1)?,
+                customer_name: row.get(2)?,
+                customer_color: row.get(3)?,
+                name: row.get(4)?,
+                code: row.get(5)?,
+                description: row.get(6)?,
+                status: row.get(7)?,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
+                archived_at: row.get(10)?,
+            })
+        })?.collect()
+    };
+    
+    work_orders.map_err(AppError::Database)
+}
+
+#[tauri::command]
+pub fn update_work_order(state: State<AppState>, id: String, params: UpdateWorkOrderParams) -> Result<WorkOrder, AppError> {
+    let conn = state.db.lock().unwrap();
+    let now = Utc::now().to_rfc3339();
+    
+    // Build dynamic UPDATE query
+    let mut updates = vec!["updated_at = ?"];
+    let mut values: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(now.clone())];
+    
+    if let Some(name) = &params.name {
+        updates.push("name = ?");
+        values.push(Box::new(name.clone()));
+    }
+    if params.code.is_some() {
+        updates.push("code = ?");
+        values.push(Box::new(params.code.clone()));
+    }
+    if params.description.is_some() {
+        updates.push("description = ?");
+        values.push(Box::new(params.description.clone()));
+    }
+    if let Some(status) = &params.status {
+        updates.push("status = ?");
+        values.push(Box::new(status.clone()));
+    }
+    
+    values.push(Box::new(id.clone()));
+    
+    let sql = format!("UPDATE work_orders SET {} WHERE id = ?", updates.join(", "));
+    let params_refs: Vec<&dyn rusqlite::ToSql> = values.iter().map(|b| b.as_ref()).collect();
+    
+    let rows_affected = conn.execute(&sql, rusqlite::params_from_iter(params_refs))?;
+    
+    if rows_affected == 0 {
+        return Err(AppError::NotFound(format!("Work order {} not found", id)));
+    }
+    
+    // Fetch updated work order
+    conn.query_row(
+        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.created_at, wo.updated_at, wo.archived_at 
+         FROM work_orders wo 
+         JOIN customers c ON wo.customer_id = c.id 
+         WHERE wo.id = ?",
+        params![&id],
+        |row| {
+            Ok(WorkOrder {
+                id: row.get(0)?,
+                customer_id: row.get(1)?,
+                customer_name: row.get(2)?,
+                customer_color: row.get(3)?,
+                name: row.get(4)?,
+                code: row.get(5)?,
+                description: row.get(6)?,
+                status: row.get(7)?,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
+                archived_at: row.get(10)?,
+            })
+        }
+    ).map_err(AppError::Database)
+}
+
+#[tauri::command]
+pub fn archive_work_order(state: State<AppState>, id: String) -> Result<(), AppError> {
+    let conn = state.db.lock().unwrap();
+    let now = Utc::now().to_rfc3339();
+    
+    let rows_affected = conn.execute(
+        "UPDATE work_orders SET archived_at = ?, updated_at = ? WHERE id = ?",
+        params![&now, &now, &id]
+    )?;
+    
+    if rows_affected == 0 {
+        return Err(AppError::NotFound(format!("Work order {} not found", id)));
+    }
+    
+    Ok(())
+}

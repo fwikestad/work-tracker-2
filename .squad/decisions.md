@@ -243,6 +243,148 @@ Customer colors (left borders):
 
 ---
 
+### 2026-04-11: Backend Scaffold Decision — rusqlite Pattern
+
+**From**: Chewie (Backend Dev)  
+**Status**: IMPLEMENTED
+
+#### Decision: Use rusqlite Directly with Mutex<Connection>
+
+The architecture initially mentioned tauri-plugin-sql, however during implementation research, discovered that tauri-plugin-sql is a **JavaScript-side plugin** that exposes SQLite to the frontend via IPC, not a Rust backend database layer.
+
+For the three-layer architecture (Frontend → Service Layer → Data Layer), we need:
+- Direct Rust access to SQLite for service logic
+- Transaction control for atomic operations
+- WAL mode and PRAGMA configuration
+- Connection lifecycle management
+
+**Choice**: rusqlite + Mutex<Connection> as Tauri State
+
+**Implementation patterns**:
+1. **Atomic Session Switching**: Use `conn.unchecked_transaction()` to stop current session, create new session, update active_session singleton, and update recent_work_orders all in one transaction
+2. **Duration Calculation**: Store both `duration_seconds` (calculated) and `duration_override` (user-specified), query with COALESCE
+3. **Crash Recovery**: Singleton table `active_session` with `last_heartbeat`, orphan detection on startup
+4. **Error Handling**: Custom AppError enum with Tauri serialization
+5. **Quick-Add Workflow**: Atomic multi-step transaction (create customer, work order, start session)
+
+**Rationale**:
+- Direct control over transactions and WAL mode
+- Mutex ensures thread-safe concurrent access from Tauri commands
+- No IPC overhead — commands run in-process with direct DB access
+- Standard Rust pattern for shared mutable state
+
+**Alternatives rejected**:
+- tauri-plugin-sql: JS-side only, no Rust service layer access
+- sqlx: Overkill for MVP (async not needed, compile-time checking adds complexity)
+- diesel: Too heavy (ORM overhead, schema.rs boilerplate)
+
+---
+
+### 2026-04-11: Phase 1 Backend Implementation Complete
+
+**From**: Chewie (Backend Dev)  
+**Status**: IMPLEMENTED
+
+**Deliverables**: 47 files created
+
+**Frontend Config** (6): package.json, vite.config.ts, svelte.config.js, tsconfig.json, app.html, app.css  
+**Frontend Source** (9): app.d.ts, routes/, lib/types.ts, lib/api/ (4 wrappers)  
+**Rust Config** (5): Cargo.toml, build.rs, tauri.conf.json, capabilities/default.json, icons/  
+**Rust Source** (17): Core (3), Models (5), Services (2), Commands (3 modules with 18 commands total), Database migration  
+
+**Key Implementation Achievements**:
+- SQLite with WAL mode (crash-safe)
+- 5 tables: customers, work_orders, time_sessions, active_session, recent_work_orders
+- 11 performance indexes
+- 18 Tauri IPC commands with full error handling
+- Atomic session switching
+- Crash recovery via orphan detection
+- CSV export with proper escaping
+- TypeScript types matching Rust models
+
+---
+
+### 2026-04-11: Phase 1 Frontend Implementation Complete
+
+**From**: Leia (Frontend Dev)  
+**Status**: IMPLEMENTED
+
+**Deliverables**: Complete Svelte 5 frontend
+
+**Stores** (3): timer.svelte.ts (active session + elapsed), sessions.svelte.ts (today's + recent), ui.svelte.ts (modal states)
+
+**Utilities** (2): formatters.ts (duration/time formatting), shortcuts.ts (global keyboard shortcut registration)
+
+**Components** (8):
+- Timer.svelte — Active session display with stop controls
+- RecoveryDialog.svelte — Orphan recovery on startup
+- QuickAdd.svelte — Ctrl+N overlay for create + start
+- SearchSwitch.svelte — Recent + search with keyboard nav
+- SessionList.svelte — Today's sessions with inline edit
+- DailySummary.svelte — Total hours + customer breakdown
+- CustomerList.svelte — CRUD for customers
+- WorkOrderList.svelte — CRUD for work orders
+
+**Routes** (3): +layout.svelte (app init), +page.svelte (main tracking), manage/+page.svelte (admin + export)
+
+**Key Technical Decisions**:
+- Svelte 5 runes exclusively ($state, $derived, $effect) for reactivity
+- Dark theme: #0d0d0d background, #4caf7d accent for active state only
+- Single-column layout (max-width 480px)
+- Keyboard-first: all actions reachable without mouse
+- Inline editing, no modal dialogs for reversible actions
+- Real-time updates via reactive stores
+
+---
+
+### 2026-04-11: Documentation Complete
+
+**From**: Mon Mothma (Technical Writer)  
+**Status**: IMPLEMENTED
+
+**Deliverables**:
+- `README.md` — Developer-friendly quickstart (prerequisites, features, keyboard shortcuts, project structure, data paths, dev workflow)
+- `docs/api-reference.md` — Comprehensive IPC command reference (18 commands across customers, work orders, sessions, reports) with TypeScript signatures, parameter descriptions, return types, error codes, and realistic usage examples
+
+**Key Achievements**:
+- All 18 IPC commands fully documented with typed examples
+- Clear error code reference table
+- End-to-end workflow example showing complete user journey
+- Local-first guarantee clarified
+- Crash recovery protocol documented
+- Phase 1 scope locked at 16 commands (later extended to 18 with recover/discard commands)
+
+---
+
+### 2026-04-11: Phase 1 Test Plan Complete
+
+**From**: Wedge (Tester)  
+**Status**: IMPLEMENTED
+
+**Deliverable**: `docs/test-plan.md` — 118 comprehensive test cases
+
+**Coverage**:
+- 65+ backend Tauri commands
+- 23+ frontend Svelte components
+- 30+ data integrity & edge cases
+
+**Critical Findings**:
+1. **Atomic operations risk** — start_session must be single transaction (TC-027 blocker)
+2. **Duration override logic** — COALESCE pattern easy to get wrong (TC-036, 037, 059, 114)
+3. **Orphan recovery complexity** — Must block UI and present user choice (TC-050 through TC-053)
+4. **Midnight boundary edge case** — Session spanning midnight should count to start_time date (TC-074)
+5. **Cascade delete semantics** — Soft vs hard delete not fully specified yet (clarify before dev)
+
+**Recommendations**:
+- Implement in order: Core CRUD → Complex features → Frontend integration
+- Automate: atomic switch, daily summary, crash recovery (highest ROI)
+- Manual checklist: 10-step user flow (<5 min)
+- Performance targets: <100ms timer, <3s switch, <50ms search
+
+**Next Steps**: Weekly review during development; update Section 5 as edge cases emerge
+
+---
+
 ## Governance
 
 - All meaningful changes require team consensus

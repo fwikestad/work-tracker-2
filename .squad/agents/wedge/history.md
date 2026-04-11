@@ -6,4 +6,53 @@ Tester for work-tracker-2 — native desktop time tracker for consultant Fredrik
 
 ## Learnings
 
-_(append below as work progresses)_
+### 2026-04-11: Phase 1 Test Plan Complete
+
+**Scope**: Comprehensive test coverage for Phase 1 MVP (118 test cases)
+
+**Key Insights**:
+
+1. **Architecture Clarity Enables Testing**: The detailed architecture.md made it straightforward to translate technical decisions into concrete test scenarios. Each Tauri command, database invariant, and UI component has clear, measurable acceptance criteria.
+
+2. **Atomic Operations Are Critical**: The most complex test cases revolve around `start_session()` (atomic switch), `quick_add()` (atomic creation), and transaction rollback. These are where data loss is most likely. Prioritized P0.
+
+3. **Crash Recovery Must Be Tested End-to-End**: WAL mode alone doesn't guarantee correctness. Must test: (1) orphan detection on startup, (2) recovery dialog UX, (3) user choices (close vs discard), (4) database state after each choice.
+
+4. **Duration Calculation is Nuanced**: System must support both auto-calculated (end_time - start_time) AND manual override. COALESCE(duration_override, duration_seconds) query pattern is error-prone if tested poorly. Added specific test cases for:
+   - Calculated-only duration
+   - Override-only duration (should take precedence)
+   - Clearing override (revert to calculated)
+   - Zero and negative edge cases
+
+5. **Performance Targets Are Achievable**: <100ms for timer, <3s context switch, <50ms search are all realistic for Svelte 5 + Tauri + SQLite with proper indexing. Measurement strategy documented (browser DevTools, Tauri profiler).
+
+6. **Date Boundary Edge Cases Often Overlooked**: Session spanning midnight should be counted only to date of start_time (not duplicated across two days). Included explicit test for this common bug.
+
+7. **Quick-Add is Most Complex Feature**: Requires atomic multi-step transaction (create customer, create work order, create session, update recents). Any step failing must rollback all. Test plan has 5 test cases for this alone.
+
+8. **Foreign Key Constraints + Soft Deletes = Tricky Logic**: Archiving (soft delete) vs hard delete requires clear decisions. Test plan assumes soft deletes for audit trail, but hard delete semantics would require different tests. Must clarify before implementation.
+
+9. **Frontend State Sync with Backend**: 118 test cases split roughly 65 backend, 23 frontend, 30 infrastructure/edge case. Frontend tests must verify real-time updates (summary updates as active session counts up). Requires mock Tauri backend or live integration.
+
+10. **Test Plan Structure**: 
+    - Section 1: Backend commands (happy path, errors, edge cases per command)
+    - Section 2: Data integrity & invariants (system-level correctness)
+    - Section 3: Frontend integration (UI components + IPC)
+    - Section 4: Performance (measurable targets, tools, success criteria)
+    - Section 5: Boundary conditions (edge cases that often escape notice)
+    - Section 6: Test execution & reporting (CI/CD ready)
+
+**Next Steps for Dev Team**:
+- Implement tests incrementally (one command at a time)
+- Use test plan as acceptance checklist before PR merge
+- Focus P0 tests first; P1/P2 can follow
+- Automate core tests in CI/CD after Phase 1 ships
+
+**Recommendation**: Treat test plan as living document. Update as implementation discovers additional edge cases or constraints.
+
+**Cross-team context**:
+- **Chewie (Backend)**: 47 files + 18 IPC commands implemented. All commands designed to be testable (service layer uses Connection directly, not just AppState).
+- **Leia (Frontend)**: Complete Svelte 5 frontend built. Components are integration test vectors (Timer, SearchSwitch, SessionList, DailySummary, QuickAdd). Can be tested against mock Tauri backend.
+- **Mothma (Docs)**: API reference provides clear contracts for each command. Test cases directly map to documented signatures and error codes.
+
+**Phase 1 deliverable**: All 118 test cases written and documented. Team can execute manual tests using 10-step workflow checklist. Automation readiness (P0 tests for CI/CD) planned for Phase 2.
