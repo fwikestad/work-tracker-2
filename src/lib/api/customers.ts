@@ -4,8 +4,8 @@ import type { Customer, CreateCustomerParams, UpdateCustomerParams } from '../ty
 export const createCustomer = (params: CreateCustomerParams) =>
   invoke<Customer>('create_customer', { params });
 
-export const listCustomers = (includeArchived?: boolean) =>
-  invoke<Customer[]>('list_customers', { includeArchived });
+export const listCustomers = (includeArchived = false) =>
+  invoke<Customer[]>('list_customers', { include_archived: includeArchived });
 
 export const updateCustomer = (id: string, params: UpdateCustomerParams) =>
   invoke<Customer>('update_customer', { id, params });
