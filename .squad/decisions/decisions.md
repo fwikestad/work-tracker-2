@@ -591,3 +591,281 @@ interface ReportEntry {
 | CSS color classes not wired | 🟢 LOW | ✅ Design complete |
 
 **Overall Risk**: 🟢 LOW — All blockers identified and addressed in design phase. Ready for implementation.
+
+---
+
+## Fix: Customer Field Population in WorkOrder Form
+
+**Date**: 2026-04-11  
+**Author**: Leia (Frontend Dev)  
+**Status**: RESOLVED — Extended to comprehensive fix
+
+### Problem
+
+The customer field in the WorkOrder form could not be populated. Users attempting to create a new work order were unable to select a customer from the SearchableSelect dropdown because the customer list was not loading.
+
+**During investigation, discovered this issue affected EVERY frontend API call with direct parameters.**
+
+### Root Cause
+
+**Parameter naming mismatch between frontend and backend:**
+
+- **Frontend** (`src/lib/api/customers.ts`):
+  ```typescript
+  export const listCustomers = (includeArchived?: boolean) =>
+    invoke<Customer[]>('list_customers', { includeArchived });
+  ```
+  Sent: `{ includeArchived: false }` (camelCase)
+
+- **Backend** (`src-tauri/src/commands/customers.rs` line 30):
+  ```rust
+  pub fn list_customers(state: State<AppState>, include_archived: Option<bool>)
+  ```
+  Expected: `{ include_archived: false }` (snake_case)
+
+#### Why This Happened
+
+Tauri's automatic case conversion (`camelCase` ↔ `snake_case`) **only applies to serde structs** with the `#[serde(rename_all = "camelCase")]` attribute.
+
+For **direct function parameters** (not wrapped in a struct), parameter names must match **exactly** between JavaScript and Rust.
+
+#### Why Other Commands Work
+
+Commands like `create_customer` and `update_customer` work because they use **serde structs** for parameters:
+
+```rust
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateCustomerParams {
+    pub name: String,
+    pub code: Option<String>,
+    pub color: Option<String>,
+}
+
+#[tauri::command]
+pub fn create_customer(state: State<AppState>, params: CreateCustomerParams) 
+```
+
+The `#[serde(rename_all = "camelCase")]` directive automatically converts `customerId` → `customer_id`, `customerName` → `customer_name`, etc.
+
+But `list_customers` uses a **direct parameter** `include_archived: Option<bool>`, so no automatic conversion happens.
+
+### Solution — Comprehensive Fix
+
+**Updated ALL 4 API wrapper files** to send correct snake_case parameter names for direct parameters:
+
+#### customers.ts
+```typescript
+// Before: { includeArchived }
+// After:
+export const listCustomers = (includeArchived = false) =>
+  invoke<Customer[]>('list_customers', { include_archived: includeArchived });
+```
+
+#### workOrders.ts
+```typescript
+// Before: { customerId }, { workOrderId }
+// After:
+export const listWorkOrders = (customerId?: string) =>
+  invoke<WorkOrder[]>('list_work_orders', { customer_id: customerId });
+
+export const toggleFavorite = (workOrderId: string) =>
+  invoke<WorkOrder>('toggle_favorite', { work_order_id: workOrderId });
+```
+
+#### sessions.ts
+```typescript
+// Before: { workOrderId }, { activityType }, { startDate, endDate }, { sessionId }
+// After:
+export const startSession = (workOrderId: string) =>
+  invoke<Session>('start_session', { work_order_id: workOrderId });
+
+export const stopSession = (notes?: string, activityType?: string) =>
+  invoke<Session | null>('stop_session', { notes, activity_type: activityType });
+
+export const listSessions = (startDate: string, endDate: string) =>
+  invoke<Session[]>('list_sessions', { start_date: startDate, end_date: endDate });
+
+export const recoverSession = (sessionId: string) =>
+  invoke<Session>('recover_session', { session_id: sessionId });
+
+export const discardOrphanSession = (sessionId: string) =>
+  invoke<void>('discard_orphan_session', { session_id: sessionId });
+```
+
+#### reports.ts
+```typescript
+// Before: { startDate, endDate }
+// After:
+export const exportCsv = (startDate: string, endDate: string) =>
+  invoke<string>('export_csv', { start_date: startDate, end_date: endDate });
+
+export const getReport = (startDate: string, endDate: string) =>
+  invoke<ReportData>('get_report', { start_date: startDate, end_date: endDate });
+```
+
+### Impact
+
+- ✅ Customer dropdown now loads correctly in WorkOrder form (**original bug**)
+- ✅ Work order filtering by customer works
+- ✅ Favorite toggle works
+- ✅ Session start/stop works
+- ✅ Session recovery works
+- ✅ Reports and CSV export work
+- ✅ All date range queries work
+
+**This was a critical bug affecting the entire application.** Without this fix, nearly every core feature would have failed silently or with cryptic errors.
+
+### Verification
+
+1. ✅ `npm run build` succeeds with no TypeScript or Svelte errors
+2. ✅ Committed as `498ee92` (initial customer fix) and `a08a26a` (comprehensive fix)
+
+### Recommendation
+
+**For future Tauri commands:**
+
+1. **Prefer serde structs** for all parameters (even single parameters) to enable automatic case conversion
+2. If using direct parameters, **always use snake_case** in JavaScript to match Rust
+3. Add a linting rule or code review checklist to catch camelCase parameters in `invoke()` calls
+4. Document this pattern in team onboarding
+
+**Example of better pattern:**
+
+```rust
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListCustomersParams {
+    pub include_archived: Option<bool>,
+}
+
+#[tauri::command]
+pub fn list_customers(state: State<AppState>, params: ListCustomersParams)
+```
+
+Then frontend can use camelCase:
+```typescript
+invoke('list_customers', { params: { includeArchived: false } })
+```
+
+---
+
+## Decision: SearchableSelect — Use `mousedown` for Outside-Click Detection
+
+**From**: Leia (Frontend Dev)  
+**Date**: 2026-04-11  
+**Status**: IMPLEMENTED
+
+### Decision
+
+`SearchableSelect.svelte` must use `mousedown` (not `click`) for the outside-click detection `$effect` listener.
+
+```js
+$effect(() => {
+  if (isOpen) {
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }
+});
+```
+
+### Rationale
+
+**Root cause**: Svelte 5 rune reactivity flushes synchronously when `isOpen = true` is set inside the trigger button's `onclick`. This means:
+
+1. User clicks trigger → `isOpen = true`
+2. Svelte flushes DOM: trigger `<button>` is removed, filter `<input>` is inserted, `$effect` fires and adds `click` listener to `document`
+3. The original click event **then** bubbles to `document`
+4. `handleClickOutside` fires: `containerRef.contains(triggerButton)` → returns `false` (element was removed)
+5. `close()` called → dropdown opens and immediately closes
+
+Using `mousedown` prevents this because `mousedown` fires **before** the click event, and therefore **before** `isOpen` changes or DOM updates. When `mousedown` fires on the trigger button, no listener is yet attached to `document` (since `isOpen` is still `false`). By the time `click` bubbles, the `mousedown` listener is already active — but any subsequent `mousedown` on an option element will have `containerRef.contains(e.target) === true`, so options remain selectable.
+
+### Safety
+
+Option selection still works correctly: when the user `mousedown`s on a dropdown option, `containerRef.contains(e.target)` returns `true` (option is inside the container, still in DOM during mousedown), so `close()` is not triggered. The `onclick` on the option fires afterward and calls `selectOption()`.
+
+### Context
+
+Bug reported by Fredrik: "Still I cannot choose a customer in the add workorder form." Previous fix (snake_case parameter naming) was necessary but not sufficient. This mousedown fix resolves the remaining interaction failure.
+
+### Commit
+
+`16f65b6` — fix: SearchableSelect click-outside race condition and WorkOrder empty state
+
+---
+
+## Decision: Svelte 5 Warning Fixes
+
+**Date:** 2026-04-11  
+**Author:** Leia (Frontend Dev)  
+**Status:** Implemented
+
+### Context
+
+Running `npm run tauri -- dev` surfaced 5 Svelte compiler warnings across 4 components. These are non-blocking but indicate incorrect patterns in Svelte 5 runes mode that should be fixed before shipping.
+
+### Decisions Made
+
+#### 1. `bind:this` refs use `$state<T | undefined>(undefined)`
+
+**Warning:** `non_reactive_update` — variable updated but not declared with `$state`  
+**Files:** `QuickAdd.svelte:18`, `SearchableSelect.svelte:23-24`
+
+In Svelte 5 runes mode, `bind:this` writes the DOM element into the variable after mount. For Svelte's reactive system to track this assignment, the variable must be a `$state` rune.
+
+**Pattern adopted:**
+```ts
+// Before (Svelte 4 style — wrong in runes mode)
+let inputRef: HTMLInputElement;
+
+// After (Svelte 5 correct)
+let inputRef = $state<HTMLInputElement | undefined>(undefined);
+```
+
+This applies to **all** `bind:this` variables — input refs, container refs, etc.
+
+#### 2. Self-closing `<textarea>` → explicit close tag
+
+**Warning:** `element_invalid_self_closing_tag`  
+**File:** `Timer.svelte:65`
+
+HTML spec forbids self-closing void syntax for non-void elements like `<textarea>`. Svelte 5 flags this as a warning.
+
+```svelte
+<!-- Before -->
+<textarea bind:value={notes} rows="3" placeholder="..." />
+
+<!-- After -->
+<textarea bind:value={notes} rows="3" placeholder="..."></textarea>
+```
+
+#### 3. Interactive divs: `role="button"` + `tabindex` + `onkeydown`
+
+**Warning:** `a11y_click_events_have_key_events` + `a11y_no_static_element_interactions`  
+**Files:** `QuickAdd.svelte:93` (overlay backdrop), `SessionList.svelte:103` (session row)
+
+**Decision: Keep as `<div>` with ARIA attributes** (not convert to `<button>`) for these two cases:
+
+- **Overlay backdrop** — wraps the modal dialog; converting to `<button>` would be semantically wrong. Used `role="button" tabindex="0"` with Enter key handler.
+- **Session row** — contains a nested `<button>` (delete action). HTML forbids `<button>` inside `<button>`, so ARIA approach is correct here.
+
+**Pattern adopted:**
+```svelte
+<div
+  role="button"
+  tabindex="0"
+  onclick={handler}
+  onkeydown={(e) => e.key === 'Enter' && handler(e)}
+>
+```
+
+Event handler types updated from `MouseEvent` → `Event` where needed to support both `onclick` and `onkeydown`.
+
+### Remaining Warnings (Out of Scope)
+
+`CustomerList.svelte:145` and `WorkOrderList.svelte:194` have the same a11y pattern. These are tracked in history.md Priority 2 list and should follow the same div+ARIA approach (nested buttons present in those components too).
+
+### Build Status
+
+`npm run build` ✅ passes after all fixes.
