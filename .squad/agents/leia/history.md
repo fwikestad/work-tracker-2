@@ -15,6 +15,7 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 - Keyboard-first: all interactive elements reachable via Tab, Enter to confirm, Escape to cancel, arrow keys for navigation
 - **Svelte 5 `bind:this` refs require `$state()`**: In runes mode, any variable used with `bind:this` must be declared as `let ref = $state<HTMLElement | undefined>(undefined)`. Plain `let ref: HTMLElement` triggers a `non_reactive_update` warning because Svelte 5 cannot track the assignment. This applies to all DOM ref variables — input refs, container refs, etc.
 - **A11y for interactive divs**: Divs with `onclick` need `role="button"`, `tabindex="0"`, and `onkeydown={(e) => e.key === 'Enter' && handler(e)}` to satisfy `a11y_click_events_have_key_events` + `a11y_no_static_element_interactions`. Prefer converting to `<button>` when there are no nested buttons; use div+role when nesting constraints apply (e.g., a delete button inside the clickable row).
+- **Tauri parameter naming convention**: When Tauri command parameters are NOT wrapped in a serde struct, the parameter names in Rust (snake_case) must match EXACTLY what JavaScript sends. For direct parameters like `include_archived: Option<bool>`, JavaScript must send `{ include_archived: value }` not `{ includeArchived: value }`. The `#[serde(rename_all = "camelCase")]` attribute only works on structs, not on loose function parameters. Always use snake_case for non-struct parameters or wrap them in a struct with serde rename.
 
 ## Session Log
 
@@ -169,4 +170,25 @@ Backend (Chewie) needs to implement:
 - Star buttons use span with role="button" for accessibility (no nested buttons)
 - Report view uses collapsible customer groups to manage long lists
 - Heartbeat every 30 seconds balances crash recovery with minimal overhead
+
+### 2026-04-11 — Bug Fix: Customer Field Population
+
+**Issue**: Customer field could not be populated in WorkOrder form. Root cause was a parameter naming mismatch between frontend and backend.
+
+**Diagnosis**:
+- Frontend `listCustomers()` wrapper was sending `{ includeArchived: boolean }` (camelCase)
+- Backend Rust command expected `{ include_archived: Option<bool> }` (snake_case)
+- The `include_archived` parameter is a direct function parameter, NOT wrapped in a serde struct
+- Tauri's automatic camelCase ↔ snake_case conversion only applies to struct fields with `#[serde(rename_all = "camelCase")]`
+- Direct parameters must match exactly
+
+**Fix**: Updated `src/lib/api/customers.ts` to send the correct parameter name:
+```typescript
+export const listCustomers = (includeArchived = false) =>
+  invoke<Customer[]>('list_customers', { include_archived: includeArchived });
+```
+
+**Verified**: Build succeeds with no TypeScript or Svelte compilation errors.
+
+**Learning**: Always use snake_case for non-struct Tauri command parameters, or wrap parameters in a serde struct with rename_all directive.
 
