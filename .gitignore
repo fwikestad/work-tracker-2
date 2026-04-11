@@ -5,3 +5,45 @@
 .squad/sessions/
 # Squad: SubSquad activation file (local to this machine)
 .squad-workstream
+
+# Node.js / npm
+node_modules/
+.npm
+npm-debug.log*
+.env
+.env.local
+.env.*.local
+
+# SvelteKit / Vite
+.svelte-kit/
+build/
+dist/
+.vite/
+
+# TypeScript
+*.tsbuildinfo
+
+# Rust / Cargo
+src-tauri/target/
+
+# Tauri build outputs
+*.app
+*.dmg
+*.deb
+*.AppImage
+*.msi
+*.exe
+src-tauri/gen/
+
+# SQLite runtime files (not migrations)
+*.db
+*.db-shm
+*.db-wal
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+*.suo
+*.user
