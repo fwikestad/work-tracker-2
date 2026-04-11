@@ -1,0 +1,1526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Work Tracker 2 — UI Mockup</title>
+    <style>
+        /* 
+          work-tracker-2 UI Mockup
+          Author: Leia (Frontend Dev)
+          Purpose: Design review draft for Fredrik
+          
+          Key design decisions:
+          - Theme: DARK — Professional, reduces eye strain during long work days, excellent for taskbar/system tray apps
+          - Layout: Two-column desktop (timer/controls left, activity log right), single-column mobile
+          - Color palette: 
+              - Background: #1a1d24 (dark slate)
+              - Surface: #252932 (lighter slate)
+              - Accent: #3b82f6 (blue - calm, professional)
+              - Success: #10b981 (green - active tracking state)
+              - Warning: #f59e0b (amber - paused state, future)
+              - Text primary: #e5e7eb (light grey)
+              - Text secondary: #9ca3af (medium grey)
+          - Notable patterns:
+              - Active work section dominates visually (left panel, large timer)
+              - Color-coded customer indicators (left border) for quick visual scanning
+              - Minimal overlays for quick-add and context switch (no full-page dialogs)
+              - Keyboard shortcuts prominently displayed
+              - Real-time ticking timer for active session
+              - Tab-based state viewer so Fredrik can see all states in one file
+        -->
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #1a1d24;
+            --bg-secondary: #252932;
+            --bg-tertiary: #2d323e;
+            --bg-hover: #353b48;
+            --border-color: #3d4451;
+            --text-primary: #e5e7eb;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --accent: #3b82f6;
+            --accent-dark: #2563eb;
+            --success: #10b981;
+            --success-dark: #059669;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --customer-1: #8b5cf6;
+            --customer-2: #ec4899;
+            --customer-3: #14b8a6;
+            --customer-4: #f59e0b;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Tab Navigation */
+        .tab-bar {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0.5rem 1rem;
+            display: flex;
+            gap: 0.5rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .tab-button {
+            padding: 0.5rem 1rem;
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+            min-height: 44px;
+        }
+
+        .tab-button:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .tab-button.active {
+            background: var(--bg-tertiary);
+            border-color: var(--accent);
+            color: var(--text-primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Main Layout */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+
+        .app-layout {
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            gap: 1.5rem;
+            min-height: calc(100vh - 80px);
+        }
+
+        /* Left Panel - Active Work */
+        .left-panel {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 1.5rem;
+            height: fit-content;
+            position: sticky;
+            top: 80px;
+        }
+
+        .active-work-header {
+            margin-bottom: 1.5rem;
+        }
+
+        .active-work-header h2 {
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .timer-display {
+            text-align: center;
+            margin: 2rem 0;
+        }
+
+        .timer-display.running .timer-value {
+            color: var(--success);
+        }
+
+        .timer-value {
+            font-size: 3.5rem;
+            font-weight: 300;
+            font-variant-numeric: tabular-nums;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .work-info {
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 1rem;
+            margin: 1.5rem 0;
+            border-left: 4px solid var(--customer-1);
+        }
+
+        .work-info .customer-name {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 0.25rem;
+        }
+
+        .work-info .work-order-name {
+            font-size: 1.125rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .work-info .work-code {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            font-family: "Courier New", monospace;
+        }
+
+        .timer-controls {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--border-color);
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            min-height: 44px;
+        }
+
+        .btn:hover {
+            background: var(--bg-hover);
+            border-color: var(--accent);
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-dark);
+            border-color: var(--accent-dark);
+        }
+
+        .btn-success {
+            background: var(--success);
+            border-color: var(--success);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: var(--success-dark);
+            border-color: var(--success-dark);
+        }
+
+        .btn-danger {
+            background: transparent;
+            border-color: var(--danger);
+            color: var(--danger);
+        }
+
+        .btn-danger:hover {
+            background: var(--danger);
+            color: white;
+        }
+
+        .quick-actions {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .quick-actions h3 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+        }
+
+        .quick-action-btn {
+            width: 100%;
+            justify-content: flex-start;
+            margin-bottom: 0.5rem;
+        }
+
+        .kbd {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 3px;
+            padding: 0.125rem 0.375rem;
+            font-size: 0.75rem;
+            font-family: "Courier New", monospace;
+            color: var(--text-muted);
+            margin-left: auto;
+        }
+
+        /* Right Panel - Activity Log */
+        .right-panel {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .panel-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .summary-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-card {
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 1rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .activity-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .activity-item {
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 1rem;
+            border-left: 4px solid var(--customer-1);
+            display: grid;
+            grid-template-columns: 80px 1fr 100px;
+            gap: 1rem;
+            align-items: center;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .activity-item:hover {
+            background: var(--bg-hover);
+        }
+
+        .activity-item.customer-2 {
+            border-left-color: var(--customer-2);
+        }
+
+        .activity-item.customer-3 {
+            border-left-color: var(--customer-3);
+        }
+
+        .activity-time {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .activity-details .customer {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .activity-details .work-order {
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .activity-duration {
+            text-align: right;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Overlay Components */
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            align-items: flex-start;
+            justify-content: center;
+            padding-top: 20vh;
+            z-index: 1000;
+        }
+
+        .overlay.active {
+            display: flex;
+        }
+
+        .overlay-content {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            width: 90%;
+            max-width: 600px;
+            padding: 1.5rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+        }
+
+        .overlay-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .overlay-header h3 {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        .close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            line-height: 1;
+            transition: color 0.2s;
+            min-height: 44px;
+            min-width: 44px;
+        }
+
+        .close-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .quick-add-input {
+            width: 100%;
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        .quick-add-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .quick-add-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .helper-text {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+        }
+
+        .search-results {
+            margin-top: 1rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .result-section {
+            margin-bottom: 1rem;
+        }
+
+        .result-section h4 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        .result-item {
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.25rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 4px solid var(--customer-1);
+            min-height: 44px;
+        }
+
+        .result-item:hover,
+        .result-item.selected {
+            background: var(--bg-hover);
+            border-left-color: var(--accent);
+        }
+
+        .result-item .item-name {
+            font-size: 0.875rem;
+            color: var(--text-primary);
+        }
+
+        .result-item .item-code {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-family: "Courier New", monospace;
+        }
+
+        /* Keyboard Shortcuts Reference */
+        .shortcuts-panel {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .shortcuts-panel h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .shortcuts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+        }
+
+        .shortcut-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+
+        .shortcut-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        /* Customer Management */
+        .customer-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .customer-card {
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 1.5rem;
+            border-left: 4px solid var(--customer-1);
+        }
+
+        .customer-card.customer-2 {
+            border-left-color: var(--customer-2);
+        }
+
+        .customer-card.customer-3 {
+            border-left-color: var(--customer-3);
+        }
+
+        .customer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 1rem;
+        }
+
+        .customer-name-section h3 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .customer-code {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            font-family: "Courier New", monospace;
+        }
+
+        .customer-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .icon-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-height: 44px;
+            min-width: 44px;
+        }
+
+        .icon-btn:hover {
+            background: var(--bg-hover);
+            border-color: var(--accent);
+            color: var(--text-primary);
+        }
+
+        .work-orders-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .work-order-item {
+            background: var(--bg-secondary);
+            padding: 0.75rem;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .work-order-name {
+            font-size: 0.875rem;
+            color: var(--text-primary);
+        }
+
+        .work-order-stats {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* Idle State */
+        .idle-state {
+            text-align: center;
+            padding: 3rem 1rem;
+        }
+
+        .idle-state .icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .idle-state h3 {
+            font-size: 1.25rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .idle-state p {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .app-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .left-panel {
+                position: relative;
+                top: 0;
+            }
+
+            .shortcuts-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .summary-stats {
+                grid-template-columns: 1fr;
+            }
+
+            .activity-item {
+                grid-template-columns: 1fr;
+                gap: 0.5rem;
+            }
+
+            .activity-duration {
+                text-align: left;
+            }
+        }
+
+        /* Status Badge */
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-badge.running {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success);
+        }
+
+        .status-badge.stopped {
+            background: rgba(156, 163, 175, 0.2);
+            color: var(--text-muted);
+        }
+
+        .status-badge.paused {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--warning);
+        }
+    </style>
+</head>
+<body>
+    <!-- Tab Navigation -->
+    <div class="tab-bar">
+        <button class="tab-button active" data-tab="state-a">State A: Active Tracking</button>
+        <button class="tab-button" data-tab="state-b">State B: Idle</button>
+        <button class="tab-button" data-tab="state-c">State C: Quick-Add</button>
+        <button class="tab-button" data-tab="state-d">State D: Context Switch</button>
+        <button class="tab-button" data-tab="state-e">State E: Daily Summary</button>
+        <button class="tab-button" data-tab="state-f">State F: Management</button>
+    </div>
+
+    <!-- STATE A: Active Tracking -->
+    <div id="state-a" class="tab-content active">
+        <div class="container">
+            <div class="app-layout">
+                <!-- Left Panel: Active Work & Timer -->
+                <div class="left-panel">
+                    <div class="active-work-header">
+                        <h2>Active Work</h2>
+                    </div>
+
+                    <div class="timer-display running">
+                        <div class="timer-value" id="timer-a">02:34:17</div>
+                        <span class="status-badge running">● Running</span>
+                    </div>
+
+                    <div class="work-info">
+                        <div class="customer-name">Acme Corporation</div>
+                        <div class="work-order-name">Backend API Development</div>
+                        <div class="work-code">ACME-2024-001</div>
+                    </div>
+
+                    <div class="timer-controls">
+                        <button class="btn btn-danger" onclick="stopTimer()">⏹ Stop</button>
+                        <button class="btn" onclick="switchWork()">🔄 Switch</button>
+                    </div>
+
+                    <div class="quick-actions">
+                        <h3>Quick Actions</h3>
+                        <button class="quick-action-btn btn" onclick="showQuickAdd()">
+                            ✚ Quick Add
+                            <span class="kbd">Ctrl+N</span>
+                        </button>
+                        <button class="quick-action-btn btn" onclick="showContextSwitch()">
+                            🔍 Switch Work Order
+                            <span class="kbd">Ctrl+F</span>
+                        </button>
+                    </div>
+
+                    <div class="shortcuts-panel">
+                        <h3>Keyboard Shortcuts</h3>
+                        <div class="shortcuts-grid">
+                            <div class="shortcut-item">
+                                <span class="shortcut-label">Start/Stop</span>
+                                <span class="kbd">Ctrl+Space</span>
+                            </div>
+                            <div class="shortcut-item">
+                                <span class="shortcut-label">Quick Add</span>
+                                <span class="kbd">Ctrl+N</span>
+                            </div>
+                            <div class="shortcut-item">
+                                <span class="shortcut-label">Switch Work</span>
+                                <span class="kbd">Ctrl+F</span>
+                            </div>
+                            <div class="shortcut-item">
+                                <span class="shortcut-label">Cancel</span>
+                                <span class="kbd">Esc</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Today's Activity Log -->
+                <div class="right-panel">
+                    <div class="panel-header">
+                        <h2>Today's Activity</h2>
+                        <span class="text-muted" style="font-size: 0.875rem;">Friday, April 11, 2026</span>
+                    </div>
+
+                    <div class="summary-stats">
+                        <div class="stat-card">
+                            <div class="stat-label">Total Hours</div>
+                            <div class="stat-value">5.8h</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Work Orders</div>
+                            <div class="stat-value">4</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Customers</div>
+                            <div class="stat-value">3</div>
+                        </div>
+                    </div>
+
+                    <div class="activity-list">
+                        <div class="activity-item customer-1">
+                            <div class="activity-time">10:45 - now</div>
+                            <div class="activity-details">
+                                <div class="customer">Acme Corporation</div>
+                                <div class="work-order">Backend API Development</div>
+                            </div>
+                            <div class="activity-duration">2:34h</div>
+                        </div>
+
+                        <div class="activity-item customer-2">
+                            <div class="activity-time">09:15 - 10:30</div>
+                            <div class="activity-details">
+                                <div class="customer">GlobalTech Inc</div>
+                                <div class="work-order">Frontend Redesign</div>
+                            </div>
+                            <div class="activity-duration">1:15h</div>
+                        </div>
+
+                        <div class="activity-item customer-1">
+                            <div class="activity-time">08:30 - 09:00</div>
+                            <div class="activity-details">
+                                <div class="customer">Acme Corporation</div>
+                                <div class="work-order">Sprint Planning</div>
+                            </div>
+                            <div class="activity-duration">0:30h</div>
+                        </div>
+
+                        <div class="activity-item customer-3">
+                            <div class="activity-time">08:00 - 08:25</div>
+                            <div class="activity-details">
+                                <div class="customer">Innovate Labs</div>
+                                <div class="work-order">Database Migration</div>
+                            </div>
+                            <div class="activity-duration">0:25h</div>
+                        </div>
+
+                        <div class="activity-item customer-2">
+                            <div class="activity-time">07:30 - 07:55</div>
+                            <div class="activity-details">
+                                <div class="customer">GlobalTech Inc</div>
+                                <div class="work-order">Code Review</div>
+                            </div>
+                            <div class="activity-duration">0:25h</div>
+                        </div>
+
+                        <div class="activity-item customer-1">
+                            <div class="activity-time">07:00 - 07:20</div>
+                            <div class="activity-details">
+                                <div class="customer">Acme Corporation</div>
+                                <div class="work-order">Daily Standup</div>
+                            </div>
+                            <div class="activity-duration">0:20h</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- STATE B: Idle / No Active Session -->
+    <div id="state-b" class="tab-content">
+        <div class="container">
+            <div class="app-layout">
+                <!-- Left Panel: Idle State -->
+                <div class="left-panel">
+                    <div class="active-work-header">
+                        <h2>Active Work</h2>
+                    </div>
+
+                    <div class="idle-state">
+                        <div class="icon">⏱️</div>
+                        <h3>No active session</h3>
+                        <p>Start tracking or select a recent work order</p>
+                    </div>
+
+                    <div class="timer-display">
+                        <div class="timer-value">00:00:00</div>
+                        <span class="status-badge stopped">⏸ Stopped</span>
+                    </div>
+
+                    <div class="quick-actions">
+                        <h3>Recent Work Orders</h3>
+                        <button class="quick-action-btn btn btn-primary" onclick="startTracking('acme-backend')">
+                            ▶️ Acme - Backend API
+                            <span class="kbd">1</span>
+                        </button>
+                        <button class="quick-action-btn btn btn-primary" onclick="startTracking('global-frontend')">
+                            ▶️ GlobalTech - Frontend
+                            <span class="kbd">2</span>
+                        </button>
+                        <button class="quick-action-btn btn btn-primary" onclick="startTracking('innov-db')">
+                            ▶️ Innovate - Database
+                            <span class="kbd">3</span>
+                        </button>
+                        <button class="quick-action-btn btn" onclick="showQuickAdd()">
+                            ✚ Quick Add New
+                            <span class="kbd">Ctrl+N</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Recent Activity -->
+                <div class="right-panel">
+                    <div class="panel-header">
+                        <h2>Today's Activity</h2>
+                        <span style="font-size: 0.875rem; color: var(--text-muted);">Friday, April 11, 2026</span>
+                    </div>
+
+                    <div class="summary-stats">
+                        <div class="stat-card">
+                            <div class="stat-label">Total Hours</div>
+                            <div class="stat-value">3.3h</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Work Orders</div>
+                            <div class="stat-value">3</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Customers</div>
+                            <div class="stat-value">3</div>
+                        </div>
+                    </div>
+
+                    <div class="activity-list">
+                        <div class="activity-item customer-2">
+                            <div class="activity-time">09:15 - 10:30</div>
+                            <div class="activity-details">
+                                <div class="customer">GlobalTech Inc</div>
+                                <div class="work-order">Frontend Redesign</div>
+                            </div>
+                            <div class="activity-duration">1:15h</div>
+                        </div>
+
+                        <div class="activity-item customer-1">
+                            <div class="activity-time">08:30 - 09:00</div>
+                            <div class="activity-details">
+                                <div class="customer">Acme Corporation</div>
+                                <div class="work-order">Sprint Planning</div>
+                            </div>
+                            <div class="activity-duration">0:30h</div>
+                        </div>
+
+                        <div class="activity-item customer-3">
+                            <div class="activity-time">08:00 - 08:25</div>
+                            <div class="activity-details">
+                                <div class="customer">Innovate Labs</div>
+                                <div class="work-order">Database Migration</div>
+                            </div>
+                            <div class="activity-duration">0:25h</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- STATE C: Quick-Add Overlay -->
+    <div id="state-c" class="tab-content">
+        <div class="container">
+            <div class="app-layout">
+                <!-- Same layout as State A, but with overlay -->
+                <div class="left-panel">
+                    <div class="active-work-header">
+                        <h2>Active Work</h2>
+                    </div>
+                    <div class="idle-state">
+                        <div class="icon">⏱️</div>
+                        <h3>No active session</h3>
+                        <p>Quick-add overlay is open above</p>
+                    </div>
+                </div>
+
+                <div class="right-panel">
+                    <div class="panel-header">
+                        <h2>Today's Activity</h2>
+                    </div>
+                    <p style="color: var(--text-muted);">Quick-add overlay is active...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick-Add Overlay (visible in this state) -->
+        <div class="overlay active" id="quick-add-overlay">
+            <div class="overlay-content">
+                <div class="overlay-header">
+                    <h3>✚ Quick Add Work Order</h3>
+                    <button class="close-btn" onclick="hideQuickAdd()">×</button>
+                </div>
+                <input 
+                    type="text" 
+                    class="quick-add-input" 
+                    placeholder="Customer / Work Order (e.g., Acme / Database Optimization)"
+                    autofocus
+                />
+                <div class="helper-text">
+                    💡 Type customer name, then "/", then work order name. Press <span class="kbd">Enter</span> to create and start tracking. Press <span class="kbd">Esc</span> to cancel.
+                </div>
+
+                <div class="search-results">
+                    <div class="result-section">
+                        <h4>Recent Customers</h4>
+                        <div class="result-item">
+                            <div>
+                                <div class="item-name">Acme Corporation</div>
+                                <div class="item-code">ACME</div>
+                            </div>
+                        </div>
+                        <div class="result-item">
+                            <div>
+                                <div class="item-name">GlobalTech Inc</div>
+                                <div class="item-code">GLOBAL</div>
+                            </div>
+                        </div>
+                        <div class="result-item">
+                            <div>
+                                <div class="item-name">Innovate Labs</div>
+                                <div class="item-code">INNOV</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- STATE D: Context Switch Overlay -->
+    <div id="state-d" class="tab-content">
+        <div class="container">
+            <div class="app-layout">
+                <div class="left-panel">
+                    <div class="active-work-header">
+                        <h2>Active Work</h2>
+                    </div>
+                    <div class="timer-display running">
+                        <div class="timer-value">02:34:17</div>
+                        <span class="status-badge running">● Running</span>
+                    </div>
+                    <div class="work-info">
+                        <div class="customer-name">Acme Corporation</div>
+                        <div class="work-order-name">Backend API Development</div>
+                        <div class="work-code">ACME-2024-001</div>
+                    </div>
+                    <p style="color: var(--text-muted); font-size: 0.875rem; margin-top: 1rem;">Context switch overlay is active...</p>
+                </div>
+
+                <div class="right-panel">
+                    <div class="panel-header">
+                        <h2>Today's Activity</h2>
+                    </div>
+                    <p style="color: var(--text-muted);">Context switch overlay is active...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Context Switch Overlay -->
+        <div class="overlay active" id="context-switch-overlay">
+            <div class="overlay-content">
+                <div class="overlay-header">
+                    <h3>🔍 Switch Work Order</h3>
+                    <button class="close-btn" onclick="hideContextSwitch()">×</button>
+                </div>
+                <input 
+                    type="text" 
+                    class="quick-add-input" 
+                    placeholder="Search customers or work orders..."
+                    autofocus
+                />
+                <div class="helper-text">
+                    💡 Use <span class="kbd">↑</span> <span class="kbd">↓</span> to navigate, <span class="kbd">Enter</span> to switch, <span class="kbd">Esc</span> to cancel
+                </div>
+
+                <div class="search-results">
+                    <div class="result-section">
+                        <h4>Recent Work Orders</h4>
+                        <div class="result-item selected">
+                            <div>
+                                <div class="item-name">Acme Corporation — Backend API Development</div>
+                                <div class="item-code">ACME-2024-001 • Last tracked: 2 hours ago</div>
+                            </div>
+                        </div>
+                        <div class="result-item">
+                            <div>
+                                <div class="item-name">GlobalTech Inc — Frontend Redesign</div>
+                                <div class="item-code">GLOBAL-2024-003 • Last tracked: 4 hours ago</div>
+                            </div>
+                        </div>
+                        <div class="result-item customer-3" style="border-left-color: var(--customer-3);">
+                            <div>
+                                <div class="item-name">Innovate Labs — Database Migration</div>
+                                <div class="item-code">INNOV-2024-012 • Last tracked: 5 hours ago</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="result-section">
+                        <h4>All Work Orders</h4>
+                        <div class="result-item">
+                            <div>
+                                <div class="item-name">Acme Corporation — Sprint Planning</div>
+                                <div class="item-code">ACME-2024-SPRINT</div>
+                            </div>
+                        </div>
+                        <div class="result-item" style="border-left-color: var(--customer-2);">
+                            <div>
+                                <div class="item-name">GlobalTech Inc — Code Review</div>
+                                <div class="item-code">GLOBAL-2024-CR</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- STATE E: Daily Summary View -->
+    <div id="state-e" class="tab-content">
+        <div class="container">
+            <div class="app-layout">
+                <div class="left-panel">
+                    <div class="active-work-header">
+                        <h2>Summary</h2>
+                    </div>
+
+                    <div class="summary-stats" style="grid-template-columns: 1fr; margin-bottom: 1rem;">
+                        <div class="stat-card">
+                            <div class="stat-label">Total Hours Today</div>
+                            <div class="stat-value" style="font-size: 2.5rem; color: var(--success);">5.8h</div>
+                        </div>
+                    </div>
+
+                    <div class="quick-actions">
+                        <h3>Breakdown</h3>
+                        <div class="stat-card" style="margin-bottom: 0.5rem;">
+                            <div class="stat-label">By Customer</div>
+                            <div style="margin-top: 0.5rem;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                                    <span style="font-size: 0.875rem; color: var(--text-secondary);">🟣 Acme Corporation</span>
+                                    <span style="font-weight: 600;">3.4h</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                                    <span style="font-size: 0.875rem; color: var(--text-secondary);">🔴 GlobalTech Inc</span>
+                                    <span style="font-weight: 600;">1.7h</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="font-size: 0.875rem; color: var(--text-secondary);">🟢 Innovate Labs</span>
+                                    <span style="font-weight: 600;">0.7h</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-label">By Activity Type</div>
+                            <div style="margin-top: 0.5rem;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                                    <span style="font-size: 0.875rem; color: var(--text-secondary);">Development</span>
+                                    <span style="font-weight: 600;">3.9h</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                                    <span style="font-size: 0.875rem; color: var(--text-secondary);">Meetings</span>
+                                    <span style="font-weight: 600;">0.8h</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="font-size: 0.875rem; color: var(--text-secondary);">Code Review</span>
+                                    <span style="font-weight: 600;">1.1h</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" style="width: 100%; margin-top: 1.5rem;">
+                        📊 Export Report
+                    </button>
+                </div>
+
+                <div class="right-panel">
+                    <div class="panel-header">
+                        <h2>Timeline View</h2>
+                        <span style="font-size: 0.875rem; color: var(--text-muted);">Friday, April 11, 2026</span>
+                    </div>
+
+                    <div class="activity-list">
+                        <div class="activity-item customer-1">
+                            <div class="activity-time">10:45 - now</div>
+                            <div class="activity-details">
+                                <div class="customer">Acme Corporation</div>
+                                <div class="work-order">Backend API Development • Development</div>
+                            </div>
+                            <div class="activity-duration">2:34h</div>
+                        </div>
+
+                        <div class="activity-item customer-2">
+                            <div class="activity-time">09:15 - 10:30</div>
+                            <div class="activity-details">
+                                <div class="customer">GlobalTech Inc</div>
+                                <div class="work-order">Frontend Redesign • Development</div>
+                            </div>
+                            <div class="activity-duration">1:15h</div>
+                        </div>
+
+                        <div class="activity-item customer-1">
+                            <div class="activity-time">08:30 - 09:00</div>
+                            <div class="activity-details">
+                                <div class="customer">Acme Corporation</div>
+                                <div class="work-order">Sprint Planning • Meetings</div>
+                            </div>
+                            <div class="activity-duration">0:30h</div>
+                        </div>
+
+                        <div class="activity-item customer-3">
+                            <div class="activity-time">08:00 - 08:25</div>
+                            <div class="activity-details">
+                                <div class="customer">Innovate Labs</div>
+                                <div class="work-order">Database Migration • Development</div>
+                            </div>
+                            <div class="activity-duration">0:25h</div>
+                        </div>
+
+                        <div class="activity-item customer-2">
+                            <div class="activity-time">07:30 - 07:55</div>
+                            <div class="activity-details">
+                                <div class="customer">GlobalTech Inc</div>
+                                <div class="work-order">Code Review • Code Review</div>
+                            </div>
+                            <div class="activity-duration">0:25h</div>
+                        </div>
+
+                        <div class="activity-item customer-1">
+                            <div class="activity-time">07:00 - 07:20</div>
+                            <div class="activity-details">
+                                <div class="customer">Acme Corporation</div>
+                                <div class="work-order">Daily Standup • Meetings</div>
+                            </div>
+                            <div class="activity-duration">0:20h</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- STATE F: Customer/Work Order Management -->
+    <div id="state-f" class="tab-content">
+        <div class="container">
+            <div class="right-panel" style="max-width: 1200px; margin: 0 auto;">
+                <div class="panel-header">
+                    <h2>Customers & Work Orders</h2>
+                    <button class="btn btn-primary">✚ Add Customer</button>
+                </div>
+
+                <div class="customer-list">
+                    <!-- Customer 1 -->
+                    <div class="customer-card customer-1">
+                        <div class="customer-header">
+                            <div class="customer-name-section">
+                                <h3>Acme Corporation</h3>
+                                <div class="customer-code">ACME</div>
+                            </div>
+                            <div class="customer-actions">
+                                <button class="icon-btn" title="Edit">✏️</button>
+                                <button class="icon-btn" title="Delete">🗑️</button>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem;">Work Orders (3)</div>
+                            <div class="work-orders-list">
+                                <div class="work-order-item">
+                                    <div>
+                                        <div class="work-order-name">Backend API Development</div>
+                                        <div class="work-order-stats">ACME-2024-001 • 15.5h tracked</div>
+                                    </div>
+                                    <button class="btn" style="flex: 0 0 auto;">▶️ Start</button>
+                                </div>
+                                <div class="work-order-item">
+                                    <div>
+                                        <div class="work-order-name">Sprint Planning</div>
+                                        <div class="work-order-stats">ACME-2024-SPRINT • 4.2h tracked</div>
+                                    </div>
+                                    <button class="btn" style="flex: 0 0 auto;">▶️ Start</button>
+                                </div>
+                                <div class="work-order-item">
+                                    <div>
+                                        <div class="work-order-name">Daily Standup</div>
+                                        <div class="work-order-stats">ACME-2024-DAILY • 2.1h tracked</div>
+                                    </div>
+                                    <button class="btn" style="flex: 0 0 auto;">▶️ Start</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button class="btn" style="width: 100%;">✚ Add Work Order</button>
+                    </div>
+
+                    <!-- Customer 2 -->
+                    <div class="customer-card customer-2">
+                        <div class="customer-header">
+                            <div class="customer-name-section">
+                                <h3>GlobalTech Inc</h3>
+                                <div class="customer-code">GLOBAL</div>
+                            </div>
+                            <div class="customer-actions">
+                                <button class="icon-btn" title="Edit">✏️</button>
+                                <button class="icon-btn" title="Delete">🗑️</button>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem;">Work Orders (2)</div>
+                            <div class="work-orders-list">
+                                <div class="work-order-item">
+                                    <div>
+                                        <div class="work-order-name">Frontend Redesign</div>
+                                        <div class="work-order-stats">GLOBAL-2024-003 • 22.3h tracked</div>
+                                    </div>
+                                    <button class="btn" style="flex: 0 0 auto;">▶️ Start</button>
+                                </div>
+                                <div class="work-order-item">
+                                    <div>
+                                        <div class="work-order-name">Code Review</div>
+                                        <div class="work-order-stats">GLOBAL-2024-CR • 8.7h tracked</div>
+                                    </div>
+                                    <button class="btn" style="flex: 0 0 auto;">▶️ Start</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button class="btn" style="width: 100%;">✚ Add Work Order</button>
+                    </div>
+
+                    <!-- Customer 3 -->
+                    <div class="customer-card customer-3">
+                        <div class="customer-header">
+                            <div class="customer-name-section">
+                                <h3>Innovate Labs</h3>
+                                <div class="customer-code">INNOV</div>
+                            </div>
+                            <div class="customer-actions">
+                                <button class="icon-btn" title="Edit">✏️</button>
+                                <button class="icon-btn" title="Delete">🗑️</button>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem;">Work Orders (1)</div>
+                            <div class="work-orders-list">
+                                <div class="work-order-item">
+                                    <div>
+                                        <div class="work-order-name">Database Migration</div>
+                                        <div class="work-order-stats">INNOV-2024-012 • 12.8h tracked</div>
+                                    </div>
+                                    <button class="btn" style="flex: 0 0 auto;">▶️ Start</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button class="btn" style="width: 100%;">✚ Add Work Order</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tab switching
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', () => {
+                const targetTab = button.getAttribute('data-tab');
+                
+                // Update active tab button
+                document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+                
+                // Update active tab content
+                document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+                document.getElementById(targetTab).classList.add('active');
+            });
+        });
+
+        // Timer functionality
+        let timerSeconds = 9257; // 2:34:17
+        let timerInterval;
+
+        function formatTime(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        function startTimer() {
+            if (timerInterval) return;
+            timerInterval = setInterval(() => {
+                timerSeconds++;
+                const timerElement = document.getElementById('timer-a');
+                if (timerElement) {
+                    timerElement.textContent = formatTime(timerSeconds);
+                }
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+            alert('⏹ Timer stopped! Session saved to today\'s activity.');
+        }
+
+        function switchWork() {
+            showContextSwitch();
+        }
+
+        function showQuickAdd() {
+            // In real app, would navigate to State C or show overlay
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelector('[data-tab="state-c"]').classList.add('active');
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById('state-c').classList.add('active');
+        }
+
+        function hideQuickAdd() {
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelector('[data-tab="state-a"]').classList.add('active');
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById('state-a').classList.add('active');
+        }
+
+        function showContextSwitch() {
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelector('[data-tab="state-d"]').classList.add('active');
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById('state-d').classList.add('active');
+        }
+
+        function hideContextSwitch() {
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelector('[data-tab="state-a"]').classList.add('active');
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById('state-a').classList.add('active');
+        }
+
+        function startTracking(workOrderId) {
+            alert(`▶️ Started tracking: ${workOrderId}`);
+            timerSeconds = 0;
+            startTimer();
+        }
+
+        // Global keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Ctrl+N or Cmd+N - Quick Add
+            if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+                e.preventDefault();
+                showQuickAdd();
+            }
+            
+            // Ctrl+F or Cmd+F - Context Switch
+            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                e.preventDefault();
+                showContextSwitch();
+            }
+            
+            // Escape - Close overlays
+            if (e.key === 'Escape') {
+                const activeTab = document.querySelector('.tab-content.active');
+                if (activeTab && (activeTab.id === 'state-c' || activeTab.id === 'state-d')) {
+                    hideQuickAdd();
+                    hideContextSwitch();
+                }
+            }
+            
+            // Ctrl+Space - Start/Stop (when on active tracking state)
+            if ((e.ctrlKey || e.metaKey) && e.key === ' ') {
+                e.preventDefault();
+                if (timerInterval) {
+                    stopTimer();
+                } else {
+                    startTimer();
+                }
+            }
+        });
+
+        // Start the timer automatically for State A
+        startTimer();
+
+        // Hover effects for activity items
+        document.querySelectorAll('.activity-item').forEach(item => {
+            item.addEventListener('click', () => {
+                alert('💡 In real app: Would open inline editor for this entry');
+            });
+        });
+
+        // Result item keyboard navigation
+        document.querySelectorAll('.result-item').forEach(item => {
+            item.addEventListener('click', () => {
+                // Remove previous selection
+                document.querySelectorAll('.result-item').forEach(i => i.classList.remove('selected'));
+                // Add selection to clicked item
+                item.classList.add('selected');
+            });
+        });
+    </script>
+</body>
+</html>
