@@ -12,14 +12,15 @@ pub fn stop_active_session(conn: &Connection) -> Result<Option<String>, AppError
     if let Some(sid) = session_id {
         let now = Utc::now().to_rfc3339();
         
-        // Calculate duration
-        let start_time: String = conn.query_row(
-            "SELECT start_time FROM time_sessions WHERE id = ?",
+        // Get start time and total_paused_seconds
+        let (start_time, total_paused_seconds): (String, i64) = conn.query_row(
+            "SELECT start_time, total_paused_seconds FROM time_sessions WHERE id = ?",
             params![&sid],
-            |row| row.get(0)
+            |row| Ok((row.get(0)?, row.get(1)?))
         )?;
         
-        let duration = calculate_duration(&start_time, &now)?;
+        let gross_duration = calculate_duration(&start_time, &now)?;
+        let duration = gross_duration - total_paused_seconds;
         
         // Update session
         conn.execute(
@@ -29,7 +30,7 @@ pub fn stop_active_session(conn: &Connection) -> Result<Option<String>, AppError
         
         // Clear active session
         conn.execute(
-            "UPDATE active_session SET session_id = NULL, work_order_id = NULL, started_at = NULL, last_heartbeat = NULL WHERE id = 1",
+            "UPDATE active_session SET session_id = NULL, work_order_id = NULL, started_at = NULL, last_heartbeat = NULL, is_paused = 0, paused_session_at = NULL WHERE id = 1",
             params![]
         )?;
         
@@ -130,7 +131,10 @@ pub fn get_active_session(conn: &Connection) -> Result<Option<ActiveSession>, Ap
             wo.name,
             c.name,
             c.color,
-            ts.start_time
+            ts.start_time,
+            ts.total_paused_seconds,
+            a.is_paused,
+            a.paused_session_at
         FROM active_session a
         JOIN time_sessions ts ON a.session_id = ts.id
         JOIN work_orders wo ON ts.work_order_id = wo.id
@@ -140,7 +144,17 @@ pub fn get_active_session(conn: &Connection) -> Result<Option<ActiveSession>, Ap
     
     let result = stmt.query_row([], |row| {
         let start_time: String = row.get(5)?;
-        let elapsed = calculate_elapsed(&start_time).unwrap_or(0);
+        let total_paused_seconds: i64 = row.get(6)?;
+        let is_paused: i64 = row.get(7)?;
+        let paused_at: Option<String> = row.get(8)?;
+        
+        let gross_elapsed = calculate_elapsed(&start_time).unwrap_or(0);
+        let current_pause = if is_paused == 1 && paused_at.is_some() {
+            calculate_elapsed(&paused_at.unwrap()).unwrap_or(0)
+        } else {
+            0
+        };
+        let elapsed = gross_elapsed - total_paused_seconds - current_pause;
         
         Ok(ActiveSession {
             session_id: row.get(0)?,
@@ -150,6 +164,7 @@ pub fn get_active_session(conn: &Connection) -> Result<Option<ActiveSession>, Ap
             customer_color: row.get(4)?,
             started_at: start_time,
             elapsed_seconds: elapsed,
+            is_paused: is_paused == 1,
         })
     });
     
@@ -275,6 +290,87 @@ pub fn quick_add(conn: &Connection, params: &QuickAddParams) -> Result<QuickAddR
     })
 }
 
+/// Pause the currently active session
+pub fn pause_session(conn: &Connection) -> Result<(), AppError> {
+    let now = Utc::now().to_rfc3339();
+    
+    // Check if there's an active session and it's not already paused
+    let (session_id, is_paused): (Option<String>, i64) = conn.query_row(
+        "SELECT session_id, is_paused FROM active_session WHERE id = 1",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?))
+    )?;
+    
+    let session_id = session_id.ok_or_else(|| AppError::Validation("No active session to pause".into()))?;
+    
+    if is_paused == 1 {
+        return Err(AppError::Validation("Session is already paused".into()));
+    }
+    
+    // Update active_session
+    conn.execute(
+        "UPDATE active_session SET is_paused = 1, paused_session_at = ? WHERE id = 1",
+        params![&now]
+    )?;
+    
+    // Update time_sessions
+    conn.execute(
+        "UPDATE time_sessions SET paused_at = ? WHERE id = ?",
+        params![&now, &session_id]
+    )?;
+    
+    Ok(())
+}
+
+/// Resume the currently paused session
+pub fn resume_session(conn: &Connection) -> Result<(), AppError> {
+    let now = Utc::now().to_rfc3339();
+    
+    // Get active session info
+    let (session_id, is_paused, paused_at): (Option<String>, i64, Option<String>) = conn.query_row(
+        "SELECT session_id, is_paused, paused_session_at FROM active_session WHERE id = 1",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+    )?;
+    
+    let session_id = session_id.ok_or_else(|| AppError::Validation("No active session to resume".into()))?;
+    
+    if is_paused == 0 {
+        return Err(AppError::Validation("Session is not paused".into()));
+    }
+    
+    let paused_at = paused_at.ok_or_else(|| AppError::Validation("Invalid pause state".into()))?;
+    
+    // Calculate pause duration
+    let pause_duration = calculate_duration(&paused_at, &now)?;
+    
+    // Update time_sessions: add pause duration to total_paused_seconds, clear paused_at
+    conn.execute(
+        "UPDATE time_sessions SET total_paused_seconds = total_paused_seconds + ?, paused_at = NULL WHERE id = ?",
+        params![pause_duration, &session_id]
+    )?;
+    
+    // Update active_session
+    conn.execute(
+        "UPDATE active_session SET is_paused = 0, paused_session_at = NULL WHERE id = 1",
+        params![]
+    )?;
+    
+    Ok(())
+}
+
+/// Update heartbeat for active session
+pub fn update_heartbeat(conn: &Connection) -> Result<(), AppError> {
+    let now = Utc::now().to_rfc3339();
+    
+    conn.execute(
+        "UPDATE active_session SET last_heartbeat = ? WHERE id = 1 AND session_id IS NOT NULL",
+        params![&now]
+    )?;
+    
+    Ok(())
+}
+
 // Helper functions
 
 fn calculate_duration(start: &str, end: &str) -> Result<i64, AppError> {
@@ -361,7 +457,7 @@ fn get_customer_by_id(conn: &Connection, id: &str) -> Result<Customer, AppError>
 
 fn get_work_order_by_id(conn: &Connection, id: &str) -> Result<WorkOrder, AppError> {
     conn.query_row(
-        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.created_at, wo.updated_at, wo.archived_at 
+        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
          FROM work_orders wo 
          JOIN customers c ON wo.customer_id = c.id 
          WHERE wo.id = ?",
@@ -376,9 +472,10 @@ fn get_work_order_by_id(conn: &Connection, id: &str) -> Result<WorkOrder, AppErr
                 code: row.get(5)?,
                 description: row.get(6)?,
                 status: row.get(7)?,
-                created_at: row.get(8)?,
-                updated_at: row.get(9)?,
-                archived_at: row.get(10)?,
+                is_favorite: row.get::<_, i64>(8)? == 1,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+                archived_at: row.get(11)?,
             })
         }
     ).map_err(|e| match e {

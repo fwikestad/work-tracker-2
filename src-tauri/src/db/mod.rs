@@ -25,5 +25,6 @@ pub fn initialize(db_path: &Path) -> SqlResult<Connection> {
 
 fn run_migrations(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(include_str!("../../migrations/001_initial_schema.sql"))?;
+    conn.execute_batch(include_str!("../../migrations/002_phase2_features.sql"))?;
     Ok(())
 }

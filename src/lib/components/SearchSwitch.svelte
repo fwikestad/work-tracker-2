@@ -2,7 +2,7 @@
   import { sessionsStore } from '$lib/stores/sessions.svelte';
   import { uiStore } from '$lib/stores/ui.svelte';
   import { timer } from '$lib/stores/timer.svelte';
-  import { listWorkOrders } from '$lib/api/workOrders';
+  import { listWorkOrders, toggleFavorite } from '$lib/api/workOrders';
   import { startSession } from '$lib/api/sessions';
   import type { WorkOrder } from '$lib/types';
 
@@ -26,8 +26,7 @@
       searchResults = all.filter(
         (wo) =>
           wo.name.toLowerCase().includes(lowerQuery) ||
-          wo.customerName?.toLowerCase().includes(lowerQuery) ||
-          wo.code?.toLowerCase().includes(lowerQuery)
+          wo.customerName?.toLowerCase().includes(lowerQuery)
       );
     } finally {
       searching = false;
@@ -52,6 +51,19 @@
       searchResults = [];
     } catch (e: any) {
       alert(e?.message ?? 'Failed to switch');
+    }
+  }
+
+  async function handleToggleFavorite(e: Event, workOrderId: string) {
+    e.stopPropagation();
+    try {
+      await toggleFavorite(workOrderId);
+      await sessionsStore.refreshRecent();
+      if (query.trim()) {
+        await search(query);
+      }
+    } catch (e: any) {
+      alert(e?.message ?? 'Failed to toggle favorite');
     }
   }
 
@@ -103,6 +115,21 @@
           onclick={() => switchTo(item.id)}
         >
           <div class="item-main">
+            <span
+              class="star-btn"
+              role="button"
+              tabindex="0"
+              onclick={(e) => handleToggleFavorite(e, item.id)}
+              onkeydown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleToggleFavorite(e, item.id);
+                }
+              }}
+              title={item.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+            >
+              {item.isFavorite ? '⭐' : '☆'}
+            </span>
             <span class="item-name">{item.name}</span>
             {#if isActive}
               <span class="badge">Active</span>
@@ -195,6 +222,25 @@
     gap: 8px;
   }
 
+  .star-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+
+  .star-btn:hover {
+    color: #fbbf24;
+  }
+
   .item-name {
     font-size: 14px;
     font-weight: 500;
@@ -216,6 +262,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    margin-left: 28px;
   }
 
   .dot {

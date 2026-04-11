@@ -1203,7 +1203,452 @@ Verify system meets performance targets defined in architecture.md §7.
 2. Repeat 20 times with different inputs
 
 **Target:** <100ms average  
-**Tool:** Tauri debug console or profiler  
+**Tool:** Tauri debug console or profiler
+
+---
+
+# 5. PHASE 2 — PAUSED STATE TEST CASES
+
+Verify pause/resume functionality including timer freezing, duration exclusion, and recovery handling.
+
+---
+
+### TC-102: Pause a running session — Happy path
+**Given:** Running session with 5 minutes elapsed  
+**When:** Call `pause_session(session_id, now)`  
+**Then:**
+- Command returns success
+- Session has `paused_at` = timestamp of pause call
+- Session still has `end_time = NULL`
+- Elapsed time frozen at 5 minutes (no auto-increment after pause)
+- UI shows amber indicator (paused state)
+**Priority:** P0
+
+### TC-103: Resume a paused session — Happy path
+**Given:** Paused session with `paused_at` set, 2 minutes pause duration  
+**When:** Call `resume_session(session_id, now)`  
+**Then:**
+- Command returns success
+- Session `paused_at` cleared (set to NULL)
+- `total_paused_seconds` incremented by pause duration
+- Timer resumes counting from previous elapsed time
+- UI returns to green indicator (running state)
+**Priority:** P0
+
+### TC-104: Stop a paused session
+**Given:** Paused session with 10 minutes elapsed, 3 minutes paused  
+**When:** Call `stop_session(session_id, now, notes="testing")`  
+**Then:**
+- Command returns success
+- Session `end_time` set
+- Final duration = total elapsed time - total_paused_seconds = 7 minutes
+- Session stored correctly in database
+- Notes recorded
+**Priority:** P0
+
+### TC-105: Pause/resume multiple times — Accumulation
+**Given:** Running session  
+**When:**
+1. Pause at T1 (5 min elapsed)
+2. Resume at T2 (2 min pause)
+3. Work continues
+4. Pause at T3 (12 min elapsed total, 8 min active)
+5. Resume at T4 (3 min pause)
+6. Stop at T5 (14 min elapsed total, 9 min active)
+
+**Then:**
+- `total_paused_seconds` = 2 + 3 = 300 seconds (5 minutes)
+- Final duration recorded = 14 - 5 = 9 minutes
+- All pause intervals tracked correctly
+**Priority:** P1
+
+### TC-106: Crash while paused — Recovery flow
+**Given:** Paused session with `paused_at` set  
+**When:** App crashes and restarts; recovery dialog appears  
+**Then:**
+- Recovery dialog identifies paused session from last heartbeat
+- Dialog offers two options: "Resume and Stop" (close now) or "Discard" (delete)
+- User selects "Resume and Stop"
+- Session `paused_at` cleared, `end_time` set to recovery time
+- Total pause duration included in final calculation
+**Priority:** P0
+
+### TC-107: Cannot start new session while paused — Conflict handling
+**Given:** Paused session exists  
+**When:** Call `start_session(different_work_order_id)`  
+**Then:**
+- Command rejects with error: "Cannot start new session while paused. Resume or stop current session first."
+- Or: Automatically resume+stop the paused session, then start new session (implementation choice)
+- No data loss or orphaned state
+**Priority:** P1
+
+### TC-108: Pause state persisted across app restart
+**Given:** Paused session with `total_paused_seconds` and `paused_at` set  
+**When:** App closes and restarts  
+**Then:**
+- Paused session loads correctly with all pause metadata intact
+- Pause duration persisted
+- UI shows amber indicator on app reload
+- Can resume from paused state
+**Priority:** P0
+
+---
+
+# 6. PHASE 2 — FAVORITES/PINNING TEST CASES
+
+Verify favorite toggling and quick-access display.
+
+---
+
+### TC-109: Toggle favorite on a work order — Happy path
+**Given:** Work order "ProjectA" with `is_favorite = false`  
+**When:** Call `toggle_favorite(work_order_id, true)`  
+**Then:**
+- Command returns success
+- Work order `is_favorite` field set to `true`
+- Database persists change
+- Star icon appears in UI next to project name
+**Priority:** P1
+
+### TC-110: Toggle favorite off — Unfavorite
+**Given:** Favorite work order with `is_favorite = true`  
+**When:** Call `toggle_favorite(work_order_id, false)`  
+**Then:**
+- Command returns success
+- Work order `is_favorite` set to `false`
+- Star icon removed from UI
+**Priority:** P1
+
+### TC-111: Favorites appear first in quick-switch list
+**Given:** 3 recent items (A, B, C) where B is favorite  
+**When:** Open quick-switch (SearchSwitch component)  
+**Then:**
+- List ordering: B (favorite, ⭐) appears first
+- Followed by A, then C
+- Search/filter preserves favorite ordering
+**Priority:** P1
+
+### TC-112: Favorites appear first in searchable autocomplete
+**Given:** User types "proj" with 5 matching projects, 2 marked favorite  
+**When:** Autocomplete results render  
+**Then:**
+- Both favorites appear at top of list
+- Star icon visible on each favorite item
+- Non-favorites appear below
+**Priority:** P1
+
+### TC-113: Favorite toggle idempotent
+**Given:** Work order with `is_favorite = true`  
+**When:** Call `toggle_favorite(work_order_id, true)` twice rapidly  
+**Then:**
+- First call succeeds, `is_favorite = true`
+- Second call succeeds, `is_favorite` still `true` (no flip-flop)
+- UI updates once
+**Priority:** P2
+
+---
+
+# 7. PHASE 3 — WEEKLY/MONTHLY REPORTS TEST CASES
+
+Verify report generation with correct filtering, duration calculations, and export.
+
+---
+
+### TC-114: Weekly report — Correct date range
+**Given:** Sessions created:
+- 2026-04-07 (Mon): 2h
+- 2026-04-08 (Tue): 3h
+- 2026-04-09 (Wed): 1h
+- 2026-04-10 (Thu): 4h
+- 2026-04-13 (Sun): 2h (next week)
+
+**When:** Call `generate_report(start_date="2026-04-07", end_date="2026-04-13", type="weekly")`  
+**Then:**
+- Report includes Mon-Sun 2026-04-07 to 2026-04-13 only
+- Total hours = 2 + 3 + 1 + 4 = 10h (excludes 2026-04-13 entry which is next week)
+- Entries ordered chronologically
+**Priority:** P0
+
+### TC-115: Monthly report — 30-day range
+**Given:** Sessions in April 2026:
+- 2026-04-01: 1h
+- 2026-04-15: 5h
+- 2026-04-30: 2h
+
+**When:** Call `generate_report(start_date="2026-04-01", end_date="2026-04-30", type="monthly")`  
+**Then:**
+- Report includes all April sessions
+- Total hours = 8h
+- Sessions from May (2026-05-01+) excluded
+**Priority:** P0
+
+### TC-116: Report excludes active (incomplete) sessions
+**Given:**
+- Stopped session: 2h
+- Active session (end_time = NULL): 30 min elapsed
+
+**When:** Call `generate_report(start_date="2026-04-01", end_date="2026-04-30")`  
+**Then:**
+- Report includes only stopped session (2h)
+- Active session excluded (not finalized)
+- Report notes number of excluded incomplete sessions
+**Priority:** P0
+
+### TC-117: Report with empty date range
+**Given:** No sessions exist in date range  
+**When:** Call `generate_report(start_date="2026-05-01", end_date="2026-05-31")`  
+**Then:**
+- Report returns successfully with empty results
+- Total hours = 0
+- No error thrown
+- Message: "No entries for this period"
+**Priority:** P1
+
+### TC-118: Duration calculation accuracy — Auto-calculated
+**Given:** Session with start_time=10:00, end_time=10:45, no manual override  
+**When:** Generate report  
+**Then:**
+- Duration displayed = 45 minutes (0.75 hours)
+- Calculation: (end_time - start_time) = 45 min
+**Priority:** P0
+
+### TC-119: Duration calculation with manual override
+**Given:** Session with start_time=10:00, end_time=10:45, duration_override=30  
+**When:** Generate report  
+**Then:**
+- Duration displayed = 30 minutes (manual override takes precedence)
+- Calculated duration (45 min) ignored
+**Priority:** P0
+
+### TC-120: Paused time correctly excluded from report duration
+**Given:** Session with:
+- start_time = 10:00
+- First pause at 10:05 (5 min elapsed)
+- Resume after 2 min pause at 10:07
+- Stop at 10:15 (total 13 min elapsed)
+- total_paused_seconds = 120 (2 min)
+
+**When:** Generate report  
+**Then:**
+- Final duration = 13 - 2 = 11 minutes
+- Paused time excluded from total hours tracked
+**Priority:** P0
+
+### TC-121: Export CSV from weekly report
+**Given:** Weekly report with 3 sessions:
+- 2026-04-07, CustomerA, ProjectX, 2h
+- 2026-04-09, CustomerB, ProjectY, 1.5h
+- 2026-04-10, CustomerA, ProjectX, 3h
+
+**When:** Call `export_report_csv(report_id)` or user clicks "Export CSV"  
+**Then:**
+- CSV file generated
+- Header row: Date,Customer,Project,Activity Type,Duration (hours),Notes,Start Time,End Time
+- Data rows match report entries (3 rows)
+- All fields properly escaped/quoted
+- File opens correctly in Excel/LibreOffice
+**Priority:** P1
+
+### TC-122: Report grouping by customer
+**Given:** Weekly report with sessions:
+- CustomerA: 5h across 2 projects
+- CustomerB: 3h across 1 project
+
+**When:** User selects "Group by Customer" view  
+**Then:**
+- Report shows:
+  ```
+  CustomerA: 5h
+    ├── ProjectX: 2h
+    ├── ProjectY: 3h
+  CustomerB: 3h
+    └── ProjectZ: 3h
+  ```
+- Subtotals calculated correctly
+**Priority:** P1
+
+### TC-123: Report grouping by activity type
+**Given:** Report with sessions:
+- Development: 6h
+- Meeting: 2h
+- Admin: 1h
+
+**When:** User selects "Group by Activity Type" view  
+**Then:**
+- Report shows breakdown by activity with totals
+- Activity breakdown matches session classifications
+**Priority:** P2
+
+---
+
+# 8. PHASE 2 — SYSTEM TRAY TEST CASES
+
+Verify taskbar/system tray integration and quick-switch from tray.
+
+---
+
+### TC-124: Tray tooltip updates when session starts
+**Given:** App running with tray icon  
+**When:** Call `start_session(ProjectA)`  
+**Then:**
+- Tray tooltip/label updates immediately (within 500ms)
+- Tooltip text: "ProjectA — 0:00" (shows project name + elapsed time)
+- Tray icon may change appearance (e.g., color, indicator)
+**Priority:** P1
+
+### TC-125: Tray tooltip clears when session stops
+**Given:** Active session showing in tray  
+**When:** Call `stop_session(session_id)`  
+**Then:**
+- Tray tooltip/label updates (within 500ms)
+- Tooltip reverts to default: "Work Tracker — Not tracking" or similar
+- Tray icon returns to idle appearance
+**Priority:** P1
+
+### TC-126: Tray tooltip shows paused state
+**Given:** Session paused (paused_at set)  
+**When:** Pause state active  
+**Then:**
+- Tray tooltip shows: "ProjectA — Paused (5:30)" or similar
+- Visual indicator (amber/orange icon) shows paused state
+- User can see at a glance that work is paused
+**Priority:** P1
+
+### TC-127: Tray menu quick-switch
+**Given:** App running with tray icon  
+**When:** Right-click (or click) on tray icon, select "Quick Switch"  
+**Then:**
+- Quick-switch overlay appears (or context menu with recent projects)
+- Recent 5 projects listed with keyboard selection
+- Clicking project name/checkbox switches to that project (stops old, starts new)
+- Menu closes after selection
+**Priority:** P2
+
+### TC-128: Tray menu shows favorites
+**Given:** User has 2 favorite projects  
+**When:** Right-click tray icon, select "Favorites"  
+**Then:**
+- Context menu shows favorite projects with star icon
+- Clicking favorite switches to that project
+- Recent non-favorites listed below favorites
+**Priority:** P2
+
+---
+
+# 9. PHASE 3 — HEARTBEAT & ORPHAN RECOVERY TEST CASES
+
+Verify heartbeat mechanism for crash detection and orphan session handling.
+
+---
+
+### TC-129: Heartbeat updates last_heartbeat timestamp
+**Given:** App running with active session  
+**When:** Heartbeat timer fires every 30 seconds  
+**Then:**
+- `last_heartbeat` column in `sessions` table updated
+- Timestamp is current UTC time (within 1 second)
+- No impact on session duration or state
+**Priority:** P1
+
+### TC-130: Orphan detection ignores sessions with recent heartbeat
+**Given:** Active session with `last_heartbeat < 2 minutes ago`  
+**When:** App restarts and recovery check runs  
+**Then:**
+- Session NOT flagged as orphan (app did not crash, just restarted cleanly)
+- Recovery dialog does NOT appear
+- App continues to normal flow
+**Priority:** P1
+
+### TC-131: Orphan detection triggers for stale heartbeat
+**Given:** Active session with `last_heartbeat > 2 minutes ago`  
+**When:** App restarts  
+**Then:**
+- Session flagged as orphan (app likely crashed)
+- Recovery dialog appears: "You have an open session from [time]. Close it now or discard?"
+- User must choose before proceeding
+**Priority:** P0
+
+### TC-132: Orphan session recovery — Close now option
+**Given:** Orphan session detected  
+**When:** User selects "Close now"  
+**Then:**
+- Session `end_time` set to recovery time (app restart time)
+- `paused_at` cleared (if paused)
+- Total pause duration preserved in calculation
+- Session persisted to database
+- Recovery dialog closes, app continues
+**Priority:** P0
+
+### TC-133: Orphan session recovery — Discard option
+**Given:** Orphan session detected  
+**When:** User selects "Discard" (delete without saving)  
+**Then:**
+- Session deleted from database (or marked deleted)
+- No end_time/duration saved
+- Recovery dialog closes
+- App continues
+**Priority:** P0
+
+### TC-134: Multiple orphan sessions on recovery
+**Given:** App crashed with 2 active sessions (should not happen, but test edge case)  
+**When:** Recovery check runs  
+**Then:**
+- Recovery dialog shows all orphan sessions
+- User can accept/discard each independently
+- Or: System closes oldest first, user confirms
+**Priority:** P2
+
+### TC-135: Heartbeat persisted across pause/resume
+**Given:** Session paused, heartbeat running  
+**When:** Heartbeat updates `last_heartbeat` while paused  
+**Then:**
+- `last_heartbeat` updated even though paused
+- Session not flagged as orphan (app still responsive)
+- Pause duration NOT affected by heartbeat mechanism
+**Priority:** P1
+
+---
+
+# 10. TEST EXECUTION & REPORTING
+
+## Test Run Checklist
+
+Automated tests (Rust + Svelte):
+- [ ] `cargo test` passes (all 135 backend test cases)
+- [ ] `npm run test` passes (all frontend integration tests)
+- [ ] No flaky tests (run suite 3x, all pass)
+- [ ] Coverage > 80% on service layer, data layer
+
+Manual tests (QA workflow):
+- [ ] Pause/resume cycle (5 times)
+- [ ] Favorite toggle in UI (verify star appears/disappears)
+- [ ] Generate weekly report (verify date range, exclusion of incomplete)
+- [ ] Tray menu updates in real-time
+- [ ] Crash recovery with paused session
+- [ ] Orphan detection with >2 min heartbeat gap
+
+Performance regression check:
+- [ ] Timer update latency <100ms (measure 10 updates)
+- [ ] Context switch <3s (measure 5 switches)
+- [ ] Weekly report generation <500ms
+- [ ] Search/filter <50ms
+
+## Phase 2+3 Completion Criteria
+
+**All Phase 2+3 tests PASS (TC-102 through TC-135)**:
+- ✅ Paused state: session freezes, resumes correctly, pause duration excluded
+- ✅ Favorites: toggle works, favorites sort first in lists
+- ✅ Weekly/monthly reports: correct date range, duration calculation, export
+- ✅ System tray: tooltip updates, quick-switch menu
+- ✅ Heartbeat & orphan recovery: stale sessions detected, recovery dialog UX
+
+**Regression check**:
+- ✅ All Phase 1 tests (TC-001 through TC-101) still pass
+- ✅ Performance targets maintained
+
+**Go/No-Go Decision**:
+- **GO**: All test cases pass, <3 regressions, performance within budget
+- **NO-GO**: Any P0 fails, >5 regressions, or performance degradation >20%
 **Priority:** P1
 
 ### TC-102: Daily summary query latency — <100ms

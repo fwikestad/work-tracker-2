@@ -116,3 +116,46 @@ Tester for work-tracker-2 — native desktop time tracker for consultant Fredrik
 - `inputRef` not wrapped in `$state()` in QuickAdd.svelte
 - Self-closing `<textarea />` in Timer.svelte
 - First-time Rust/Cargo compile will take several minutes (downloading crates, compiling dependencies) — this is normal and not an error
+
+### 2026-04-11: Phase 2+3 Test Cases Documented
+
+**Scope**: Comprehensive test coverage for Phase 2 (Paused State, Favorites, System Tray) and Phase 3 (Weekly/Monthly Reports, Heartbeat/Orphan Recovery).
+
+**Added to test-plan.md**:
+- **Section 5 (Paused State)**: 7 test cases (TC-102 through TC-108) covering pause/resume mechanics, multi-pause accumulation, crash recovery with paused state, and UI state indicators
+- **Section 6 (Favorites)**: 5 test cases (TC-109 through TC-113) covering toggle, sorting, and idempotency
+- **Section 7 (Weekly/Monthly Reports)**: 10 test cases (TC-114 through TC-123) covering date range filtering, duration calculation with manual overrides, exclusion of incomplete sessions, and CSV export
+- **Section 8 (System Tray)**: 5 test cases (TC-124 through TC-128) covering tooltip updates, quick-switch menu integration, and state indicators
+- **Section 9 (Heartbeat & Orphan Recovery)**: 7 test cases (TC-129 through TC-135) covering heartbeat updates, orphan detection thresholds, and recovery dialog flows
+
+**Key Insights**:
+
+1. **Paused State Complexity**: Pause duration must be tracked at session level (`total_paused_seconds`), not just as timestamps. Final duration calculation = elapsed - paused_seconds. Requires careful testing around (1) resume after multiple pause/resume cycles, (2) crash recovery with paused state, (3) UI amber indicator state machine.
+
+2. **Favorites/Pinning Orthogonal to Core Logic**: Simple boolean flag, but changes sorting/presentation order. Most benefit from favorites is in quick-switch (SearchSwitch component), not daily tracking. Can be Phase 2 polish without blocking other features.
+
+3. **Reports Must Handle Three Cases**: (1) auto-calculated duration (end_time - start_time), (2) manual override (user-specified, takes precedence), (3) paused duration (must be subtracted from total). Most error-prone is mixing these three — test cases must verify each independently and in combination.
+
+4. **System Tray is Real-Time State Display**: Tooltip/label must update within 500ms of session state change. Requires Tauri listen/emit for IPC updates. Tray menu (quick-switch) is convenience, not core — can be P2.
+
+5. **Orphan Detection Threshold Critical**: 2-minute heartbeat gap between last update and app restart determines if session is orphan. If threshold too short, false positives on normal restarts. If too long, orphans not detected. Recommend user feedback: "Auto-detected stale session; app may have crashed 5 min ago."
+
+6. **Backward Compatibility Risk**: Existing Phase 1 sessions won't have `total_paused_seconds` column. Migration must set to 0 for all existing sessions. Existing sessions also won't have `is_favorite` flag (need migration to add with default false). Database schema versioning critical.
+
+7. **Performance Remains Achievable**: Weekly report query + grouping should run <500ms with proper indexes (on start_time, work_order_id, activity_type). CSV export is serialization-only, not database-bound — should be <1s even for 500 entries.
+
+**Next Steps for Dev Team**:
+- Implement pause/resume as high-priority Phase 2 feature (affects session state machine across all UIs)
+- Favorites can follow (simple flag, low risk)
+- Reports generation (Phase 3) depends on pause being correct (pause time must be excluded)
+- Heartbeat/orphan recovery should be refined based on actual crash testing (2-min threshold may need tuning)
+- Test all edge cases: midnight boundaries with paused state, DST transitions, multiple pause/resume cycles
+
+**Recommendation**: Treat paused state as blocking for Phase 2. It changes the session state machine (Running → Paused → Running → Stopped) and affects duration calculation. All other Phase 2 features (Favorites, Tray, Reports) build on top of pause being correct.
+
+**Cross-team context**:
+- **Chewie (Backend)**: Will need to add `paused_at`, `total_paused_seconds`, `is_favorite`, `last_heartbeat` columns; implement pause/resume/heartbeat commands; update duration calculation logic
+- **Leia (Frontend)**: Will need to add amber indicator to Timer, pause/resume buttons, favorite star icon, tray integration, weekly/monthly report views
+- **Mothma (Docs)**: API reference updates for new commands (pause_session, resume_session, toggle_favorite, generate_report)
+
+**Verdict**: Test coverage for Phase 2+3 complete and rigorous. 34 new test cases (TC-102 through TC-135) documented with clear acceptance criteria and priorities. Ready for implementation handoff.

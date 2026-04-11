@@ -1,11 +1,12 @@
 <script lang="ts">
   import CustomerList from '$lib/components/customers/CustomerList.svelte';
   import WorkOrderList from '$lib/components/workorders/WorkOrderList.svelte';
+  import ReportView from '$lib/components/ReportView.svelte';
   import { exportCsv } from '$lib/api/reports';
   import { save } from '@tauri-apps/plugin-dialog';
   import { writeTextFile } from '@tauri-apps/plugin-fs';
 
-  let activeTab = $state<'customers' | 'workorders'>('customers');
+  let activeTab = $state<'customers' | 'workorders' | 'reports'>('customers');
   let startDate = $state('');
   let endDate = $state('');
   let exporting = $state(false);
@@ -58,26 +59,37 @@
       >
         Work Orders
       </button>
+      <button
+        class="tab-btn"
+        class:active={activeTab === 'reports'}
+        onclick={() => (activeTab = 'reports')}
+      >
+        Reports
+      </button>
     </nav>
 
-    <div class="export-section">
-      <h3>Export CSV</h3>
-      <div class="export-form">
-        <input type="date" bind:value={startDate} />
-        <span>to</span>
-        <input type="date" bind:value={endDate} />
-        <button class="btn-export" onclick={handleExport} disabled={exporting}>
-          {exporting ? 'Exporting...' : 'Export'}
-        </button>
+    {#if activeTab !== 'reports'}
+      <div class="export-section">
+        <h3>Export CSV</h3>
+        <div class="export-form">
+          <input type="date" bind:value={startDate} />
+          <span>to</span>
+          <input type="date" bind:value={endDate} />
+          <button class="btn-export" onclick={handleExport} disabled={exporting}>
+            {exporting ? 'Exporting...' : 'Export'}
+          </button>
+        </div>
       </div>
-    </div>
+    {/if}
   </header>
 
   <div class="page-content">
     {#if activeTab === 'customers'}
       <CustomerList />
-    {:else}
+    {:else if activeTab === 'workorders'}
       <WorkOrderList />
+    {:else if activeTab === 'reports'}
+      <ReportView />
     {/if}
   </div>
 

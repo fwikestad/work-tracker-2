@@ -37,3 +37,9 @@ export const discardOrphanSession = (sessionId: string) =>
 
 export const checkForOrphanSession = () =>
   invoke<OrphanSession | null>('check_for_orphan_session');
+
+export const pauseSession = () =>
+  invoke<ActiveSession>('pause_session');
+
+export const resumeSession = () =>
+  invoke<ActiveSession>('resume_session');

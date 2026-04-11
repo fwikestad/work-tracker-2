@@ -4,6 +4,7 @@
   import { sessionsStore } from '$lib/stores/sessions.svelte';
   import { listCustomers } from '$lib/api/customers';
   import { quickAdd } from '$lib/api/sessions';
+  import SearchableSelect from '$lib/components/SearchableSelect.svelte';
   import type { Customer } from '$lib/types';
   import { onMount } from 'svelte';
 
@@ -11,7 +12,6 @@
   let selectedCustomerId = $state('');
   let newCustomerName = $state('');
   let workOrderName = $state('');
-  let workOrderCode = $state('');
   let submitting = $state(false);
   let error = $state('');
   let useNewCustomer = $state(false);
@@ -21,6 +21,13 @@
     if (uiStore.quickAdd) {
       listCustomers().then((c) => (customers = c));
       setTimeout(() => inputRef?.focus(), 100);
+    }
+  });
+
+  $effect(() => {
+    if (selectedCustomerId === '__new__') {
+      useNewCustomer = true;
+      selectedCustomerId = '';
     }
   });
 
@@ -44,8 +51,7 @@
       const result = await quickAdd({
         customerId: useNewCustomer ? undefined : selectedCustomerId,
         customerName: useNewCustomer ? newCustomerName : undefined,
-        workOrderName: workOrderName.trim(),
-        workOrderCode: workOrderCode.trim() || undefined
+        workOrderName: workOrderName.trim()
       });
       timer.setActive({
         sessionId: result.session.id,
@@ -59,7 +65,6 @@
       await sessionsStore.refreshAll();
       uiStore.closeQuickAdd();
       workOrderName = '';
-      workOrderCode = '';
       selectedCustomerId = '';
       newCustomerName = '';
       useNewCustomer = false;
@@ -96,16 +101,14 @@
         <label>
           <span>Customer</span>
           {#if !useNewCustomer}
-            <select bind:value={selectedCustomerId} required>
-              <option value="">Select a customer</option>
-              {#each customers as customer}
-                <option value={customer.id}>{customer.name}</option>
-              {/each}
-              <option value="__new__">+ New customer</option>
-            </select>
-            {#if selectedCustomerId === '__new__'}
-              {(useNewCustomer = true, (selectedCustomerId = ''))}
-            {/if}
+            <SearchableSelect
+              bind:value={selectedCustomerId}
+              options={[
+                ...customers.map((c) => ({ value: c.id, label: c.name, color: c.color })),
+                { value: '__new__', label: '+ New customer' }
+              ]}
+              placeholder="Select a customer"
+            />
           {:else}
             <div class="new-customer-input">
               <input
@@ -137,11 +140,6 @@
             placeholder="e.g., API Development"
             required
           />
-        </label>
-
-        <label>
-          <span>Work order code (optional)</span>
-          <input type="text" bind:value={workOrderCode} placeholder="e.g., WO-2026-04" />
         </label>
 
         {#if error}
@@ -211,8 +209,7 @@
     color: var(--text-muted);
   }
 
-  input,
-  select {
+  input {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -223,8 +220,7 @@
     min-height: 44px;
   }
 
-  input:focus,
-  select:focus {
+  input:focus {
     outline: 1px solid var(--accent);
     border-color: var(--accent);
   }

@@ -28,7 +28,7 @@ pub fn create_work_order(state: State<AppState>, params: CreateWorkOrderParams) 
     
     // Fetch with customer info
     conn.query_row(
-        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.created_at, wo.updated_at, wo.archived_at 
+        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
          FROM work_orders wo 
          JOIN customers c ON wo.customer_id = c.id 
          WHERE wo.id = ?",
@@ -43,30 +43,46 @@ pub fn create_work_order(state: State<AppState>, params: CreateWorkOrderParams) 
                 code: row.get(5)?,
                 description: row.get(6)?,
                 status: row.get(7)?,
-                created_at: row.get(8)?,
-                updated_at: row.get(9)?,
-                archived_at: row.get(10)?,
+                is_favorite: row.get::<_, i64>(8)? == 1,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+                archived_at: row.get(11)?,
             })
         }
     ).map_err(AppError::Database)
 }
 
 #[tauri::command]
-pub fn list_work_orders(state: State<AppState>, customer_id: Option<String>) -> Result<Vec<WorkOrder>, AppError> {
+pub fn list_work_orders(state: State<AppState>, customer_id: Option<String>, favorites_only: Option<bool>) -> Result<Vec<WorkOrder>, AppError> {
     let conn = state.db.lock().unwrap();
     
-    let (sql, params_vec): (&str, Vec<String>) = if let Some(cid) = customer_id {
-        (
-            "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.created_at, wo.updated_at, wo.archived_at 
+    let (sql, params_vec): (&str, Vec<String>) = match (customer_id, favorites_only) {
+        (Some(cid), Some(true)) => (
+            "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
+             FROM work_orders wo 
+             JOIN customers c ON wo.customer_id = c.id 
+             WHERE wo.customer_id = ? AND wo.archived_at IS NULL AND wo.is_favorite = 1
+             ORDER BY wo.name",
+            vec![cid]
+        ),
+        (Some(cid), _) => (
+            "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
              FROM work_orders wo 
              JOIN customers c ON wo.customer_id = c.id 
              WHERE wo.customer_id = ? AND wo.archived_at IS NULL 
              ORDER BY wo.name",
             vec![cid]
-        )
-    } else {
-        (
-            "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.created_at, wo.updated_at, wo.archived_at 
+        ),
+        (None, Some(true)) => (
+            "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
+             FROM work_orders wo 
+             JOIN customers c ON wo.customer_id = c.id 
+             WHERE wo.archived_at IS NULL AND wo.is_favorite = 1
+             ORDER BY c.name, wo.name",
+            vec![]
+        ),
+        (None, _) => (
+            "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
              FROM work_orders wo 
              JOIN customers c ON wo.customer_id = c.id 
              WHERE wo.archived_at IS NULL 
@@ -88,9 +104,10 @@ pub fn list_work_orders(state: State<AppState>, customer_id: Option<String>) -> 
                 code: row.get(5)?,
                 description: row.get(6)?,
                 status: row.get(7)?,
-                created_at: row.get(8)?,
-                updated_at: row.get(9)?,
-                archived_at: row.get(10)?,
+                is_favorite: row.get::<_, i64>(8)? == 1,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+                archived_at: row.get(11)?,
             })
         })?.collect()
     } else {
@@ -104,9 +121,10 @@ pub fn list_work_orders(state: State<AppState>, customer_id: Option<String>) -> 
                 code: row.get(5)?,
                 description: row.get(6)?,
                 status: row.get(7)?,
-                created_at: row.get(8)?,
-                updated_at: row.get(9)?,
-                archived_at: row.get(10)?,
+                is_favorite: row.get::<_, i64>(8)? == 1,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+                archived_at: row.get(11)?,
             })
         })?.collect()
     };
@@ -153,7 +171,7 @@ pub fn update_work_order(state: State<AppState>, id: String, params: UpdateWorkO
     
     // Fetch updated work order
     conn.query_row(
-        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.created_at, wo.updated_at, wo.archived_at 
+        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
          FROM work_orders wo 
          JOIN customers c ON wo.customer_id = c.id 
          WHERE wo.id = ?",
@@ -168,9 +186,10 @@ pub fn update_work_order(state: State<AppState>, id: String, params: UpdateWorkO
                 code: row.get(5)?,
                 description: row.get(6)?,
                 status: row.get(7)?,
-                created_at: row.get(8)?,
-                updated_at: row.get(9)?,
-                archived_at: row.get(10)?,
+                is_favorite: row.get::<_, i64>(8)? == 1,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+                archived_at: row.get(11)?,
             })
         }
     ).map_err(AppError::Database)
@@ -191,4 +210,41 @@ pub fn archive_work_order(state: State<AppState>, id: String) -> Result<(), AppE
     }
     
     Ok(())
+}
+
+#[tauri::command]
+pub fn toggle_favorite(state: State<AppState>, work_order_id: String) -> Result<WorkOrder, AppError> {
+    let conn = state.db.lock().unwrap();
+    let now = Utc::now().to_rfc3339();
+    
+    // Toggle the is_favorite flag
+    conn.execute(
+        "UPDATE work_orders SET is_favorite = NOT is_favorite, updated_at = ? WHERE id = ?",
+        params![&now, &work_order_id]
+    )?;
+    
+    // Fetch updated work order
+    conn.query_row(
+        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
+         FROM work_orders wo 
+         JOIN customers c ON wo.customer_id = c.id 
+         WHERE wo.id = ?",
+        params![&work_order_id],
+        |row| {
+            Ok(WorkOrder {
+                id: row.get(0)?,
+                customer_id: row.get(1)?,
+                customer_name: row.get(2)?,
+                customer_color: row.get(3)?,
+                name: row.get(4)?,
+                code: row.get(5)?,
+                description: row.get(6)?,
+                status: row.get(7)?,
+                is_favorite: row.get::<_, i64>(8)? == 1,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+                archived_at: row.get(11)?,
+            })
+        }
+    ).map_err(AppError::Database)
 }

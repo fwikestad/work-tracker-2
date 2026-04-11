@@ -3,9 +3,11 @@
     listWorkOrders,
     createWorkOrder,
     updateWorkOrder,
-    archiveWorkOrder
+    archiveWorkOrder,
+    toggleFavorite
   } from '$lib/api/workOrders';
   import { listCustomers } from '$lib/api/customers';
+  import SearchableSelect from '$lib/components/SearchableSelect.svelte';
   import type { WorkOrder, Customer } from '$lib/types';
 
   let workOrders = $state<WorkOrder[]>([]);
@@ -13,7 +15,6 @@
   let loading = $state(false);
   let editingId = $state<string | null>(null);
   let editName = $state('');
-  let editCode = $state('');
   let editDescription = $state('');
   let editStatus = $state<'active' | 'paused' | 'closed'>('active');
   let showArchived = $state(false);
@@ -21,7 +22,6 @@
   let showAddForm = $state(false);
   let newCustomerId = $state('');
   let newName = $state('');
-  let newCode = $state('');
   let newDescription = $state('');
   let saving = $state(false);
 
@@ -44,12 +44,10 @@
       await createWorkOrder({
         customerId: newCustomerId,
         name: newName.trim(),
-        code: newCode.trim() || undefined,
         description: newDescription.trim() || undefined
       });
       await loadData();
       newName = '';
-      newCode = '';
       newDescription = '';
       newCustomerId = '';
       showAddForm = false;
@@ -63,7 +61,6 @@
   function startEdit(wo: WorkOrder) {
     editingId = wo.id;
     editName = wo.name;
-    editCode = wo.code ?? '';
     editDescription = wo.description ?? '';
     editStatus = wo.status;
   }
@@ -73,7 +70,6 @@
     try {
       await updateWorkOrder(woId, {
         name: editName.trim() || undefined,
-        code: editCode.trim() || undefined,
         description: editDescription.trim() || undefined,
         status: editStatus
       });
@@ -96,6 +92,16 @@
     }
   }
 
+  async function handleToggleFavorite(e: Event, woId: string) {
+    e.stopPropagation();
+    try {
+      await toggleFavorite(woId);
+      await loadData();
+    } catch (e: any) {
+      alert(e?.message ?? 'Failed to toggle favorite');
+    }
+  }
+
   $effect(() => {
     loadData();
   });
@@ -113,20 +119,15 @@
     <div class="add-form">
       <label>
         <span>Customer *</span>
-        <select bind:value={newCustomerId} required>
-          <option value="">Select customer</option>
-          {#each customers as customer}
-            <option value={customer.id}>{customer.name}</option>
-          {/each}
-        </select>
+        <SearchableSelect
+          bind:value={newCustomerId}
+          options={customers.map((c) => ({ value: c.id, label: c.name, color: c.color }))}
+          placeholder="Select customer"
+        />
       </label>
       <label>
         <span>Name *</span>
         <input type="text" bind:value={newName} placeholder="Work order name" />
-      </label>
-      <label>
-        <span>Code</span>
-        <input type="text" bind:value={newCode} placeholder="Optional code" />
       </label>
       <label>
         <span>Description</span>
@@ -141,15 +142,17 @@
   <div class="controls">
     <label>
       <span>Filter by customer</span>
-      <select bind:value={filterCustomerId} onchange={() => loadData()}>
-        <option value="">All customers</option>
-        {#each customers as customer}
-          <option value={customer.id}>{customer.name}</option>
-        {/each}
-      </select>
+      <SearchableSelect
+        bind:value={filterCustomerId}
+        options={[
+          { value: '', label: 'All customers' },
+          ...customers.map((c) => ({ value: c.id, label: c.name, color: c.color }))
+        ]}
+        placeholder="All customers"
+      />
     </label>
     <label class="checkbox">
-      <input type="checkbox" bind:checked={showArchived} onchange={() => loadData()} />
+      <input type="checkbox" bind:checked={showArchived} />
       Show archived
     </label>
   </div>
@@ -166,10 +169,6 @@
             <label>
               <span>Name</span>
               <input type="text" bind:value={editName} />
-            </label>
-            <label>
-              <span>Code</span>
-              <input type="text" bind:value={editCode} />
             </label>
             <label>
               <span>Description</span>
@@ -193,17 +192,30 @@
         {:else}
           <div class="item">
             <div class="item-info" onclick={() => startEdit(wo)}>
-              <div>
-                <div class="item-name">{wo.name}</div>
-                <div class="item-meta">
-                  {#if wo.customerColor}
-                    <span class="dot" style="background: {wo.customerColor}"></span>
-                  {/if}
-                  <span>{wo.customerName}</span>
-                  {#if wo.code}
-                    <span class="sep">•</span>
-                    <span>{wo.code}</span>
-                  {/if}
+              <div class="item-main-info">
+                <span
+                  class="star-btn"
+                  role="button"
+                  tabindex="0"
+                  onclick={(e) => handleToggleFavorite(e, wo.id)}
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleToggleFavorite(e, wo.id);
+                    }
+                  }}
+                  title={wo.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                >
+                  {wo.isFavorite ? '⭐' : '☆'}
+                </span>
+                <div>
+                  <div class="item-name">{wo.name}</div>
+                  <div class="item-meta">
+                    {#if wo.customerColor}
+                      <span class="dot" style="background: {wo.customerColor}"></span>
+                    {/if}
+                    <span>{wo.customerName}</span>
+                  </div>
                 </div>
               </div>
               <span class="badge badge-{wo.status}">{wo.status}</span>
@@ -351,6 +363,31 @@
     gap: 10px;
     cursor: pointer;
     flex: 1;
+  }
+
+  .item-main-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .star-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+
+  .star-btn:hover {
+    color: #fbbf24;
   }
 
   .item-name {

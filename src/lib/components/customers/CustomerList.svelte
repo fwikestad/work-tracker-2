@@ -11,12 +11,10 @@
   let loading = $state(false);
   let editingId = $state<string | null>(null);
   let editName = $state('');
-  let editCode = $state('');
   let editColor = $state('');
   let showArchived = $state(false);
   let showAddForm = $state(false);
   let newName = $state('');
-  let newCode = $state('');
   let newColor = $state('#7c7aaa');
   let saving = $state(false);
 
@@ -35,12 +33,10 @@
     try {
       await createCustomer({
         name: newName.trim(),
-        code: newCode.trim() || undefined,
         color: newColor || undefined
       });
       await loadCustomers();
       newName = '';
-      newCode = '';
       newColor = '#7c7aaa';
       showAddForm = false;
     } catch (e: any) {
@@ -53,7 +49,6 @@
   function startEdit(customer: Customer) {
     editingId = customer.id;
     editName = customer.name;
-    editCode = customer.code ?? '';
     editColor = customer.color ?? '#7c7aaa';
   }
 
@@ -62,7 +57,6 @@
     try {
       await updateCustomer(customerId, {
         name: editName.trim() || undefined,
-        code: editCode.trim() || undefined,
         color: editColor || undefined
       });
       await loadCustomers();
@@ -104,10 +98,6 @@
         <input type="text" bind:value={newName} placeholder="Customer name" />
       </label>
       <label>
-        <span>Code</span>
-        <input type="text" bind:value={newCode} placeholder="Optional code" />
-      </label>
-      <label>
         <span>Color</span>
         <input type="color" bind:value={newColor} />
       </label>
@@ -138,10 +128,6 @@
               <input type="text" bind:value={editName} />
             </label>
             <label>
-              <span>Code</span>
-              <input type="text" bind:value={editCode} />
-            </label>
-            <label>
               <span>Color</span>
               <input type="color" bind:value={editColor} />
             </label>
@@ -162,9 +148,6 @@
               {/if}
               <div>
                 <div class="item-name">{customer.name}</div>
-                {#if customer.code}
-                  <div class="item-code">{customer.code}</div>
-                {/if}
               </div>
             </div>
             <button class="btn-archive" onclick={() => handleArchive(customer.id)}>Archive</button>
@@ -318,11 +301,6 @@
     font-size: 14px;
     font-weight: 500;
     color: var(--text);
-  }
-
-  .item-code {
-    font-size: 12px;
-    color: var(--text-muted);
   }
 
   .btn-archive {

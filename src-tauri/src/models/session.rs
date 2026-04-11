@@ -29,6 +29,7 @@ pub struct ActiveSession {
     pub customer_color: Option<String>,
     pub started_at: String,
     pub elapsed_seconds: i64,
+    pub is_paused: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -77,6 +78,28 @@ pub struct DailySummary {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SummaryEntry {
+    pub customer_id: String,
+    pub customer_name: String,
+    pub customer_color: Option<String>,
+    pub work_order_id: String,
+    pub work_order_name: String,
+    pub total_seconds: i64,
+    pub session_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportData {
+    pub start_date: String,
+    pub end_date: String,
+    pub total_seconds: i64,
+    pub entries: Vec<ReportEntry>,
+    pub sessions: Vec<Session>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportEntry {
     pub customer_id: String,
     pub customer_name: String,
     pub customer_color: Option<String>,

@@ -20,6 +20,7 @@ export interface WorkOrder {
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
+  isFavorite: boolean;
 }
 
 export interface Session {
@@ -47,6 +48,7 @@ export interface ActiveSession {
   customerColor: string | null;
   startedAt: string;
   elapsedSeconds: number;
+  isPaused: boolean;
 }
 
 export interface OrphanSession {
@@ -116,4 +118,22 @@ export interface UpdateSessionParams {
   durationOverride?: number;
   activityType?: string;
   notes?: string;
+}
+
+export interface ReportData {
+  startDate: string;
+  endDate: string;
+  totalSeconds: number;
+  entries: ReportEntry[];
+  sessions: Session[];
+}
+
+export interface ReportEntry {
+  customerId: string;
+  customerName: string;
+  customerColor: string | null;
+  workOrderId: string;
+  workOrderName: string;
+  totalSeconds: number;
+  sessionCount: number;
 }

@@ -181,3 +181,27 @@ pub fn discard_orphan_session(state: State<AppState>, session_id: String) -> Res
     let conn = state.db.lock().unwrap();
     session_service::discard_orphan_session(&conn, &session_id)
 }
+
+#[tauri::command]
+pub fn pause_session(state: State<AppState>) -> Result<(), AppError> {
+    let conn = state.db.lock().unwrap();
+    session_service::pause_session(&conn)
+}
+
+#[tauri::command]
+pub fn resume_session(state: State<AppState>) -> Result<(), AppError> {
+    let conn = state.db.lock().unwrap();
+    session_service::resume_session(&conn)
+}
+
+#[tauri::command]
+pub fn update_heartbeat(state: State<AppState>) -> Result<(), AppError> {
+    let conn = state.db.lock().unwrap();
+    session_service::update_heartbeat(&conn)
+}
+
+#[tauri::command]
+pub fn check_for_orphan_session(state: State<AppState>) -> Result<Option<OrphanSession>, AppError> {
+    let conn = state.db.lock().unwrap();
+    session_service::check_for_orphan_session(&conn)
+}

@@ -67,7 +67,7 @@
     <div class="sessions-list">
       {#each sessionsStore.todays as session}
         {#if editingId === session.id}
-          <div class="session editing">
+          <div class="session editing" style="border-left-color: {session.customerColor ?? 'var(--border)'}">
             <div class="edit-form">
               <label>
                 <span>Duration (minutes)</span>
@@ -100,7 +100,7 @@
             </div>
           </div>
         {:else}
-          <div class="session" onclick={() => startEdit(session)}>
+          <div class="session" onclick={() => startEdit(session)} style="border-left-color: {session.customerColor ?? 'var(--border)'}">
             <div class="session-header">
               <div class="session-main">
                 <span class="session-name">{session.workOrderName}</span>
@@ -184,6 +184,7 @@
   .session {
     background: var(--bg);
     border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
     border-radius: var(--radius);
     padding: 12px;
     cursor: pointer;

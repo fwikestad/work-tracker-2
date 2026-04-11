@@ -94,3 +94,77 @@ Built the entire frontend application following the task specification:
 
 **Verdict:** Application is **production-ready**. Warnings are code quality improvements, not functional blockers.
 
+## 2026-04-11 — Phase 2+3 Frontend Features Implementation
+
+Implemented advanced tracking features for Phase 2 and Phase 3:
+
+**1. Heartbeat & Crash Recovery Enhancement**
+- Added 30-second heartbeat interval in `timer.svelte.ts` to call `invoke('update_heartbeat')`
+- Implemented tray tooltip updates: "⏱ Work Tracker — {workOrderName} ({customerName})" when tracking, "Work Tracker — Not tracking" when stopped
+- Heartbeat starts/stops with active session lifecycle
+
+**2. Paused State UI (Phase 2)**
+- Updated `ActiveSession` type with `isPaused: boolean` field
+- Added `pauseSession()` and `resumeSession()` API wrappers
+- Enhanced `Timer.svelte`:
+  - Status indicator with color-coded dot (green for running, amber #f59e0b for paused)
+  - Running/Paused badge display
+  - Pause button (⏸) when running, Resume button (▶) when paused
+  - Amber left border when paused (vs green when running)
+  - Timer stops incrementing when paused
+- `timer.svelte.ts` now has `isPaused` derived state and `pause()`/`resume()` methods
+
+**3. Color-Coded Session List (Phase 2)**
+- `SessionList.svelte` now applies customer color as 3px left border on each session item
+- Visual grouping: same customer sessions share same accent color
+- Fallback to `var(--border)` when customer has no color
+
+**4. Favorites/Pinning (Phase 2)**
+- Updated `WorkOrder` type with `isFavorite: boolean` field
+- Added `toggleFavorite(workOrderId)` API wrapper
+- `SearchSwitch.svelte`: 
+  - Star button (⭐ filled / ☆ outline) on each work order
+  - Favorites appear at top of recent list (backend sorts)
+  - Keyboard-accessible with Enter/Space key support
+- `WorkOrderList.svelte`:
+  - Star next to each work order name in manage view
+  - Favorites show at top of list
+  - Click to toggle, refresh list automatically
+- **Accessibility fix:** Changed nested `<button>` to `<span role="button">` to avoid invalid HTML structure
+
+**5. Weekly/Monthly Report View (Phase 3)**
+- Added `ReportData` and `ReportEntry` types to `types.ts`
+- Created `ReportView.svelte` with:
+  - Date range controls: "This week" | "This month" | "Custom" buttons
+  - This week = Monday of current week to today
+  - This month = 1st of month to today
+  - Custom = two date inputs with Load button
+  - Total hours prominently displayed
+  - Collapsible customer sections with work order breakdowns
+  - Color dots using customer colors
+  - Session counts and duration totals per work order
+  - "Export CSV" button using existing `exportCsv` command
+- Integrated into `manage/+page.svelte` as third tab alongside Customers and Work Orders
+- Export section hidden when Reports tab is active (has its own export button)
+
+**Build Status:**
+- ✅ `npm run build` succeeds (773ms client + 2.76s server)
+- ⚠️ Same existing accessibility warnings (non-blocking)
+- All new features compile without errors
+
+**Cross-team dependencies:**
+Backend (Chewie) needs to implement:
+- `pause_session()` → returns updated ActiveSession
+- `resume_session()` → returns updated ActiveSession
+- `toggle_favorite(workOrderId)` → returns updated WorkOrder
+- `get_report(startDate, endDate)` → returns ReportData
+- `update_heartbeat()` → void (updates last_heartbeat timestamp)
+- `update_tray_tooltip(tooltip)` → void (updates system tray)
+- `list_recent_work_orders` → must return favorites first
+
+**Design Decisions:**
+- Paused state uses amber (#f59e0b) to distinguish from running (green) and stopped (grey)
+- Star buttons use span with role="button" for accessibility (no nested buttons)
+- Report view uses collapsible customer groups to manage long lists
+- Heartbeat every 30 seconds balances crash recovery with minimal overhead
+

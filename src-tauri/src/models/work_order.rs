@@ -11,6 +11,7 @@ pub struct WorkOrder {
     pub code: Option<String>,
     pub description: Option<String>,
     pub status: String,
+    pub is_favorite: bool,
     pub created_at: String,
     pub updated_at: String,
     pub archived_at: Option<String>,

@@ -116,3 +116,94 @@ Backend Dev for work-tracker-2 — native desktop time tracker for consultant Fr
 - `thiserror` locked to 1.0.69 (2.0 available — compatible, no action needed now)
 
 **Status**: `npm run tauri:dev` is now unblocked.
+
+---
+
+### 2026-04-11: Phase 2+3 Backend Features Implementation
+
+**What was built**: Complete backend implementation for Phase 2 (paused state, favorites, heartbeat) and Phase 3 (weekly/monthly reports)
+
+**Database migration** (`002_phase2_features.sql`):
+- Added pause tracking columns: `paused_at`, `total_paused_seconds` to `time_sessions`
+- Added pause state columns: `is_paused`, `paused_session_at` to `active_session`
+- Added favorite flag: `is_favorite` to `work_orders` with index for filtering
+
+**New service functions** (`session_service.rs`):
+1. **pause_session()**: Freezes timer without closing session
+   - Sets `active_session.is_paused = 1` and `paused_session_at = now`
+   - Records `time_sessions.paused_at = now` for tracking
+   - Validates session is active and not already paused
+
+2. **resume_session()**: Unfreezes timer and accumulates pause time
+   - Calculates pause duration: `now - paused_at`
+   - Adds pause duration to `total_paused_seconds`
+   - Clears pause state flags
+   - Validates session is paused before resuming
+
+3. **update_heartbeat()**: Updates `last_heartbeat` timestamp
+   - Called by frontend every 30 seconds during active tracking
+   - Used by crash recovery to detect orphan sessions (>2 min stale)
+
+**Updated logic for pause handling**:
+- `stop_active_session()`: Now subtracts `total_paused_seconds` from gross duration
+- `get_active_session()`: Calculates elapsed time accounting for:
+  - Historical paused time (`total_paused_seconds`)
+  - Current pause interval if currently paused (`now - paused_session_at`)
+- All daily summary and report queries use: `COALESCE(duration_override, duration_seconds) - total_paused_seconds`
+
+**Favorites feature**:
+- `toggle_favorite()` command: Toggles `is_favorite` flag on work orders
+- Updated `list_work_orders()`: New optional `favorites_only` parameter
+- Updated `get_recent_work_orders()`: Now sorts favorites first (`ORDER BY is_favorite DESC, last_used_at DESC`)
+
+**Reports feature** (`summary_service.rs`):
+- New `get_report()` function: Weekly/monthly report for any date range
+- Returns `ReportData` with:
+  - Aggregated entries grouped by customer + work order (sorted by total time DESC)
+  - All individual sessions in the range
+  - Total tracked seconds across all entries
+- Only counts completed sessions (`end_time IS NOT NULL`)
+
+**System tray** (Phase 2):
+- Tray icon configured in `tauri.conf.json` (auto-created by Tauri 2)
+- New command: `update_tray_tooltip()` — frontend can update tray tooltip with current tracking state
+- Uses default tray ID "main"
+
+**Model updates**:
+- `ActiveSession`: Added `is_paused: bool` field
+- `WorkOrder`: Added `is_favorite: bool` field
+- New models: `ReportData`, `ReportEntry` for date range reports
+
+**New IPC commands** (registered in `lib.rs`):
+- `pause_session` — Pause active timer
+- `resume_session` — Resume paused timer
+- `update_heartbeat` — Keep alive for crash recovery
+- `check_for_orphan_session` — Detect stale sessions (now exposed to frontend)
+- `toggle_favorite` — Toggle favorite flag on work order
+- `get_report` — Generate weekly/monthly report
+- `update_tray_tooltip` — Update system tray tooltip text
+
+**All queries updated** to include new columns:
+- Work order queries now return `is_favorite` field
+- Session queries account for `total_paused_seconds` in duration calculations
+- Recent work orders sort favorites to top
+
+**Compilation verified**: `cargo check` passes with 1 warning (unused `AppError::Conflict` variant — pre-existing, non-blocking)
+
+**Key decisions**:
+1. **Pause implementation**: Accumulates pause intervals in `total_paused_seconds` rather than storing multiple pause/resume events. Simpler schema, easier duration calculation.
+2. **Tray icon**: Used Tauri 2's built-in tray config rather than manual `TrayIconBuilder`. Simpler, more standard.
+3. **Report ordering**: Sort by total_seconds DESC so highest-effort items appear first (most useful for consultants reviewing their week).
+
+**Integration points**:
+- Frontend must call `update_heartbeat()` every 30s while session is active
+- Frontend can toggle favorites via `toggle_favorite()` command
+- Frontend can generate weekly/monthly reports via `get_report(start_date, end_date)`
+- Frontend can update tray tooltip when active session changes
+
+**What's next**:
+- Frontend integration for pause/resume UI
+- Frontend integration for favorites (star icon on work orders)
+- Frontend weekly/monthly report view
+- Heartbeat polling every 30s during active tracking
+
