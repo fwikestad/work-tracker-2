@@ -182,13 +182,26 @@ Backend (Chewie) needs to implement:
 - Tauri's automatic camelCase ↔ snake_case conversion only applies to struct fields with `#[serde(rename_all = "camelCase")]`
 - Direct parameters must match exactly
 
-**Fix**: Updated `src/lib/api/customers.ts` to send the correct parameter name:
+**Scope Expanded**: Found and fixed ALL API parameter naming mismatches across the entire frontend:
+- `customers.ts`: includeArchived → include_archived
+- `workOrders.ts`: customerId → customer_id, workOrderId → work_order_id
+- `sessions.ts`: workOrderId → work_order_id, activityType → activity_type, startDate → start_date, endDate → end_date, sessionId → session_id
+- `reports.ts`: startDate → start_date, endDate → end_date
+
+**Fix**: Updated all 4 API wrapper files to send correct snake_case parameter names:
 ```typescript
+// Before
+export const listCustomers = (includeArchived?: boolean) =>
+  invoke<Customer[]>('list_customers', { includeArchived });
+
+// After
 export const listCustomers = (includeArchived = false) =>
   invoke<Customer[]>('list_customers', { include_archived: includeArchived });
 ```
 
 **Verified**: Build succeeds with no TypeScript or Svelte compilation errors.
 
-**Learning**: Always use snake_case for non-struct Tauri command parameters, or wrap parameters in a serde struct with rename_all directive.
+**Learning**: Always use snake_case for non-struct Tauri command parameters, or wrap parameters in a serde struct with rename_all directive. This bug would have affected EVERY feature in the app (customer selection, work order creation, session tracking, reports) — critical to fix comprehensively.
+
+**Commits**: `498ee92` (initial customer fix), `a08a26a` (comprehensive fix)
 
