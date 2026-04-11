@@ -1,0 +1,18 @@
+{
+  "version": "1.0",
+  "assignments": [
+    {
+      "assignment_id": "work-tracker-2-init",
+      "date": "2026-04-11",
+      "universe": "star-wars-ot",
+      "agents": [
+        { "name": "Han", "role": "Lead" },
+        { "name": "Leia", "role": "Frontend Dev" },
+        { "name": "Chewie", "role": "Backend Dev" },
+        { "name": "Wedge", "role": "Tester" },
+        { "name": "Scribe", "role": "Session Logger" },
+        { "name": "Ralph", "role": "Work Monitor" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "version": "1.0",
+  "universeAllowlist": [
+    "star-wars-ot"
+  ],
+  "defaultCapacity": 10,
+  "overflowStrategy": "diegetic-expansion"
+}

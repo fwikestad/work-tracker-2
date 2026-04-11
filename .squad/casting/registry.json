@@ -1,0 +1,53 @@
+{
+  "version": "1.0",
+  "agents": [
+    {
+      "persistent_name": "Han",
+      "role": "Lead",
+      "universe": "star-wars-ot",
+      "created_at": "2026-04-11",
+      "legacy_named": false,
+      "status": "active"
+    },
+    {
+      "persistent_name": "Leia",
+      "role": "Frontend Dev",
+      "universe": "star-wars-ot",
+      "created_at": "2026-04-11",
+      "legacy_named": false,
+      "status": "active"
+    },
+    {
+      "persistent_name": "Chewie",
+      "role": "Backend Dev",
+      "universe": "star-wars-ot",
+      "created_at": "2026-04-11",
+      "legacy_named": false,
+      "status": "active"
+    },
+    {
+      "persistent_name": "Wedge",
+      "role": "Tester",
+      "universe": "star-wars-ot",
+      "created_at": "2026-04-11",
+      "legacy_named": false,
+      "status": "active"
+    },
+    {
+      "persistent_name": "Scribe",
+      "role": "Session Logger",
+      "universe": "exempt",
+      "created_at": "2026-04-11",
+      "legacy_named": false,
+      "status": "active"
+    },
+    {
+      "persistent_name": "Ralph",
+      "role": "Work Monitor",
+      "universe": "exempt",
+      "created_at": "2026-04-11",
+      "legacy_named": false,
+      "status": "active"
+    }
+  ]
+}
