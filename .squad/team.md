@@ -16,6 +16,7 @@
 | Leia | Frontend Dev | [charter](.squad/agents/leia/charter.md) | 🟢 Active |
 | Chewie | Backend Dev | [charter](.squad/agents/chewie/charter.md) | 🟢 Active |
 | Wedge | Tester | [charter](.squad/agents/wedge/charter.md) | 🟢 Active |
+| Mon Mothma | Technical Writer | [charter](.squad/agents/mothma/charter.md) | 🟢 Active |
 | Scribe | Session Logger | [charter](.squad/agents/scribe/charter.md) | 🟢 Active |
 | Ralph | Work Monitor | — | 🔄 Monitor |
 | Fredrik | 👤 Human — Approvals | — | 🟢 Active |

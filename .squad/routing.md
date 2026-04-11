@@ -13,6 +13,7 @@ How to decide who handles what.
 | Code review | Han | Review PRs, architectural judgment, approve/reject with feedback |
 | Testing | Wedge | Write tests, find edge cases, reviewer gating before ship |
 | Scope & priorities | Han | What to build next, trade-offs, decisions |
+| Documentation, setup guides, API docs, changelogs, inline comments | Mon Mothma | Architecture docs, command contracts, user guides, release notes |
 | Session logging | Scribe | Automatic — never needs routing |
 | Final approvals, scope decisions, design sign-off | Fredrik | Human in the loop — coordinator pauses and presents for review |
 
