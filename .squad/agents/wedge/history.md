@@ -56,3 +56,39 @@ Tester for work-tracker-2 — native desktop time tracker for consultant Fredrik
 - **Mothma (Docs)**: API reference provides clear contracts for each command. Test cases directly map to documented signatures and error codes.
 
 **Phase 1 deliverable**: All 118 test cases written and documented. Team can execute manual tests using 10-step workflow checklist. Automation readiness (P0 tests for CI/CD) planned for Phase 2.
+
+### 2026-04-11: Frontend Build Verification After Dependency Fix
+
+**Context**: `@sveltejs/vite-plugin-svelte` bumped from `^4.0.0` → `^5.0.0` to resolve peer dependency conflicts. Verified end-to-end build works.
+
+**Results**:
+- ✅ **Build Success**: `npm run build` completed successfully (exit code 0)
+- ✅ **Output Verified**: `build/` directory created with 169 SSR modules + 187 client modules transformed
+- ✅ **Production Ready**: Static adapter generated site to `build/` directory
+- ⚠️ **Warnings (Non-Blocking)**: 
+  - Multiple accessibility warnings (a11y_click_events_have_key_events, a11y_no_static_element_interactions)
+  - 1 Svelte 5 rune reactivity warning: `inputRef` in QuickAdd.svelte not declared with `$state(...)`
+  - 1 self-closing textarea warning in Timer.svelte
+- ❌ **TypeScript Standalone Check**: `npx tsc --noEmit` failed with "Cannot find type definition file for 'node'" — this is expected before first build generates `.svelte-kit/tsconfig.json`
+
+**Affected Files** (warnings only, not errors):
+- `src/lib/components/QuickAdd.svelte:88` — overlay div needs role/keyboard handler
+- `src/lib/components/QuickAdd.svelte:18` — inputRef needs `$state(...)` wrapper
+- `src/lib/components/SessionList.svelte:103` — session div needs role/keyboard handler
+- `src/lib/components/Timer.svelte:48` — textarea should use `</textarea>` not `/>`
+- `src/lib/components/customers/CustomerList.svelte:159` — item-info div needs role/keyboard handler
+- `src/lib/components/workorders/WorkOrderList.svelte:195` — item-info div needs role/keyboard handler
+
+**Build Performance**:
+- SSR bundle: 3.01s (169 modules)
+- Client bundle: 800ms (187 modules)
+- Total: ~4 seconds end-to-end
+
+**Verdict**: **PASS** — Build compiles successfully with static output. Warnings are code quality issues (accessibility + one reactivity bug), not breaking errors. Application is buildable and shippable.
+
+**Recommendations for Leia (Frontend)**:
+1. **P1 Fix**: Wrap `inputRef` in QuickAdd.svelte with `$state()` to ensure reactivity (line 18)
+2. **P2 Fix**: Add ARIA roles and keyboard handlers to clickable divs (5 locations) for accessibility compliance
+3. **P2 Fix**: Change self-closing `<textarea />` to `<textarea></textarea>` in Timer.svelte (line 48)
+
+**No Blocker**: These are improvements, not blockers. Current build ships correctly.

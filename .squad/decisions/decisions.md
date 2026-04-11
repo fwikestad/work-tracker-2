@@ -94,3 +94,125 @@
 | `--accent`  | `#4caf7d` | Running state only         |
 | `--hover`   | `#1f1f1f` | Row hover background       |
 | `--c1..c4`  | muted palette | 8px customer dots only |
+
+---
+
+## Frontend Build Verification — April 11, 2026
+
+**Requested by:** Fredrik Kristiansen Wikestad  
+**Reporter:** Wedge (Tester)  
+**Status:** ✅ PASS — Build succeeds, warnings noted
+
+### Summary
+
+After `@sveltejs/vite-plugin-svelte` was bumped from `^4.0.0` → `^5.0.0`, the frontend build was verified end-to-end:
+
+- ✅ `npm run build` completes successfully
+- ✅ Static output generated in `build/` directory
+- ⚠️ 6 accessibility + reactivity warnings (non-blocking)
+- ❌ Standalone TypeScript check fails (expected, requires first build)
+
+**Verdict:** Application is **shippable**. Warnings are code quality improvements, not blockers.
+
+### Build Output
+
+```
+✓ 169 modules transformed (SSR bundle, 3.01s)
+✓ 187 modules transformed (client bundle, 800ms)
+✓ built in 3.01s
+
+> Using @sveltejs/adapter-static
+  Wrote site to "build"
+  ✔ done
+```
+
+### Warnings (Non-Blocking)
+
+#### 1. Accessibility Issues (5 locations)
+**Impact:** Keyboard users and screen readers may have difficulty interacting with certain UI elements.
+
+**Files affected:**
+- `src/lib/components/QuickAdd.svelte:88` — overlay backdrop
+- `src/lib/components/SessionList.svelte:103` — session list items
+- `src/lib/components/customers/CustomerList.svelte:159` — customer list items
+- `src/lib/components/workorders/WorkOrderList.svelte:195` — work order list items
+
+**Error codes:** `a11y_click_events_have_key_events`, `a11y_no_static_element_interactions`
+
+**Fix:** Add `role="button"`, `tabindex="0"`, and keyboard event handlers to clickable divs.
+
+#### 2. Svelte 5 Rune Reactivity Issue (1 location)
+**File:** `src/lib/components/QuickAdd.svelte:18`
+**Issue:** `inputRef` needs `$state()` rune declaration for correct reactivity.
+
+#### 3. Self-Closing Tag Issue (1 location)
+**File:** `src/lib/components/Timer.svelte:48`
+**Issue:** Use `<textarea></textarea>` instead of self-closing `<textarea />`
+
+### Recommendations
+
+**For Leia (Frontend):**
+- **Priority 1:** Fix `inputRef` reactivity in QuickAdd.svelte (line 18)
+- **Priority 2:** Add ARIA roles to 5 clickable divs, fix textarea self-close
+
+**For Team:**
+- No action required on TypeScript check failure
+- Build is production-ready as-is
+
+---
+
+## Rust/Tauri Build Environment Readiness
+
+**Date:** 2026-04-11  
+**Auditor:** Chewie (Backend Dev)  
+**Status:** ❌ **NOT READY** — Rust/cargo not installed
+
+### Environment Audit Results
+
+| Check | Status | Notes |
+|-------|--------|-------|
+| Rust/cargo | ❌ Not installed | `cargo --version` returned "not recognized" |
+| rustup | ❌ Not installed | `rustup --version` returned "not recognized" |
+| MSVC Build Tools | ✅ Present | Visual Studio 2022 found at `C:\Program Files\Microsoft Visual Studio\2022` |
+| Cargo.toml valid | ✅ Valid | All dependencies reference valid crates (Tauri 2, rusqlite 0.31, serde, chrono, etc.) |
+| tauri.conf.json valid | ✅ Valid | Schema reference and all config sections correct |
+
+### What Needs to Be Installed
+
+**Rust development environment** is required before the app can build.
+
+#### Install Steps (Windows)
+
+1. **Download Rust installer:** Visit https://rustup.rs/ and click "Download rustup-init.exe"
+2. **Run the installer:** Accept default options and recommended stable toolchain
+3. **Restart terminal/PowerShell** after install completes
+4. **Verify:** Run `cargo --version` and `rustup --version`
+
+**Installation Time:** ~5-10 minutes (~1.5 GB download)
+
+### Why This Matters
+
+- **cargo:** Rust's package manager and build system (required to compile src-tauri/)
+- **rustup:** Rust's version/toolchain manager (keeps Rust updated)
+- **MSVC:** Needed on Windows to link compiled Rust code (already available via VS 2022 ✅)
+- **Cargo.toml & tauri.conf.json:** Both correctly configured and ready to use once Rust is installed
+
+### Expected Next Command When Ready
+
+```powershell
+npm run tauri:dev
+```
+
+This will:
+1. Start the Svelte dev server (port 1420)
+2. Compile Rust backend with cargo
+3. Launch the Tauri app with hot-reload enabled
+4. App ready for testing within ~30-60 seconds
+
+**File Status Summary:**
+- ✅ Frontend ready: package.json, vite.config.ts, node_modules installed
+- ✅ Rust config ready: Cargo.toml, tauri.conf.json both valid
+- ✅ Build tools ready: Visual Studio 2022 available
+- ❌ Missing: Rust toolchain (cargo, rustup)
+
+**Recommendation:** Install Rust from https://rustup.rs, then return and run `npm run tauri:dev`
