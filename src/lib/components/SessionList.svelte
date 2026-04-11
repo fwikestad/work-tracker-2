@@ -100,7 +100,14 @@
             </div>
           </div>
         {:else}
-          <div class="session" onclick={() => startEdit(session)} style="border-left-color: {session.customerColor ?? 'var(--border)'}">
+          <div
+            class="session"
+            role="button"
+            tabindex="0"
+            onclick={() => startEdit(session)}
+            onkeydown={(e) => e.key === 'Enter' && startEdit(session)}
+            style="border-left-color: {session.customerColor ?? 'var(--border)'}"
+          >
             <div class="session-header">
               <div class="session-main">
                 <span class="session-name">{session.workOrderName}</span>

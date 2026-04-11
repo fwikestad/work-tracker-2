@@ -15,7 +15,7 @@
   let submitting = $state(false);
   let error = $state('');
   let useNewCustomer = $state(false);
-  let inputRef: HTMLInputElement;
+  let inputRef = $state<HTMLInputElement | undefined>(undefined);
 
   $effect(() => {
     if (uiStore.quickAdd) {
@@ -82,7 +82,7 @@
     }
   }
 
-  function handleBackdropClick(e: MouseEvent) {
+  function handleBackdropClick(e: Event) {
     if (e.target === e.currentTarget) {
       uiStore.closeQuickAdd();
     }
@@ -90,7 +90,13 @@
 </script>
 
 {#if uiStore.quickAdd}
-  <div class="overlay" onclick={handleBackdropClick}>
+  <div
+    class="overlay"
+    role="button"
+    tabindex="0"
+    onclick={handleBackdropClick}
+    onkeydown={(e) => e.key === 'Enter' && handleBackdropClick(e)}
+  >
     <div class="dialog">
       <div class="header">
         <h2>Quick Add</h2>

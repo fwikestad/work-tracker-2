@@ -13,6 +13,8 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 - Svelte 5 runes provide excellent reactive state management without boilerplate — `$state`, `$derived`, `$effect` replace legacy stores completely
 - Component architecture: presentational components with props, stores for global state, inline editing patterns preferred over modals
 - Keyboard-first: all interactive elements reachable via Tab, Enter to confirm, Escape to cancel, arrow keys for navigation
+- **Svelte 5 `bind:this` refs require `$state()`**: In runes mode, any variable used with `bind:this` must be declared as `let ref = $state<HTMLElement | undefined>(undefined)`. Plain `let ref: HTMLElement` triggers a `non_reactive_update` warning because Svelte 5 cannot track the assignment. This applies to all DOM ref variables — input refs, container refs, etc.
+- **A11y for interactive divs**: Divs with `onclick` need `role="button"`, `tabindex="0"`, and `onkeydown={(e) => e.key === 'Enter' && handler(e)}` to satisfy `a11y_click_events_have_key_events` + `a11y_no_static_element_interactions`. Prefer converting to `<button>` when there are no nested buttons; use div+role when nesting constraints apply (e.g., a delete button inside the clickable row).
 
 ## Session Log
 

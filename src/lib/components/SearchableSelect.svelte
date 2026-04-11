@@ -20,8 +20,8 @@
   let isOpen = $state(false);
   let filterQuery = $state('');
   let highlightIndex = $state(0);
-  let containerRef: HTMLDivElement;
-  let filterInputRef: HTMLInputElement;
+  let containerRef = $state<HTMLDivElement | undefined>(undefined);
+  let filterInputRef = $state<HTMLInputElement | undefined>(undefined);
 
   const selectedOption = $derived(options.find((opt) => opt.value === value));
   const displayLabel = $derived(selectedOption?.label || placeholder);

@@ -62,7 +62,7 @@
       <div class="notes-form">
         <label>
           <span>Notes (optional)</span>
-          <textarea bind:value={notes} rows="3" placeholder="What did you work on?" />
+          <textarea bind:value={notes} rows="3" placeholder="What did you work on?"></textarea>
         </label>
         <label>
           <span>Activity type</span>
