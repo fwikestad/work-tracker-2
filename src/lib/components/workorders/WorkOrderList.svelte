@@ -13,6 +13,7 @@
   let workOrders = $state<WorkOrder[]>([]);
   let customers = $state<Customer[]>([]);
   let loading = $state(false);
+  let loadError = $state<string | null>(null);
   let editingId = $state<string | null>(null);
   let editName = $state('');
   let editDescription = $state('');
@@ -27,11 +28,15 @@
 
   async function loadData() {
     loading = true;
+    loadError = null;
     try {
       [workOrders, customers] = await Promise.all([
         listWorkOrders(filterCustomerId || undefined),
         listCustomers()
       ]);
+    } catch (e: any) {
+      console.error('Failed to load work orders/customers:', e);
+      loadError = e?.message ?? 'Failed to load data';
     } finally {
       loading = false;
     }
@@ -119,11 +124,15 @@
     <div class="add-form">
       <label>
         <span>Customer *</span>
-        <SearchableSelect
-          bind:value={newCustomerId}
-          options={customers.map((c) => ({ value: c.id, label: c.name, color: c.color }))}
-          placeholder="Select customer"
-        />
+        {#if customers.length === 0}
+          <div class="no-customers">No customers yet. Create a customer first on the Customers tab.</div>
+        {:else}
+          <SearchableSelect
+            bind:value={newCustomerId}
+            options={customers.map((c) => ({ value: c.id, label: c.name, color: c.color }))}
+            placeholder="Select customer"
+          />
+        {/if}
       </label>
       <label>
         <span>Name *</span>
@@ -159,6 +168,8 @@
 
   {#if loading}
     <div class="loading">Loading...</div>
+  {:else if loadError}
+    <div class="load-error">⚠ {loadError}</div>
   {:else if workOrders.length === 0}
     <div class="empty">No work orders</div>
   {:else}
@@ -328,10 +339,22 @@
   }
 
   .loading,
-  .empty {
+  .empty,
+  .load-error {
     text-align: center;
     padding: 32px;
     color: var(--text-muted);
+  }
+
+  .load-error {
+    color: var(--danger);
+  }
+
+  .no-customers {
+    font-size: 13px;
+    color: var(--text-muted);
+    padding: 10px 0;
+    font-style: italic;
   }
 
   .items {
