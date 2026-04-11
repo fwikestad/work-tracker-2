@@ -96,19 +96,22 @@ pub fn stop_current_session(conn: &Connection, notes: Option<&str>, activity_typ
         // Update notes and activity type if provided
         if notes.is_some() || activity_type.is_some() {
             let mut sql = "UPDATE time_sessions SET updated_at = ?".to_string();
+            // Own the values so they live long enough for params_vec borrows
+            let notes_owned = notes.map(|s| s.to_string());
+            let activity_owned = activity_type.map(|s| s.to_string());
             let mut params_vec: Vec<&dyn rusqlite::ToSql> = vec![&now];
-            
-            if let Some(n) = notes {
+
+            if let Some(ref n) = notes_owned {
                 sql.push_str(", notes = ?");
-                params_vec.push(&n);
+                params_vec.push(n);
             }
-            if let Some(a) = activity_type {
+            if let Some(ref a) = activity_owned {
                 sql.push_str(", activity_type = ?");
-                params_vec.push(&a);
+                params_vec.push(a);
             }
             sql.push_str(" WHERE id = ?");
             params_vec.push(&sid);
-            
+
             conn.execute(&sql, rusqlite::params_from_iter(params_vec))?;
         }
         

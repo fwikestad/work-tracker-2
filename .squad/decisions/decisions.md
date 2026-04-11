@@ -1,5 +1,113 @@
 # Work Tracker 2 — Decisions Log
 
+## Rust Build Status — PASS ✅
+
+**Date**: 2026-04-11  
+**Author**: Chewie (Backend Dev)  
+**Priority**: High — unblocks frontend integration
+
+---
+
+### Summary
+
+Rust backend now compiles fully. `cargo check` and `cargo build` both pass.
+
+---
+
+### Rust Build Results
+
+| Step | Status | Notes |
+|------|--------|-------|
+| `cargo --version` | ✅ | cargo 1.94.1 (29ea6fb6a 2026-03-24) |
+| `rustup --version` | ✅ | rustup 1.29.0 (28d1352db 2026-03-05), rustc 1.94.1 |
+| `cargo check` | ✅ | 3 warnings, 0 errors — 2.31s |
+| `cargo build` | ✅ | Finished dev profile in 1m 21s |
+
+---
+
+### Verdict: PASS
+
+---
+
+### Bugs Fixed
+
+#### 1. Empty icon files (all 0 bytes)
+- **File**: `src-tauri/icons/` — all 5 icon stubs were empty placeholders
+- **Error**: `tauri::generate_context!()` proc macro panicked: `failed to parse icon: failed to fill whole buffer`
+- **Fix**: Generated valid icons using PowerShell + System.Drawing (32x32 solid blue ICO, correct-size PNGs)
+- **Action needed**: Replace placeholder icons with real app icons before shipping
+
+#### 2. Borrow checker E0597 in `session_service.rs`
+- **File**: `src/services/session_service.rs`, function `stop_current_session`, lines 101–108
+- **Error**: `n` and `a` (`&str` bindings from `if let Some(n) = notes`) dropped before `params_vec` finished using them
+- **Fix**: Convert to owned `String` values (`notes_owned`, `activity_owned`) before building `params_vec`, use `ref` bindings
+
+---
+
+### Non-Blocking Warnings (pre-existing dead code)
+
+- `OrphanSession` struct never constructed (crash recovery, Phase 2)
+- `AppError::Conflict` never constructed (defensive code)
+- `check_for_orphan_session` never called (Phase 2 feature)
+
+These are intentional scaffolds for future phases — no action required now.
+
+---
+
+### Next Steps
+
+- **Fredrik / all team**: Run `npm run tauri:dev` — Rust backend is now unblocked
+- **Leia (Frontend)**: Integration testing can begin; all IPC commands should be callable from the Svelte frontend
+- **Wedge (Testing)**: Test suite can run against the live backend
+- **Future (Chewie)**: Replace placeholder icon files with real app icons before production packaging
+
+---
+
+## Wedge Smoke Test Verdict — Go/No-Go for tauri:dev
+
+**Date**: 2026-04-11  
+**Requested by**: Fredrik Kristiansen Wikestad  
+**Tester**: Wedge
+
+---
+
+### Smoke Test: Go/No-Go for tauri:dev
+
+✅ Node.js working — v24.14.1  
+✅ npm working — v11.11.0  
+✅ Frontend build clean — exit code 0, 169 SSR + 187 client modules, `build/` output generated  
+✅ Rust source files present — main.rs (107B), lib.rs (1979B), session_service.rs (13728B), 001_initial_schema.sql (3707B)  
+✅ tauri:dev script configured — `"tauri:dev": "tauri dev"` in package.json  
+✅ tauri.conf.json devUrl set — `"devUrl": "http://localhost:1420"` with `beforeDevCommand: npm run dev`  
+
+### Overall: GO 🟢
+
+### Command to run:
+```
+npm run tauri:dev
+```
+
+### Known warnings to expect (non-blocking):
+
+**Frontend build warnings** (same as previous verified build — no regressions):
+- `QuickAdd.svelte:88` — a11y: overlay div missing keyboard handler + ARIA role
+- `QuickAdd.svelte:18` — `inputRef` not declared with `$state(...)` (reactivity)
+- `SessionList.svelte:103` — a11y: session div missing keyboard handler + ARIA role
+- `Timer.svelte:48` — self-closing `<textarea />` should be `<textarea></textarea>`
+- `CustomerList.svelte:159` — a11y: item-info div missing keyboard handler + ARIA role
+- `WorkOrderList.svelte:195` — a11y: item-info div missing keyboard handler + ARIA role
+
+**First-run Rust compile** (expected, not an error):
+- Cargo will download and compile all crate dependencies on first run — this can take 5–15 minutes
+- Subsequent runs will be fast (incremental compilation)
+- Watch for `Compiling work-tracker-2 v0.1.0` — this means Rust compile started successfully
+
+### Notes
+- `devUrl: http://localhost:1420` — Tauri will wait for the Vite dev server to start on that port before opening the window (handled by `beforeDevCommand`)
+- If the window doesn't open, check that Vite successfully bound to port 1420 in the terminal output
+
+---
+
 ## UI Mockup v2 — Revision Notes
 
 **Author**: Leia (Frontend Dev)  

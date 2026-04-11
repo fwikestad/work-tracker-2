@@ -89,3 +89,30 @@ Backend Dev for work-tracker-2 — native desktop time tracker for consultant Fr
 **Installation time**: ~5-10 minutes, ~1.5 GB download
 
 **Next step**: Fredrik installs Rust, then all systems ready for Phase 1 integration testing.
+
+---
+
+### 2026-04-11: Rust Build Verified — PASS
+
+**Rust toolchain**: cargo 1.94.1 (2026-03-24), rustup 1.29.0, rustc 1.94.1 (stable, 2026-03-25)
+
+**Build outcome**: `cargo check` ✅ and `cargo build` ✅ — both pass with 3 warnings, 0 errors.
+
+**Bugs fixed during this build verification**:
+
+1. **Empty icon files**: All 5 icon files in `src-tauri/icons/` were 0 bytes (placeholder stubs). `tauri::generate_context!()` macro panics trying to parse them. Fixed by generating valid bitmaps using `System.Drawing` in PowerShell (32x32 solid blue for ico, appropriately sized PNGs for the rest).
+
+2. **Borrow checker E0597 in `session_service.rs`** (`stop_current_session`): Temporary `&str` bindings `n` and `a` inside `if let Some(n) = notes` blocks were dropped before `params_vec` was done with them. Fixed by converting to owned `String` values (`notes_owned`, `activity_owned`) at the top of the block and using `ref` patterns so borrows live long enough.
+
+**Warnings** (non-blocking, pre-existing dead code):
+- `OrphanSession` struct never constructed
+- `AppError::Conflict` variant never constructed  
+- `check_for_orphan_session` function never called (reserved for crash recovery, Phase 2)
+
+**Build duration**: ~1m 21s (first full build, downloads/compiles ~498 crates)
+
+**Crate version notes**:
+- `rusqlite` locked to 0.31.0 (0.39.0 available — upgrade is a future task)
+- `thiserror` locked to 1.0.69 (2.0 available — compatible, no action needed now)
+
+**Status**: `npm run tauri:dev` is now unblocked.

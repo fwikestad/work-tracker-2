@@ -92,3 +92,27 @@ Tester for work-tracker-2 — native desktop time tracker for consultant Fredrik
 3. **P2 Fix**: Change self-closing `<textarea />` to `<textarea></textarea>` in Timer.svelte (line 48)
 
 **No Blocker**: These are improvements, not blockers. Current build ships correctly.
+
+### 2026-04-11: Rust Install Smoke Test — Go/No-Go for tauri:dev
+
+**Context**: Fredrik installed Rust. Full environment check run to confirm readiness for `npm run tauri:dev`.
+
+**Results**:
+- ✅ **Node.js**: v24.14.1 — working
+- ✅ **npm**: v11.11.0 — working
+- ✅ **Frontend build**: Clean exit code 0. SSR + client bundles produced. Same warnings as previous build (non-blocking accessibility/reactivity warnings — no regressions introduced by Rust install).
+- ✅ **Rust source files present and non-empty**:
+  - `src-tauri/src/main.rs` — 107 bytes ✓
+  - `src-tauri/src/lib.rs` — 1,979 bytes ✓
+  - `src-tauri/src/services/session_service.rs` — 13,728 bytes ✓
+  - `src-tauri/migrations/001_initial_schema.sql` — 3,707 bytes ✓
+- ✅ **`tauri:dev` script**: Present in package.json, maps to `tauri dev`
+- ✅ **`tauri.conf.json` devUrl**: Set to `http://localhost:1420` with `beforeDevCommand: npm run dev`
+
+**Overall Verdict**: **GO 🟢** — All six environment checks passed. Environment is ready for `npm run tauri:dev`.
+
+**Known non-blocking warnings to expect during dev**:
+- Svelte a11y warnings in QuickAdd.svelte, SessionList.svelte, CustomerList.svelte, WorkOrderList.svelte (click handlers without keyboard equivalents)
+- `inputRef` not wrapped in `$state()` in QuickAdd.svelte
+- Self-closing `<textarea />` in Timer.svelte
+- First-time Rust/Cargo compile will take several minutes (downloading crates, compiling dependencies) — this is normal and not an error
