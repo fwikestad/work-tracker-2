@@ -1,17 +1,17 @@
 use tauri::State;
 use rusqlite::params;
 use chrono::Utc;
-use crate::{AppState, models::{session::*, error::AppError}, services::session_service};
+use crate::{AppState, db::get_conn, models::{session::*, error::AppError}, services::session_service};
 
 #[tauri::command]
 pub fn start_session(state: State<AppState>, work_order_id: String) -> Result<Session, AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     session_service::switch_to_work_order(&conn, &work_order_id)
 }
 
 #[tauri::command]
 pub fn stop_session(state: State<AppState>, notes: Option<String>, activity_type: Option<String>) -> Result<Option<Session>, AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     session_service::stop_current_session(
         &conn,
         notes.as_deref(),
@@ -21,13 +21,13 @@ pub fn stop_session(state: State<AppState>, notes: Option<String>, activity_type
 
 #[tauri::command]
 pub fn get_active_session(state: State<AppState>) -> Result<Option<ActiveSession>, AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     session_service::get_active_session(&conn)
 }
 
 #[tauri::command]
 pub fn update_session(state: State<AppState>, id: String, params: UpdateSessionParams) -> Result<Session, AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     let now = Utc::now().to_rfc3339();
     
     // Build dynamic UPDATE query
@@ -103,7 +103,7 @@ pub fn update_session(state: State<AppState>, id: String, params: UpdateSessionP
 
 #[tauri::command]
 pub fn list_sessions(state: State<AppState>, start_date: String, end_date: String) -> Result<Vec<Session>, AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     
     let mut stmt = conn.prepare("
         SELECT 
@@ -153,7 +153,7 @@ pub fn list_sessions(state: State<AppState>, start_date: String, end_date: Strin
 
 #[tauri::command]
 pub fn delete_session(state: State<AppState>, id: String) -> Result<(), AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     
     let rows_affected = conn.execute("DELETE FROM time_sessions WHERE id = ?", params![&id])?;
     
@@ -166,42 +166,42 @@ pub fn delete_session(state: State<AppState>, id: String) -> Result<(), AppError
 
 #[tauri::command]
 pub fn quick_add(state: State<AppState>, params: QuickAddParams) -> Result<QuickAddResult, AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     session_service::quick_add(&conn, &params)
 }
 
 #[tauri::command]
 pub fn recover_session(state: State<AppState>, session_id: String) -> Result<Session, AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     session_service::recover_session(&conn, &session_id)
 }
 
 #[tauri::command]
 pub fn discard_orphan_session(state: State<AppState>, session_id: String) -> Result<(), AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     session_service::discard_orphan_session(&conn, &session_id)
 }
 
 #[tauri::command]
 pub fn pause_session(state: State<AppState>) -> Result<(), AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     session_service::pause_session(&conn)
 }
 
 #[tauri::command]
 pub fn resume_session(state: State<AppState>) -> Result<(), AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     session_service::resume_session(&conn)
 }
 
 #[tauri::command]
 pub fn update_heartbeat(state: State<AppState>) -> Result<(), AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     session_service::update_heartbeat(&conn)
 }
 
 #[tauri::command]
 pub fn check_for_orphan_session(state: State<AppState>) -> Result<Option<OrphanSession>, AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     session_service::check_for_orphan_session(&conn)
 }

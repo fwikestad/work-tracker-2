@@ -149,8 +149,8 @@ pub fn get_active_session(conn: &Connection) -> Result<Option<ActiveSession>, Ap
         let paused_at: Option<String> = row.get(8)?;
         
         let gross_elapsed = calculate_elapsed(&start_time).unwrap_or(0);
-        let current_pause = if is_paused == 1 && paused_at.is_some() {
-            calculate_elapsed(&paused_at.unwrap()).unwrap_or(0)
+        let current_pause = if is_paused == 1 {
+            paused_at.as_deref().and_then(|t| calculate_elapsed(t).ok()).unwrap_or(0)
         } else {
             0
         };
@@ -384,8 +384,7 @@ fn calculate_duration(start: &str, end: &str) -> Result<i64, AppError> {
 }
 
 fn calculate_elapsed(start: &str) -> Result<i64, AppError> {
-    let now = Utc::now().to_rfc3339();
-    calculate_duration(start, &now)
+    calculate_duration(start, &Utc::now().to_rfc3339())
 }
 
 fn get_session_by_id(conn: &Connection, id: &str) -> Result<Session, AppError> {

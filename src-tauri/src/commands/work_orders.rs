@@ -2,11 +2,11 @@ use tauri::State;
 use rusqlite::params;
 use uuid::Uuid;
 use chrono::Utc;
-use crate::{AppState, models::{work_order::*, error::AppError}};
+use crate::{AppState, db::get_conn, models::{work_order::*, error::AppError}};
 
 #[tauri::command]
 pub fn create_work_order(state: State<AppState>, params: CreateWorkOrderParams) -> Result<WorkOrder, AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
     
@@ -54,7 +54,7 @@ pub fn create_work_order(state: State<AppState>, params: CreateWorkOrderParams) 
 
 #[tauri::command]
 pub fn list_work_orders(state: State<AppState>, customer_id: Option<String>, favorites_only: Option<bool>) -> Result<Vec<WorkOrder>, AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     
     let (sql, params_vec): (&str, Vec<String>) = match (customer_id, favorites_only) {
         (Some(cid), Some(true)) => (
@@ -134,7 +134,7 @@ pub fn list_work_orders(state: State<AppState>, customer_id: Option<String>, fav
 
 #[tauri::command]
 pub fn update_work_order(state: State<AppState>, id: String, params: UpdateWorkOrderParams) -> Result<WorkOrder, AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     let now = Utc::now().to_rfc3339();
     
     // Build dynamic UPDATE query
@@ -197,7 +197,7 @@ pub fn update_work_order(state: State<AppState>, id: String, params: UpdateWorkO
 
 #[tauri::command]
 pub fn archive_work_order(state: State<AppState>, id: String) -> Result<(), AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     let now = Utc::now().to_rfc3339();
     
     let rows_affected = conn.execute(
@@ -214,7 +214,7 @@ pub fn archive_work_order(state: State<AppState>, id: String) -> Result<(), AppE
 
 #[tauri::command]
 pub fn toggle_favorite(state: State<AppState>, work_order_id: String) -> Result<WorkOrder, AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     let now = Utc::now().to_rfc3339();
     
     // Toggle the is_favorite flag

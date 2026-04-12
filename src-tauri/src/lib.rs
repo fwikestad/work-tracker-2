@@ -2,9 +2,9 @@ use tauri::Manager;
 use std::sync::Mutex;
 
 mod commands;
-mod db;
-mod models;
-mod services;
+pub mod db;
+pub mod models;
+pub mod services;
 
 pub use db::AppState;
 
@@ -24,7 +24,11 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            let app_dir = app.path().app_data_dir().expect("Failed to get app data dir");
+            let app_dir = app.path().app_data_dir()
+                .map_err(|e| Box::new(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("Failed to get app data dir: {}", e)
+                )) as Box<dyn std::error::Error>)?;
             std::fs::create_dir_all(&app_dir)?;
             let db_path = app_dir.join("work_tracker.db");
             let conn = db::initialize(&db_path)?;

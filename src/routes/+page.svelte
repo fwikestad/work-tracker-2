@@ -19,14 +19,12 @@
       summaryRef?.refresh();
     }
   });
-
-  let currentTab = $state<'track' | 'manage'>('track');
 </script>
 
 <div class="app">
   <nav class="nav">
-    <a href="/" class="nav-btn" class:active={currentTab === 'track'}>Track</a>
-    <a href="/manage" class="nav-btn" class:active={currentTab === 'manage'}>Manage</a>
+    <a href="/" class="nav-btn">Track</a>
+    <a href="/manage" class="nav-btn">Manage</a>
   </nav>
 
   <div class="main-view">
@@ -80,11 +78,6 @@
 
   .nav-btn:hover {
     color: var(--text);
-  }
-
-  .nav-btn.active {
-    color: var(--text);
-    border-bottom-color: var(--accent);
   }
 
   .main-view {

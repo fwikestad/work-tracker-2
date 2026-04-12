@@ -4,37 +4,35 @@
   import { formatTime, formatHuman } from '$lib/utils/formatters';
   import type { Session } from '$lib/types';
 
-  let editingId = $state<string | null>(null);
-  let editNotes = $state('');
-  let editDuration = $state('');
-  let editActivityType = $state('');
+  type EditState = { id: string; notes: string; duration: string; activityType: string };
+  let editState = $state<EditState | null>(null);
   let saving = $state(false);
 
   function startEdit(session: Session) {
-    editingId = session.id;
-    editNotes = session.notes ?? '';
-    editActivityType = session.activityType ?? '';
-    editDuration = session.effectiveDuration ? String(Math.round(session.effectiveDuration / 60)) : '';
+    editState = {
+      id: session.id,
+      notes: session.notes ?? '',
+      activityType: session.activityType ?? '',
+      duration: session.effectiveDuration ? String(Math.round(session.effectiveDuration / 60)) : ''
+    };
   }
 
   function cancelEdit() {
-    editingId = null;
-    editNotes = '';
-    editDuration = '';
-    editActivityType = '';
+    editState = null;
   }
 
   async function saveEdit(sessionId: string) {
+    if (!editState) return;
     saving = true;
     try {
-      const durationMins = parseInt(editDuration);
+      const durationMins = parseInt(editState.duration);
       await updateSession(sessionId, {
-        notes: editNotes || undefined,
-        activityType: editActivityType || undefined,
-        durationOverride: editDuration && !isNaN(durationMins) ? durationMins * 60 : undefined
+        notes: editState.notes || undefined,
+        activityType: editState.activityType || undefined,
+        durationOverride: editState.duration && !isNaN(durationMins) ? durationMins * 60 : undefined
       });
       await sessionsStore.refreshToday();
-      editingId = null;
+      editState = null;
     } catch (e: any) {
       alert(e?.message ?? 'Failed to save');
     } finally {
@@ -66,16 +64,16 @@
   {:else}
     <div class="sessions-list">
       {#each sessionsStore.todays as session}
-        {#if editingId === session.id}
+        {#if editState?.id === session.id}
           <div class="session editing" style="border-left-color: {session.customerColor ?? 'var(--border)'}">
             <div class="edit-form">
               <label>
                 <span>Duration (minutes)</span>
-                <input type="number" bind:value={editDuration} placeholder="Auto" />
+                <input type="number" bind:value={editState.duration} placeholder="Auto" />
               </label>
               <label>
                 <span>Activity type</span>
-                <select bind:value={editActivityType}>
+                <select bind:value={editState.activityType}>
                   <option value="">—</option>
                   <option value="meeting">Meeting</option>
                   <option value="development">Development</option>
@@ -87,7 +85,7 @@
               </label>
               <label>
                 <span>Notes</span>
-                <textarea bind:value={editNotes} rows="3" placeholder="What did you work on?"></textarea>
+                <textarea bind:value={editState.notes} rows="3" placeholder="What did you work on?"></textarea>
               </label>
               <div class="actions">
                 <button class="btn-sm btn-primary" onclick={() => saveEdit(session.id)} disabled={saving}>

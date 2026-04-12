@@ -2,11 +2,11 @@ use tauri::State;
 use rusqlite::params;
 use uuid::Uuid;
 use chrono::Utc;
-use crate::{AppState, models::{customer::*, error::AppError}};
+use crate::{AppState, db::get_conn, models::{customer::*, error::AppError}};
 
 #[tauri::command]
 pub fn create_customer(state: State<AppState>, params: CreateCustomerParams) -> Result<Customer, AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
     
@@ -28,7 +28,7 @@ pub fn create_customer(state: State<AppState>, params: CreateCustomerParams) -> 
 
 #[tauri::command]
 pub fn list_customers(state: State<AppState>, include_archived: Option<bool>) -> Result<Vec<Customer>, AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     let include_archived = include_archived.unwrap_or(false);
     
     let sql = if include_archived {
@@ -55,7 +55,7 @@ pub fn list_customers(state: State<AppState>, include_archived: Option<bool>) ->
 
 #[tauri::command]
 pub fn update_customer(state: State<AppState>, id: String, params: UpdateCustomerParams) -> Result<Customer, AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     let now = Utc::now().to_rfc3339();
     
     // Build dynamic UPDATE query
@@ -106,7 +106,7 @@ pub fn update_customer(state: State<AppState>, id: String, params: UpdateCustome
 
 #[tauri::command]
 pub fn archive_customer(state: State<AppState>, id: String) -> Result<(), AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;
     let now = Utc::now().to_rfc3339();
     
     let rows_affected = conn.execute(

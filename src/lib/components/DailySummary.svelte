@@ -10,6 +10,9 @@
     loading = true;
     try {
       summary = await getDailySummary(today());
+    } catch (e) {
+      console.error('Failed to refresh daily summary:', e);
+      // Optionally set an error state to show in UI
     } finally {
       loading = false;
     }

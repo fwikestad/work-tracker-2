@@ -5,7 +5,7 @@
   import { listCustomers } from '$lib/api/customers';
   import { quickAdd } from '$lib/api/sessions';
   import SearchableSelect from '$lib/components/SearchableSelect.svelte';
-  import type { Customer } from '$lib/types';
+  import type { Customer, ActiveSession } from '$lib/types';
   import { onMount } from 'svelte';
 
   let customers = $state<Customer[]>([]);
@@ -53,16 +53,17 @@
         customerName: useNewCustomer ? newCustomerName : undefined,
         workOrderName: workOrderName.trim()
       });
-      timer.setActive({
+      const active: ActiveSession = {
         sessionId: result.session.id,
         workOrderId: result.workOrder.id,
         workOrderName: result.workOrder.name,
         customerName: result.customer.name,
-        customerColor: result.customer.color,
+        customerColor: result.customer.color ?? null,
         startedAt: result.session.startTime,
         elapsedSeconds: 0,
         isPaused: false
-      });
+      };
+      timer.setActive(active);
       await sessionsStore.refreshAll();
       uiStore.closeQuickAdd();
       workOrderName = '';

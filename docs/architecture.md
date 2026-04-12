@@ -622,7 +622,7 @@ export const prerender = false;
 ```rust
 // pauseSession command
 pub fn pause_session(state: State<AppState>) -> Result<(), AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;  // Use safe lock acquisition
     let now = Utc::now().to_rfc3339();
     
     // Record pause time without closing session
@@ -637,7 +637,7 @@ pub fn pause_session(state: State<AppState>) -> Result<(), AppError> {
 
 // resumeSession command
 pub fn resume_session(state: State<AppState>) -> Result<(), AppError> {
-    let conn = state.db.lock().unwrap();
+    let conn = get_conn(&state)?;  // Use safe lock acquisition
     
     // Clear pause state
     conn.execute(
@@ -675,6 +675,168 @@ async resume() {
 ```
 
 **Why this matters**: The void return type is intentional—commands should be focused and return only what's necessary. If pause/resume need to update UI, the frontend queries the fresh state via a separate `getActiveSession()` call. This pattern is simpler than trying to return complex data structures.
+
+### 5.9 Backend Patterns (Safe DB Access & Query Deduplication)
+
+**Safe Database Lock Access Pattern**:
+
+All command handlers must use the `get_conn()` helper to safely acquire the database lock, which gracefully handles mutex poison errors instead of crashing:
+
+```rust
+// ❌ NEVER DO THIS
+let conn = state.db.lock().unwrap();  // Crashes if mutex is poisoned
+
+// ✅ DO THIS
+let conn = get_conn(&state)?;  // Returns proper AppError on poison
+```
+
+Located in `src-tauri/src/db/mod.rs`:
+```rust
+pub fn get_conn<'a>(state: &'a tauri::State<AppState>) -> Result<MutexGuard<'a, Connection>, AppError> {
+    state.db.lock().map_err(|e| {
+        AppError::Database(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+            Some(format!("Database lock poisoned: {}", e))
+        ))
+    })
+}
+```
+
+**Why it matters**: If any thread panics while holding the Mutex lock, the lock becomes "poisoned". Direct `.unwrap()` calls will panic the entire app. The `get_conn()` helper returns a proper `AppError` instead, keeping the app running.
+
+---
+
+**Effective Duration SQL Constant**:
+
+The duration calculation logic `COALESCE(duration_override, duration_seconds) - COALESCE(total_paused_seconds, 0)` appears in multiple queries. Extract it as a constant to ensure consistency:
+
+```rust
+// src-tauri/src/services/summary_service.rs
+const EFFECTIVE_DURATION_SQL: &str = "COALESCE(ts.duration_override, ts.duration_seconds) - COALESCE(ts.total_paused_seconds, 0)";
+
+// Usage in queries:
+let query = format!("
+    SELECT {}, wo.name FROM time_sessions ts
+    ...", EFFECTIVE_DURATION_SQL);
+```
+
+**Why it matters**: If the duration calculation logic changes (e.g., to include rounding), you only update it in one place instead of 4+ query sites. Reduces bugs and maintenance burden.
+
+---
+
+**Shared Session Query Helper**:
+
+Daily summary and report queries both fetch sessions with the same JOIN pattern. Extract to `fetch_sessions()` helper:
+
+```rust
+// src-tauri/src/services/summary_service.rs
+fn fetch_sessions(
+    conn: &Connection,
+    where_clause: &str,
+    params: &[&dyn rusqlite::ToSql]
+) -> Result<Vec<Session>, AppError> {
+    let query = format!("
+        SELECT ts.id, ts.work_order_id, wo.name, c.name, c.color, 
+               ts.start_time, ts.end_time, ts.duration_seconds, ts.duration_override,
+               {}, ts.activity_type, ts.notes, ts.created_at, ts.updated_at
+        FROM time_sessions ts
+        JOIN work_orders wo ON ts.work_order_id = wo.id
+        JOIN customers c ON wo.customer_id = c.id
+        WHERE {}
+        ORDER BY ts.start_time
+    ", EFFECTIVE_DURATION_SQL, where_clause);
+    
+    // ... prepare, map, collect
+}
+
+// Usage in both daily summary and report:
+let sessions = fetch_sessions(conn, "date(ts.start_time) = date(?)", &[&date as &dyn rusqlite::ToSql])?;
+```
+
+**Why it matters**: Eliminates 60+ lines of duplicated SQL join/fetch logic. If the session query needs to change (e.g., add new field, change join), it only needs to be updated once.
+
+### 5.10 Frontend Patterns (State Management & Reactivity)
+
+**Edit State Object Pattern**:
+
+When managing form edits, consolidate multiple related state variables into a single object. This prevents partial resets and makes validation clearer:
+
+```typescript
+// ❌ BEFORE: 4 separate state vars prone to sync bugs
+let editingId = $state<string | null>(null);
+let editNotes = $state('');
+let editDuration = $state('');
+let editActivityType = $state('');
+
+function cancelEdit() {
+  editingId = null;
+  editNotes = '';
+  editDuration = '';
+  editActivityType = '';
+}
+
+// ✅ AFTER: Single EditState object
+type EditState = { id: string; notes: string; duration: string; activityType: string };
+let editState = $state<EditState | null>(null);
+
+function cancelEdit() {
+  editState = null;  // Single reset
+}
+
+function saveEdit(session: Session) {
+  if (!editState) return;
+  await updateSession(editState.id, {
+    notes: editState.notes,
+    duration: parseInt(editState.duration),
+    activityType: editState.activityType,
+  });
+  editState = null;
+}
+```
+
+**Why it matters**: Easier to pass around, validate as a unit, and reset completely. Less chance of leaving one field in a stale state.
+
+---
+
+**Stale Search Result Cancellation Pattern**:
+
+When debounced search requests can overlap, track a generation counter to discard stale results:
+
+```typescript
+// src/lib/components/SearchSwitch.svelte
+let searchGen = 0;
+
+async function search(q: string) {
+  const gen = ++searchGen;  // Capture generation of this search
+  searching = true;
+  
+  const all = await listWorkOrders();
+  if (gen !== searchGen) return;  // Abort if newer search started
+  
+  searchResults = all.filter(wo => wo.name.includes(q));
+}
+```
+
+**Why it matters**: Fast typers won't see UI flicker from old search results appearing after newer ones. If user types "F" (search 1), then "Fa" (search 2), search 1 might complete after search 2 and overwrite results. The generation counter prevents this.
+
+---
+
+**Timer Tick Restart on Resume (Svelte 5 $effect)**:
+
+Use a reactive `$effect` to automatically restart the timer tick interval when resuming from pause:
+
+```typescript
+// src/lib/stores/timer.svelte.ts
+$effect(() => {
+  if (activeSession && !isPaused) {
+    startTick();  // Auto-start when active and not paused
+  } else {
+    stopTick();   // Auto-stop when paused or no active session
+  }
+});
+```
+
+**Why it matters**: Timer automatically updates UI on pause/resume without manual restart calls. The reactive dependency ensures correctness: if pause state changes, tick state updates immediately. No risk of forgetting to call `startTick()` after resume.
 
 ---
 

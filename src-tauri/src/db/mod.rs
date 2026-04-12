@@ -1,9 +1,43 @@
 use rusqlite::{Connection, Result as SqlResult};
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
+use crate::models::error::AppError;
 
 pub struct AppState {
     pub db: Mutex<Connection>,
+}
+
+/// Safely acquire database lock with graceful poison error handling.
+///
+/// Returns a `MutexGuard` to the database connection. Unlike direct `.unwrap()` calls,
+/// this returns an `AppError` if the mutex is poisoned (thread panicked while holding lock),
+/// preventing app crashes in production.
+///
+/// # Errors
+/// Returns `AppError::Database` with SQLITE_BUSY status if the mutex is poisoned.
+///
+/// # Example
+/// ```rust
+/// let conn = get_conn(&state)?;
+/// conn.execute("UPDATE ...", [])?;
+/// ```
+pub fn get_conn<'a>(state: &'a tauri::State<AppState>) -> Result<MutexGuard<'a, Connection>, AppError> {
+    state.db.lock().map_err(|e| {
+        AppError::Database(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+            Some(format!("Database lock poisoned: {}", e))
+        ))
+    })
+}
+
+/// Create an in-memory database with all migrations applied. For use in tests only.
+pub fn init_test_db() -> SqlResult<Connection> {
+    let conn = Connection::open_in_memory()?;
+    conn.execute_batch("
+        PRAGMA foreign_keys = ON;
+    ")?;
+    run_migrations(&conn)?;
+    Ok(conn)
 }
 
 pub fn initialize(db_path: &Path) -> SqlResult<Connection> {

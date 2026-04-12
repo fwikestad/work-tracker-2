@@ -11,6 +11,7 @@
   let searching = $state(false);
   let selectedIndex = $state(0);
   let searchTimeout: ReturnType<typeof setTimeout> | null = null;
+  let searchGen = 0;
 
   let displayItems = $derived(query.trim() ? searchResults : sessionsStore.recent);
 
@@ -19,9 +20,11 @@
       searchResults = [];
       return;
     }
+    const gen = ++searchGen;
     searching = true;
     try {
       const all = await listWorkOrders();
+      if (gen !== searchGen) return; // Stale — a newer search is running
       const lowerQuery = q.toLowerCase();
       searchResults = all.filter(
         (wo) =>
@@ -29,7 +32,9 @@
           wo.customerName?.toLowerCase().includes(lowerQuery)
       );
     } finally {
-      searching = false;
+      if (gen === searchGen) {
+        searching = false;
+      }
     }
   }
 

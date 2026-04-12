@@ -1,45 +1,43 @@
 use rusqlite::{Connection, params};
 use crate::models::{session::*, work_order::WorkOrder, error::AppError};
 
-pub fn get_daily_summary(conn: &Connection, date: &str) -> Result<DailySummary, AppError> {
-    // Get summary entries (aggregated by customer and work order)
-    let mut stmt = conn.prepare("
-        SELECT 
-            c.id,
-            c.name,
-            c.color,
-            wo.id,
-            wo.name,
-            SUM(COALESCE(ts.duration_override, ts.duration_seconds) - COALESCE(ts.total_paused_seconds, 0)),
-            COUNT(ts.id)
-        FROM time_sessions ts
-        JOIN work_orders wo ON ts.work_order_id = wo.id
-        JOIN customers c ON wo.customer_id = c.id
-        WHERE date(ts.start_time) = date(?)
-          AND ts.end_time IS NOT NULL
-        GROUP BY c.id, wo.id
-        ORDER BY c.name, wo.name
-    ")?;
-    
-    let entries: Result<Vec<SummaryEntry>, _> = stmt.query_map(params![date], |row| {
-        Ok(SummaryEntry {
-            customer_id: row.get(0)?,
-            customer_name: row.get(1)?,
-            customer_color: row.get(2)?,
-            work_order_id: row.get(3)?,
-            work_order_name: row.get(4)?,
-            total_seconds: row.get::<_, Option<i64>>(5)?.unwrap_or(0),
-            session_count: row.get(6)?,
-        })
-    })?.collect();
-    
-    let entries = entries?;
-    
-    // Calculate total
-    let total_seconds: i64 = entries.iter().map(|e| e.total_seconds).sum();
-    
-    // Get all sessions for the day
-    let mut stmt = conn.prepare("
+// SQL fragment for calculating effective duration (accounts for overrides and pauses)
+// This constant ensures consistency across all queries that need to compute duration.
+// If the duration calculation logic changes, update only this string.
+//
+// Calculation: (duration_override OR duration_seconds) - total_paused_seconds
+// - Uses `COALESCE(duration_override, duration_seconds)` to prefer user-specified duration over auto-calculated
+// - Subtracts `total_paused_seconds` to exclude paused time from tracked duration
+// - Uses `COALESCE(..., 0)` to handle NULL values safely for older entries
+const EFFECTIVE_DURATION_SQL: &str = "COALESCE(ts.duration_override, ts.duration_seconds) - COALESCE(ts.total_paused_seconds, 0)";
+
+/// Fetch sessions with work order and customer details joined.
+///
+/// This helper eliminates duplication between daily summary and report queries.
+/// Both need the same session data with joined work order and customer info.
+///
+/// # Parameters
+/// - `conn`: Database connection
+/// - `where_clause`: SQL WHERE condition (e.g., "date(ts.start_time) = date(?)")
+/// - `params`: Query parameters corresponding to placeholders in where_clause
+///
+/// # Returns
+/// Vector of `Session` objects with all fields populated including effective_duration
+///
+/// # Example
+/// ```rust
+/// let sessions = fetch_sessions(
+///     &conn,
+///     "date(ts.start_time) = date(?) AND c.id = ?",
+///     &[&today as &dyn ToSql, &customer_id as &dyn ToSql]
+/// )?;
+/// ```
+fn fetch_sessions(
+    conn: &Connection,
+    where_clause: &str,
+    params: &[&dyn rusqlite::ToSql]
+) -> Result<Vec<Session>, AppError> {
+    let query = format!("
         SELECT 
             ts.id,
             ts.work_order_id,
@@ -50,7 +48,7 @@ pub fn get_daily_summary(conn: &Connection, date: &str) -> Result<DailySummary, 
             ts.end_time,
             ts.duration_seconds,
             ts.duration_override,
-            COALESCE(ts.duration_override, ts.duration_seconds),
+            {},
             ts.activity_type,
             ts.notes,
             ts.created_at,
@@ -58,12 +56,14 @@ pub fn get_daily_summary(conn: &Connection, date: &str) -> Result<DailySummary, 
         FROM time_sessions ts
         JOIN work_orders wo ON ts.work_order_id = wo.id
         JOIN customers c ON wo.customer_id = c.id
-        WHERE date(ts.start_time) = date(?)
+        WHERE {}
         ORDER BY ts.start_time
-    ")?;
+    ", EFFECTIVE_DURATION_SQL, where_clause);
     
-    let sessions: Result<Vec<_>, _> = stmt.query_map(params![date], |row| {
-        Ok(crate::models::session::Session {
+    let mut stmt = conn.prepare(&query)?;
+    
+    let sessions: Result<Vec<_>, _> = stmt.query_map(params, |row| {
+        Ok(Session {
             id: row.get(0)?,
             work_order_id: row.get(1)?,
             work_order_name: row.get(2)?,
@@ -81,11 +81,54 @@ pub fn get_daily_summary(conn: &Connection, date: &str) -> Result<DailySummary, 
         })
     })?.collect();
     
+    sessions.map_err(AppError::Database)
+}
+
+pub fn get_daily_summary(conn: &Connection, date: &str) -> Result<DailySummary, AppError> {
+    // Get summary entries (aggregated by customer and work order)
+    let query = format!("
+        SELECT 
+            c.id,
+            c.name,
+            c.color,
+            wo.id,
+            wo.name,
+            SUM({}),
+            COUNT(ts.id)
+        FROM time_sessions ts
+        JOIN work_orders wo ON ts.work_order_id = wo.id
+        JOIN customers c ON wo.customer_id = c.id
+        WHERE date(ts.start_time) = date(?)
+          AND ts.end_time IS NOT NULL
+        GROUP BY c.id, wo.id
+        ORDER BY c.name, wo.name
+    ", EFFECTIVE_DURATION_SQL);
+    
+    let mut stmt = conn.prepare(&query)?;
+    
+    let entries: Result<Vec<SummaryEntry>, _> = stmt.query_map(params![date], |row| {
+        Ok(SummaryEntry {
+            customer_id: row.get(0)?,
+            customer_name: row.get(1)?,
+            customer_color: row.get(2)?,
+            work_order_id: row.get(3)?,
+            work_order_name: row.get(4)?,
+            total_seconds: row.get::<_, Option<i64>>(5)?.unwrap_or(0),
+            session_count: row.get(6)?,
+        })
+    })?.collect();
+    
+    let entries = entries?;
+    let total_seconds: i64 = entries.iter().map(|e| e.total_seconds).sum();
+    
+    // Reuse session fetcher
+    let sessions = fetch_sessions(conn, "date(ts.start_time) = date(?)", &[&date as &dyn rusqlite::ToSql])?;
+    
     Ok(DailySummary {
         date: date.to_string(),
         total_seconds,
         entries,
-        sessions: sessions?,
+        sessions,
     })
 }
 
@@ -188,14 +231,14 @@ pub fn export_csv(conn: &Connection, start_date: &str, end_date: &str) -> Result
 
 pub fn get_report(conn: &Connection, start_date: &str, end_date: &str) -> Result<ReportData, AppError> {
     // Get aggregated entries (grouped by customer and work order)
-    let mut stmt = conn.prepare("
+    let query = format!("
         SELECT 
             c.id,
             c.name,
             c.color,
             wo.id,
             wo.name,
-            SUM(COALESCE(ts.duration_override, ts.duration_seconds) - COALESCE(ts.total_paused_seconds, 0)),
+            SUM({}),
             COUNT(ts.id)
         FROM time_sessions ts
         JOIN work_orders wo ON ts.work_order_id = wo.id
@@ -204,8 +247,10 @@ pub fn get_report(conn: &Connection, start_date: &str, end_date: &str) -> Result
           AND date(ts.start_time) <= date(?)
           AND ts.end_time IS NOT NULL
         GROUP BY c.id, wo.id
-        ORDER BY SUM(COALESCE(ts.duration_override, ts.duration_seconds) - COALESCE(ts.total_paused_seconds, 0)) DESC
-    ")?;
+        ORDER BY SUM({}) DESC
+    ", EFFECTIVE_DURATION_SQL, EFFECTIVE_DURATION_SQL);
+    
+    let mut stmt = conn.prepare(&query)?;
     
     let entries: Result<Vec<ReportEntry>, _> = stmt.query_map(params![start_date, end_date], |row| {
         Ok(ReportEntry {
@@ -220,61 +265,21 @@ pub fn get_report(conn: &Connection, start_date: &str, end_date: &str) -> Result
     })?.collect();
     
     let entries = entries?;
-    
-    // Calculate total
     let total_seconds: i64 = entries.iter().map(|e| e.total_seconds).sum();
     
-    // Get all sessions for the date range
-    let mut stmt = conn.prepare("
-        SELECT 
-            ts.id,
-            ts.work_order_id,
-            wo.name,
-            c.name,
-            c.color,
-            ts.start_time,
-            ts.end_time,
-            ts.duration_seconds,
-            ts.duration_override,
-            COALESCE(ts.duration_override, ts.duration_seconds) - COALESCE(ts.total_paused_seconds, 0),
-            ts.activity_type,
-            ts.notes,
-            ts.created_at,
-            ts.updated_at
-        FROM time_sessions ts
-        JOIN work_orders wo ON ts.work_order_id = wo.id
-        JOIN customers c ON wo.customer_id = c.id
-        WHERE date(ts.start_time) >= date(?)
-          AND date(ts.start_time) <= date(?)
-          AND ts.end_time IS NOT NULL
-        ORDER BY ts.start_time
-    ")?;
-    
-    let sessions: Result<Vec<_>, _> = stmt.query_map(params![start_date, end_date], |row| {
-        Ok(Session {
-            id: row.get(0)?,
-            work_order_id: row.get(1)?,
-            work_order_name: row.get(2)?,
-            customer_name: row.get(3)?,
-            customer_color: row.get(4)?,
-            start_time: row.get(5)?,
-            end_time: row.get(6)?,
-            duration_seconds: row.get(7)?,
-            duration_override: row.get(8)?,
-            effective_duration: row.get(9)?,
-            activity_type: row.get(10)?,
-            notes: row.get(11)?,
-            created_at: row.get(12)?,
-            updated_at: row.get(13)?,
-        })
-    })?.collect();
+    // Reuse session fetcher
+    let sessions = fetch_sessions(
+        conn,
+        "date(ts.start_time) >= date(?) AND date(ts.start_time) <= date(?) AND ts.end_time IS NOT NULL",
+        &[&start_date as &dyn rusqlite::ToSql, &end_date as &dyn rusqlite::ToSql]
+    )?;
     
     Ok(ReportData {
         start_date: start_date.to_string(),
         end_date: end_date.to_string(),
         total_seconds,
         entries,
-        sessions: sessions?,
+        sessions,
     })
 }
 

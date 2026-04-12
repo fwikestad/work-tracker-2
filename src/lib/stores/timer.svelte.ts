@@ -11,6 +11,15 @@ let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
 const isPaused = $derived(activeSession?.isPaused ?? false);
 
+// Reactive effect to restart tick when unpausing
+$effect(() => {
+  if (activeSession && !isPaused) {
+    startTick();
+  } else {
+    stopTick();
+  }
+});
+
 export const timer = {
   get active() {
     return activeSession;
@@ -32,7 +41,6 @@ export const timer = {
     activeSession = session;
     if (session) {
       elapsedSeconds = session.elapsedSeconds;
-      startTick();
       startHeartbeat();
       updateTrayTooltip();
     } else {
@@ -73,13 +81,9 @@ export const timer = {
 
 function startTick() {
   stopTick();
-  if (!isPaused) {
-    timerInterval = setInterval(() => {
-      if (!isPaused) {
-        elapsedSeconds += 1;
-      }
-    }, 1000);
-  }
+  timerInterval = setInterval(() => {
+    elapsedSeconds += 1;
+  }, 1000);
 }
 
 function stopTick() {
