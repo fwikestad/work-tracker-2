@@ -574,6 +574,399 @@ timer.setActive({
 
 ---
 
+### 2026-04-12: Phase 2 Scope & Architecture Decisions — Approved
+
+**From**: Han (Lead)  
+**Status**: APPROVED  
+**Document**: docs/phase2-plan.md
+
+#### Decision: Phase 2 Multi-Customer Workflows Scope
+
+**Goal**: Smooth context switching across customers and projects with advanced quick-access patterns, visual organization, and paused session state support.
+
+**15 Work Items** identified with complexity estimates (34.5 hours total):
+- P2-ARCH-1: Document Phase 2 architecture decisions (Han)
+- P2-UI-1 to P2-UI-3: Timer pause button, pause/resume component, SessionList inline actions (Leia)
+- P2-STORE-1: Extend timer store for pause state sync (Leia)
+- P2-SEARCH-1 to P2-SEARCH-2: SearchSwitch grouping, favorite indicators (Leia)
+- P2-HOTKEY-1: Global hotkey (Ctrl+Shift+S / Cmd+Option+S) (Leia)
+- P2-TAURI-1: System tray + quick menu (Chewie)
+- P2-TEST-UI-1 to P2-TEST-BACKEND-1: Component tests, backend tests, integration tests (Wedge, Chewie)
+- P2-DOCS-1: API reference updates (Mon Mothma)
+- P2-PERF-1: Performance verification (Wedge)
+
+**Critical Path**: P2-ARCH-1 → P2-UI-1, P2-STORE-1, P2-SEARCH-1 (unblock team)
+
+#### Decision: Pause State Transitions — Linear Only
+
+**Decision**: Running → Paused → Stopped (no cycling back)
+
+**Rationale**:
+- Simpler state machine (prevents UI confusion)
+- Aligns with consultant workflow: "I need a break" → pause, "Back to work" → resume, "Done" → stop
+- Reduces pause interval tracking complexity (one continuous pause, not multiple)
+
+**UI States**:
+- Running: Green badge (●), timer ticking, pause button available
+- Paused: Amber badge (●), timer frozen, resume button available
+- Stopped: Grey or no indicator, duration finalized
+
+**Implementation**: `active_session.is_paused = 0/1`, pause button changes to "Resume" when paused
+
+---
+
+#### Decision: Paused Time in Daily Summaries — Include
+
+**Decision**: Include paused intervals in total tracked time
+
+**Rationale**:
+- Consultant perspective: "I was working on this, took a break" counts as time on task
+- Billing accuracy: paused time is part of session
+- Simpler queries
+- Optional future refinement: "active time" vs "total time" in Phase 3
+
+**Calculation**: `effective_duration = (end_time - start_time)` (includes paused); optional future: `active_duration = (end_time - start_time) - total_paused_seconds`
+
+---
+
+#### Decision: System Tray & Global Hotkey Scope
+
+**Decision**: Global hotkey Phase 2a (MVP), system tray Phase 2b (nice-to-have)
+
+**Rationale**:
+- Global hotkey high-value, low-complexity: enables quick-switch from ANY app
+- System tray adds platform-specific complexity (Windows/macOS/Linux differences)
+- Hotkey alone unblocks core workflow; tray is polish
+
+**Phase 2a (Hotkey)**:
+- Press Ctrl+Shift+S (any app) → brings work-tracker window + opens SearchSwitch
+- User searches or selects from recents/favorites
+- Press Enter to switch or Escape to cancel
+
+**Phase 2b (System Tray)** — if timeline permits:
+- Icon shows active session indicator (green/amber/grey)
+- Right-click menu: Pause/Resume, Switch Project (favorites), Open App, Quit
+- Single-click: toggle pause
+
+**Timeline**: Hotkey 2–3 days (Leia), Tray 4 days (Chewie)
+
+---
+
+#### Decision: Visual State Indicators — Three Distinct Badges
+
+| State | Badge | Dot Color | Timer Display |
+|-------|-------|-----------|---------------|
+| Running | "Running" | Green (#4caf7d) | Timer ticking (updates every 1s) |
+| Paused | "Paused" | Amber (#f59e0b) | Timer frozen (last value shown) |
+| Stopped | (no badge) | Grey (#9ca3af) or hidden | Finalized duration shown |
+
+**Rendering**: Svelte conditional badges in Timer + SessionList components
+
+---
+
+#### Decision: Favorites Behavior — Sorted First + Recent
+
+**Sort Order in SearchSwitch Display**:
+1. Favorites (is_favorite = 1) — sorted by last_used timestamp, most recent first
+2. Recent (not favorited, but used today) — sorted by last_used, most recent first
+3. Search Results (if searching) — sorted by relevance (name match > customer match)
+
+**Toggle Behavior**:
+- Star icon next to work order in search results or SessionList
+- Click to toggle is_favorite (1 ↔ 0)
+- UI updates immediately (optimistic)
+- Favorite work orders appear at top of next search
+
+**Business Rule**: Only active work orders can be favorited; favoriting doesn't prevent archival (archive removes from favorites automatically)
+
+---
+
+#### Decision: Phase 1 Overlap — 5 Items Already Implemented
+
+| Item | Phase 1 Completion | Phase 2 Owner | Effort |
+|------|-------------------|---------------|--------|
+| Pause/resume backend commands | ✅ `pause_session()`, `resume_session()` in commands/sessions.rs | Leia (UI) | 3–5h UI |
+| Pause schema | ✅ Migration 002: `paused_at`, `total_paused_seconds` | Chewie (logic) | 2h tests |
+| Favorites schema | ✅ `is_favorite` column added to work_orders | Leia (UI) | 2–3h UI |
+| Toggle favorite command | ✅ Command exists, called in SearchSwitch | Leia (UI) | 1h testing |
+| SearchSwitch component | ✅ Exists, wired for search + switch | Leia (refactor) | 3–4h refactor |
+
+**Conclusion**: Phase 1 built the plumbing; Phase 2 is connecting the lights.
+
+---
+
+#### Risk Factors & Mitigations
+
+| Risk | Mitigation |
+|------|-----------|
+| Pause state sync race condition (UI ↔ backend) | Optimistic updates + heartbeat validation; tests cover state transitions |
+| Global hotkey blocked by OS (focus handling) | Tauri 2 handles this; test on Windows + macOS early |
+| Performance regression (pause/resume latency) | Measure first; should complete <100ms (DB write + heartbeat) |
+| Paused sessions counted wrong in summaries | Clarify duration semantics early; tests verify calculations |
+
+---
+
+### 2026-04-12: Security Review #001 — Approved
+
+**From**: Ackbar (Security Expert)  
+**Status**: COMPLETE  
+**Document**: docs/security-review-001.md
+
+#### Finding Summary
+
+**Overall Risk: LOW** — 0 critical, 0 high, 2 medium, 3 low findings
+
+| Severity | Count |
+|----------|-------|
+| Critical | 0 |
+| High | 0 |
+| Medium | 2 |
+| Low | 3 |
+| Informational | 3 |
+
+#### Medium Severity Findings
+
+1. **[SEV-001] Content Security Policy Disabled** — `tauri.conf.json:31`
+   - CSP set to `null`, disables XSS protection
+   - If content injected to WebView (notes/activity fields), arbitrary JS execution possible with full IPC access
+   - **Recommended Fix**: Set restrictive CSP: `"csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"`
+
+2. **[SEV-002] Shell Plugin Unnecessary** — `Cargo.toml:19`
+   - `tauri-plugin-shell` included but unused
+   - Expands attack surface unnecessarily
+   - **Recommended Fix**: Remove from dependencies (1 line change)
+
+#### Low Severity Findings
+
+3. **[LOW-001] `withGlobalTauri: true`** — Exposes full IPC on `window.__TAURI__`
+   - Any script on page has access to all Tauri commands
+   - **Recommended Fix**: Set to `false` (requires explicit imports)
+
+4. **[LOW-002] No Input Length Validation** — Text fields accept unlimited length
+   - Could enable DoS via oversized notes/metadata
+   - **Recommended Fix**: Add max length checks (255–2000 chars depending on field)
+
+5. **[LOW-003] CSV Formula Injection** — `escape_csv` doesn't guard against `=CMD()` payloads
+   - If CSV contains formula-starting characters, could be injected on open
+   - **Recommended Fix**: Prefix formula-starting cells with single quote
+
+#### Positive Observations
+
+✅ All SQL queries use parameterized statements — no injection possible  
+✅ Mutex-guarded DB access with graceful poison handling  
+✅ Transactions for atomic multi-step operations  
+✅ WAL mode + foreign keys enabled  
+✅ UUID v4 for all entity IDs  
+✅ Structured error serialization (no raw DB errors exposed)  
+
+#### Dependency Audits
+
+- **cargo audit**: 0 vulnerabilities, 20 warnings (unmaintained GTK3 transitive deps — expected for Tauri on Linux)
+- **npm audit**: 3 low (`cookie` in `@sveltejs/kit` chain — no practical impact in desktop app)
+
+#### Recommended Action Plan
+
+**Priority 1 (Immediate)**:
+- Fix SEV-001: CSP — low-effort config change, high impact
+- Fix SEV-002: Shell plugin removal — 1 line in Cargo.toml
+
+**Priority 2 (Phase 2)**:
+- Fix LOW-001: `withGlobalTauri` flag
+- Fix LOW-002: Input length validation
+- Fix LOW-003: CSV formula injection guards
+
+---
+
+### 2026-04-12: DevOps Strategy & CI/CD Pipeline — Approved
+
+**From**: Lando (DevOps Expert)  
+**Status**: APPROVED — Ready for Implementation  
+**Document**: docs/devops-strategy.md
+
+#### Decision: Four-Workflow CI/CD Pipeline
+
+**Context**: Work Tracker 2 is Tauri 2 desktop app (Rust + Svelte) with solo dev + AI team. Pipelines must be simple and maintainable.
+
+**Four Workflows**:
+
+1. **`ci.yml`** — Fast feedback loop (lint, test, build check) on every PR/push
+   - Target: <5 minutes
+   - Jobs: Lint (eslint, clippy), test (vitest, cargo test), build check
+
+2. **`coverage.yml`** — Code coverage tracking and reporting on PRs
+   - Rust: cargo-tarpaulin (Cobertura XML + HTML)
+   - Frontend: Vitest `--coverage` (built-in, uses @vitest/coverage-v8)
+   - Current baseline: ~10%
+   - Phase 1 policy: Informational (no blocking)
+   - Phase 2 enforcement: Block PRs below 40%
+
+3. **`release.yml`** — Multi-platform release builds triggered by version tags
+   - Trigger: Git tags (v*.*.*)
+   - Matrix: Windows (x64), macOS (universal x64+arm64), Linux (x64)
+   - Formats: Windows .msi/.exe, macOS .dmg/.app, Linux .AppImage/.deb
+   - Artifacts: GitHub Releases
+   - Target: <15 minutes end-to-end
+
+4. **`audit.yml`** — Weekly security audits (cargo audit + npm audit)
+   - Trigger: Weekly schedule (Mondays)
+   - Jobs: cargo audit, npm audit, report results
+
+**Rationale**:
+- Separation of concerns: Fast CI doesn't wait for slow coverage/audit
+- Fail early: Lint → test → build (cheapest failures first)
+- Parallel execution: Coverage and audits run independently
+- Clear triggers: PRs get CI + coverage, tags get releases, schedule gets audits
+
+---
+
+#### Decision: Ubuntu as Primary CI Runner
+
+**Decision**: Use `ubuntu-latest` for all jobs except release builds (which use matrix)
+
+**Rationale**:
+- Cost: Linux runners are fastest and cheapest on GitHub Actions
+- Ecosystem support: All Tauri dependencies available via apt-get
+- Consistency: Same OS for lint, test, non-release builds
+
+**Platform-specific testing**: Only in release workflow (Windows, macOS, Linux matrix)
+
+**Trade-off**: Platform-specific bugs might not be caught until release; mitigated by local testing
+
+---
+
+#### Decision: Aggressive Caching (Cargo + npm)
+
+**Three Layers**:
+1. Cargo registry (`~/.cargo/registry`)
+2. Cargo build artifacts (`src-tauri/target`)
+3. npm cache (`~/.npm` via `setup-node` action)
+
+**Cache Keys**:
+- Cargo registry: `os + Cargo.lock hash`
+- Cargo build: `os + Cargo.lock hash + Rust source hash`
+- npm: `os + package-lock.json hash`
+
+**Benefit**: 50-60% runtime reduction on warm cache (8 min → 3-4 min)
+
+**Trade-off**: Cache storage counts against GitHub Actions 10GB free tier; mitigated with retention policies
+
+---
+
+#### Decision: Manual Version Bumping (Phase 1)
+
+**Workflow**:
+1. Update `package.json` version (e.g., 0.1.0 → 0.2.0)
+2. Commit: `chore: bump version to 0.2.0`
+3. Tag: `git tag v0.2.0`
+4. Push: `git push origin main --tags`
+5. GitHub Actions builds and releases automatically
+
+**Rationale**:
+- Simplicity: No extra tooling for Phase 1
+- Control: Developer explicitly decides release timing
+- Audit trail: Version bumps visible in git history
+
+**Future**: Switch to `release-please` (Google's tool) in Phase 2+ (parses conventional commits, creates release PR, auto-changelog)
+
+---
+
+#### Decision: GitHub Releases for Artifact Hosting
+
+**Decision**: Attach binaries to GitHub Releases (not separate hosting)
+
+**Rationale**:
+- Free for open-source
+- Integrated with git tags
+- Persistent (GitHub doesn't expire assets)
+- Tauri updater plugin can query GitHub Releases API
+
+**Alternatives rejected**: S3 (too complex), GitHub Packages (for libraries), custom hosting (maintenance burden)
+
+---
+
+#### Decision: Informational Coverage (Phase 1)
+
+**Decision**: Report coverage on PRs but don't block merges
+
+**Rationale**:
+- Current baseline: ~10% (too low to enforce threshold)
+- Early stage: Still writing features, tests lag
+- Iterative improvement: Track trends, celebrate increases
+
+**Phase 2**: Block PRs below 40% overall coverage
+
+---
+
+#### Decision: Dependabot for Automated Updates
+
+**Configuration**:
+- Update frequency: Weekly (Mondays) for Cargo + npm, Monthly for Actions
+- PR limits: Max 5 open PRs per ecosystem
+- Labels: Auto-tag with `dependencies` + ecosystem label
+
+**Auto-merge Policy**:
+- Patch updates (e.g., 1.2.3 → 1.2.4): Auto-merge if CI green
+- Minor/Major: Manual review required
+
+**Rationale**:
+- Security: Catch vulnerabilities early via Dependabot alerts
+- Freshness: Stay up-to-date with bug fixes
+- Reduce toil: Don't manually check for updates
+
+---
+
+#### Decision: Build Matrix Strategy
+
+| Platform | OS Runner | Architectures | Formats |
+|----------|-----------|---------------|---------|
+| Windows | `windows-latest` | x64 | `.msi`, `.exe` |
+| macOS | `macos-latest` | Universal (x64 + arm64) | `.dmg`, `.app` |
+| Linux | `ubuntu-22.04` | x64 | `.AppImage`, `.deb` |
+
+**Rationale**:
+- Universal macOS: Single binary for Intel + Apple Silicon (required by modern macOS)
+- Windows x64 only: ARM64 Windows <5% market share (defer to Phase 3)
+- Linux AppImage + .deb: Covers portable and package manager users
+
+**Artifact naming**: `work-tracker-2-{version}-{platform}-{arch}.{ext}`
+
+---
+
+#### Decision: No Toolchain Pinning
+
+**Decision**: Always use latest Rust stable and Node.js 22.x LTS in CI
+
+**Rationale**:
+- Rust: Strong backwards compatibility, latest includes security fixes
+- Node.js: 22.x is LTS, minor updates safe
+- Lock files: `Cargo.lock` and `package-lock.json` pin exact dependency versions
+
+**Fallback**: Create `rust-toolchain.toml` or pin Node version if breaking change detected
+
+---
+
+#### Implementation Sequence
+
+**Week 1**:
+1. Create `ci.yml` (lint, test, build check)
+2. Create `audit.yml` (cargo audit, npm audit)
+3. Create `dependabot.yml` (weekly updates)
+
+**Week 2**:
+4. Create `coverage.yml` (tarpaulin + vitest coverage)
+5. Configure PR comment bot (coverage delta)
+
+**Week 3**:
+6. Create `release.yml` (multi-platform builds)
+7. Test with pre-release tag (`v0.1.0-alpha.1`)
+
+**Week 4+**:
+8. Optimize caching (sccache for Rust)
+9. Add auto-merge for Dependabot patches
+10. Set up GitHub Pages for coverage history
+
+---
+
 #### Test Coverage Audit (Wedge — Pre-Refactor)
 
 **Existing Coverage**:

@@ -6,6 +6,22 @@ Lead for work-tracker-2 — native desktop time tracker for consultant Fredrik K
 
 ## Learnings
 
+### 2026-04-12: Phase 2 Planning Complete
+
+Phase 2 scope breakdown finalized with 15 work items, critical path analysis, and architecture decisions. Key decisions:
+- Pause state transitions: Linear progression (Running → Paused → Stopped)
+- Paused time in summaries: Include in total tracked time
+- Global hotkey Phase 2a (MVP), system tray Phase 2b
+- Visual badges: Running (green), Paused (amber), Stopped (grey)
+- Favorites sorted first, then recent by timestamp
+- Phase 1 overlap: 5 items already implemented (pause backend, favorites infrastructure)
+
+Estimated effort: 34.5 hours across team. Critical path: P2-ARCH-1 → UI/store/search (P2-UI-1, P2-STORE-1, P2-SEARCH-1).
+
+Decisions approved by team and merged into squad/decisions.md.
+
+---
+
 ### 2026-04-12: Phase 1 Shipment Review
 
 Comprehensive code review of Phase 1 implementation. Verified all recent bug fixes and conducted full architectural assessment.
@@ -36,6 +52,51 @@ Comprehensive code review of Phase 1 implementation. Verified all recent bug fix
 **New Learning**: Type safety best practices for manual object construction — even when runtime guards exist, complete the object literal for better IDE support and future maintainability.
 
 **Team Coordination**: Coordinated with Leia on QuickAdd fix (completed same day). Flagged Wedge for test plan validation before ship.
+
+---
+
+### 2026-04-12: Phase 2 Scope Definition
+
+Defined Phase 2 (Multi-Customer Workflows) implementation scope and architecture decisions.
+
+**Deliverables**:
+1. `docs/phase2-plan.md` — Comprehensive implementation plan with 15 work items, critical path, and timeline
+2. `.squad/decisions/inbox/han-phase2-scope.md` — Architecture decisions for pause state, favorites, hotkey integration
+
+**Key Findings**:
+- Phase 1 refactoring left codebase well-structured; Phase 2 is primarily UI implementation
+- 7 major Phase 2 features already have Phase 1 infrastructure:
+  - Pause/resume commands exist (backend)
+  - Pause schema applied (migration 002)
+  - Favorites infrastructure in place (is_favorite column, toggle command)
+  - SearchSwitch component foundation ready for grouping
+- Estimated timeline: MVP (pause + favorites) 10–12 days; full Phase 2 20–24 days
+
+**Architecture Decisions Made**:
+1. **Pause Transitions**: Linear only (Running → Paused → Stopped), no cycling
+   - Rationale: simpler state machine, aligns with consultant workflow
+2. **Paused Time in Summaries**: Include paused intervals in totals (count as work time)
+   - Rationale: consultant perspective + billing accuracy
+3. **Hotkey vs Tray**: Prioritize global hotkey (Ctrl+Shift+S / Cmd+Option+S) in Phase 2a; defer tray to 2b
+   - Rationale: hotkey high-value/low-complexity; tray adds platform-specific work
+4. **Visual Indicators**: Green (Running) / Amber (Paused) / Grey (Stopped) badges
+5. **Favorites Sort**: Favorites first (by last-used), then recent, then search results
+6. **Phase 1 Overlap**: 7 Phase 2 items already have Phase 1 foundation
+
+**Critical Path** (first 3 items to unblock team):
+1. P2-ARCH-1 (Han): Document decisions ✓
+2. P2-UI-1 (Leia): Pause button + badge in Timer component (3h, depends on design review)
+3. P2-STORE-1 (Leia): Timer store pause state sync (2h, parallel with UI-1)
+
+**Risk Mitigations**:
+- Pause state race conditions: optimistic updates + heartbeat validation
+- Hotkey platform issues: test early on Windows + macOS
+- Performance: measure pause/resume latency (target < 100ms)
+- Summary accuracy: clarify duration semantics in tests
+
+**New Learning**: Phase 2 planning benefits from Phase 1 infrastructure review — allows clear mapping of "already done" vs "Phase 2 work". Reduces scope uncertainty and speeds up implementation planning.
+
+**Team Coordination**: Deliverables ready for design review with Leia + Chewie. Plan recommends 15-min sync to approve architecture + unblock implementation start.
 
 ---
 

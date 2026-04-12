@@ -29,6 +29,97 @@ Key config files:
 - `vitest.config.ts` — Vitest configuration
 - `src-tauri/tauri.conf.json` — Tauri app config
 
+## Session: Team Expansion (2026-04-12)
+
+Charter and history files created and committed to repo.
+
+Commit: b6f5341 — team: add Ackbar (Security) and Lando (DevOps)
+
+Ready to build out CI/CD pipelines.
+
+## Session: Build Strategy Complete (2026-04-12)
+
+**Task**: Design and document the build/release strategy for work-tracker-2
+
+**Output**:
+1. Created `docs/devops-strategy.md` — comprehensive 26KB strategy document
+2. Created orchestration log entry `.squad/orchestration-log/2026-04-12T09-34-13Z-lando-build-strategy.md`
+
+**Key Decisions** (all approved):
+- Four-workflow CI/CD pipeline (ci, coverage, release, audit)
+- Aggressive caching (Cargo registry + build artifacts + npm) — 50-60% runtime improvement
+- Manual version bumping for Phase 1 (automated with release-please in Phase 2+)
+- GitHub Releases for artifact hosting (free, persistent, auto-update ready)
+- Informational coverage reporting (no blocking until Phase 2)
+- Dependabot for weekly dependency updates with auto-merge for patches
+- Build matrix: Windows x64, macOS Universal, Linux x64
+- No toolchain pinning (latest stable Rust + Node.js 22.x LTS)
+
+**Implementation Sequence**:
+- Week 1: `ci.yml` (<5min) + `audit.yml` + `dependabot.yml`
+- Week 2: `coverage.yml` with PR comment bot
+- Week 3: `release.yml` with multi-platform builds (<15min)
+- Week 4+: Optimizations (sccache, auto-merge, coverage history)
+
+**Success Criteria**:
+- ✅ CI feedback <5 minutes
+- ✅ Release automation tag → binaries in <15 minutes
+- ✅ Coverage tracking with PR comments
+- ✅ Weekly security audits
+- ✅ Dependency freshness <30 days
+
+Decisions merged into squad/decisions.md. Ready for implementation.
+
 ## Learnings
+
+### Build Strategy Complete
+
+1. **Tauri 2 Build Requirements**:
+   - Dual-stack compilation: Rust backend + Node.js frontend
+   - Platform-specific system deps: Linux needs 6+ webkit/gtk packages, Windows/macOS are self-contained
+   - Build time: ~8-10 minutes cold, ~3-4 minutes warm (with caching)
+   - Artifact size: ~10-15 MB (vs Electron's 150 MB+)
+
+2. **CI Performance Optimization**:
+   - Cache three layers: Cargo registry, Cargo build artifacts, npm cache
+   - Cache keys should include lock file hashes for automatic invalidation
+   - Expected runtime reduction: 50-60% on warm cache (8 min → 3-4 min)
+   - Cache storage: Can grow to 500MB-1GB for Cargo build artifacts
+
+3. **Tauri-Specific CI Patterns**:
+   - Use `ubuntu-latest` for primary CI (cheapest, fastest)
+   - Only run full platform matrix on releases (expensive)
+   - System deps differ per platform: Linux needs webkit2gtk, others are self-contained
+   - Tauri CLI version pinned in package.json, not in CI config
+
+4. **Coverage Tooling**:
+   - Rust: `cargo-tarpaulin` for line coverage (Cobertura XML + HTML output)
+   - Frontend: Vitest built-in coverage via `@vitest/coverage-v8`
+   - Current baseline: ~10% (16 Rust tests, 2 frontend tests)
+   - Target progression: 10% (Phase 1) → 40% (Phase 2) → 70% (stable)
+
+5. **Release Automation Trade-offs**:
+   - Manual version bumping (Phase 1): Simple but error-prone
+   - Automated with release-please (Phase 2+): Requires conventional commits
+   - GitHub Releases: Free, persistent, works with Tauri updater plugin
+   - Artifact naming: Include version + platform + arch for clarity
+
+6. **Dependency Management**:
+   - Dependabot weekly schedule prevents PR spam (vs daily)
+   - PR limit (5 per ecosystem) prevents overwhelming maintainer
+   - Auto-merge for patches is safe (CI validates, lock files pin exact versions)
+   - Security audits: `cargo audit` + `npm audit` weekly + on PRs
+
+7. **Multi-Platform Build Matrix**:
+   - macOS Universal binary: Required for modern macOS (single binary for Intel + Apple Silicon)
+   - Windows x64 only: ARM64 Windows <5% market share (defer to Phase 3)
+   - Linux: AppImage (portable) + .deb (package manager) covers most users
+   - Build time per platform: 8-12 minutes (total release: ~10-15 min with parallel matrix)
+
+8. **Workflow Separation Benefits**:
+   - Fast CI doesn't wait for slow coverage/audit jobs
+   - Separate triggers: PRs get CI+coverage, tags get releases, schedule gets audits
+   - Fail early: Lint before test, test before build (cheapest failures first)
+   - Trade-off: More YAML files to maintain (4 vs 1), but clarity wins
 
 _Populated as Lando works on the project._
