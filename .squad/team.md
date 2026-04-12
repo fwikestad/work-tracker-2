@@ -17,6 +17,8 @@
 | Chewie | Backend Dev | [charter](.squad/agents/chewie/charter.md) | 🟢 Active |
 | Wedge | Tester | [charter](.squad/agents/wedge/charter.md) | 🟢 Active |
 | Mon Mothma | Technical Writer | [charter](.squad/agents/mothma/charter.md) | 🟢 Active |
+| Ackbar | Security Expert | [charter](.squad/agents/ackbar/charter.md) | 🟢 Active |
+| Lando | DevOps Expert | [charter](.squad/agents/lando/charter.md) | 🟢 Active |
 | Scribe | Session Logger | [charter](.squad/agents/scribe/charter.md) | 🟢 Active |
 | Ralph | Work Monitor | — | 🔄 Monitor |
 | Fredrik | 👤 Human — Approvals | — | 🟢 Active |

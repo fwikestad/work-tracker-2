@@ -14,6 +14,8 @@ How to decide who handles what.
 | Testing | Wedge | Write tests, find edge cases, reviewer gating before ship |
 | Scope & priorities | Han | What to build next, trade-offs, decisions |
 | Documentation, setup guides, API docs, changelogs, inline comments | Mon Mothma | Architecture docs, command contracts, user guides, release notes |
+| Security reviews, vulnerability assessments, CVSS scoring | Ackbar | IPC surface review, SQL injection checks, dependency CVEs, tauri.conf.json audit |
+| CI/CD pipelines, build automation, coverage reporting, release workflows | Lando | GitHub Actions, cargo-tarpaulin, vitest coverage, cross-platform builds, Dependabot |
 | Session logging | Scribe | Automatic — never needs routing |
 | Final approvals, scope decisions, design sign-off | Fredrik | Human in the loop — coordinator pauses and presents for review |
 

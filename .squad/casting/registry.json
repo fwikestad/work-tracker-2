@@ -56,6 +56,22 @@
       "created_at": "2026-04-11",
       "legacy_named": false,
       "status": "active"
+    },
+    {
+      "persistent_name": "Ackbar",
+      "role": "Security Expert",
+      "universe": "star-wars-ot",
+      "created_at": "2026-04-12",
+      "legacy_named": false,
+      "status": "active"
+    },
+    {
+      "persistent_name": "Lando",
+      "role": "DevOps Expert",
+      "universe": "star-wars-ot",
+      "created_at": "2026-04-12",
+      "legacy_named": false,
+      "status": "active"
     }
   ]
 }
