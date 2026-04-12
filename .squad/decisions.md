@@ -385,6 +385,154 @@ For the three-layer architecture (Frontend → Service Layer → Data Layer), we
 
 ---
 
+### 2026-04-12: Phase 1 Code Review — Approved
+
+**From**: Han (Lead)  
+**Status**: APPROVED
+
+**Verdict**: Phase 1 implementation APPROVED for shipment.
+
+**Bug Fixes Reviewed** (All Correct ✅):
+1. SSR Disable (`src/routes/+layout.ts`) — Standard Tauri + SvelteKit pattern
+2. Pause/Resume Return Types (`src/lib/api/sessions.ts`) — Type signature now matches Rust
+3. Timer State Refresh (`src/lib/stores/timer.svelte.ts`) — Consistency guaranteed
+4. Report Initialization (`src/lib/components/ReportView.svelte`) — Uses `onMount()` correctly
+
+**Code Quality Assessment**:
+- Backend (Rust) — Excellent: WAL mode, crash recovery, atomic operations, error handling
+- Frontend (Svelte) — Good with one observation: QuickAdd missing `isPaused` field (P2, non-blocking)
+
+**Architecture Review** — Aligned ✅:
+- Three-layer separation: Frontend → Service → Data
+- Atomic switching via `switch_to_work_order` transactions
+- Crash safety: WAL mode + heartbeat recovery
+- State management: Svelte 5 runes pattern consistent
+
+**Phase 1 Completeness Check** — All Delivered ✅:
+- CRUD for customers and work orders
+- Quick-add (create + start atomic)
+- Start/stop/pause/resume sessions
+- Active timer with real-time display
+- Today's work log with inline edit
+- Search-to-switch (recent items + filter)
+- Daily summary by customer
+- CSV export
+- Crash recovery (orphan detection + recovery UI)
+
+**Minor Fix Recommended** (Non-Blocking):
+- QuickAdd: Add `isPaused: false` to `timer.setActive` call
+- Assignee: Leia (Frontend Dev)
+- Priority: P2 (nice-to-have before ship)
+
+**Next Steps**:
+1. Leia: Fix QuickAdd type (COMPLETED)
+2. Wedge: Run test plan to validate performance and edge cases
+3. Ship when tests pass ✅
+
+---
+
+### 2026-04-12: Documentation Simplification & Update — Approved
+
+**From**: Mon Mothma (Technical Writer)  
+**Status**: COMPLETED
+
+**Objective**: Simplify README as entry point + expand docs to document recent fixes.
+
+**Changes**:
+
+**1. README.md Refactored** (252 → ~90 lines)
+- New structure: Pitch → Features → Quick Start → Shortcuts → Doc Links → License
+- All hyperlinks to `docs/setup.md`, `docs/architecture.md`, `docs/api-reference.md`, `docs/ui-mockup.html`
+- Removed: Platform prerequisites, detailed build instructions, full project structure, troubleshooting
+- Rationale: README is entry point; details belong in focused docs
+
+**2. docs/setup.md Created** (~200 lines)
+- Platform prerequisites (Windows/macOS/Linux variants)
+- Installation walkthrough
+- Development workflow (dev server, hot-reload behavior)
+- Distribution builds (release output)
+- Testing, linting, formatting commands
+- Full project structure with explanations
+- Data storage and crash recovery
+- Troubleshooting FAQ
+- Next steps pointers
+- Audience: Developers setting up local environment
+
+**3. docs/architecture.md Expanded**
+
+**Section 5.7: SvelteKit SSR Disabled (Critical for Tauri)**
+- Problem: SvelteKit pre-renders pages in Node.js at build time via SSR. Tauri's `invoke()` doesn't exist in Node.js—only at runtime. This causes build-time failures in components using IPC.
+- Solution: Disable SSR globally in `src/routes/+layout.ts`:
+  ```typescript
+  export const ssr = false;
+  export const prerender = false;
+  ```
+- Impact: Routes render only in browser after Tauri app starts. IPC calls safe in `onMount()` and effects. No build-time pre-rendering.
+- Related fix: ReportView.svelte now uses `onMount()` for data fetching instead of module-level initialization.
+- Why documented: This pattern is not obvious to developers new to Tauri + SvelteKit. Critical gotcha that prevents mysterious build/runtime failures.
+
+**Section 5.8: Pause/Resume Pattern (Phase 2 Preparation)**
+- Context: Phase 1 has Running/Stopped only. Phase 2 will add Paused.
+- Backend pattern: Both `pause_session()` and `resume_session()` return `void`, not `Session`
+- Frontend pattern:
+  ```typescript
+  async pause() {
+    await apiPauseSession();   // Returns void
+    await timer.refresh();     // Fetch updated state
+  }
+  ```
+- Key insight: Focused commands return void. Frontend queries fresh state separately. Enables cleaner separation of concerns and independent evolution of logic.
+- Why documented: Void return is intentional. Prevents future "why doesn't pauseSession return the new session?" confusion. Provides template for Phase 2 implementation.
+
+**4. docs/api-reference.md Verified**
+- All Phase 1 IPC commands properly documented
+- `stop_session` correctly returns `Session` (not void)
+- Phase 2 commands (`pauseSession`, `resumeSession`) intentionally omitted (Phase 1 scope)
+- Error codes reference complete
+
+**Documentation Architecture** (Final):
+```
+README.md (entry point, ~90 lines)
+  ↓ hyperlinks to:
+  ├─ docs/setup.md (how to install and build)
+  ├─ docs/architecture.md (design decisions and patterns)
+  ├─ docs/api-reference.md (IPC command reference)
+  └─ docs/ui-mockup.html (interactive prototype)
+```
+
+**Key Principle**: Simplicity over comprehensiveness. Each doc has one clear audience and purpose. No duplicated content.
+
+**Verification**: All links in README verified to exist. No broken markdown, no placeholder URLs.
+
+---
+
+### 2026-04-12: QuickAdd Type Fix — Completed
+
+**From**: Leia (Frontend Dev)  
+**Status**: COMPLETED
+
+**Issue**: QuickAdd.svelte manually constructs `ActiveSession` object, missing required `isPaused: false` field (flagged by Han code review).
+
+**Fix**: Added `isPaused: false` to the object literal:
+```typescript
+timer.setActive({
+  sessionId: result.session.id,
+  workOrderId: result.workOrder.id,
+  workOrderName: result.workOrder.name,
+  customerName: result.customer.name,
+  customerColor: result.customer.color,
+  startedAt: result.session.startTime,
+  elapsedSeconds: 0,
+  isPaused: false,  // ← Added
+});
+```
+
+**Severity**: P2 (type safety improvement; no runtime impact due to guard clauses)
+
+**Outcome**: TypeScript now validates all required fields in `ActiveSession` type. Improves maintainability and IDE autocompletion.
+
+---
+
 ## Governance
 
 - All meaningful changes require team consensus

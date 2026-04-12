@@ -60,7 +60,8 @@
         customerName: result.customer.name,
         customerColor: result.customer.color,
         startedAt: result.session.startTime,
-        elapsedSeconds: 0
+        elapsedSeconds: 0,
+        isPaused: false
       });
       await sessionsStore.refreshAll();
       uiStore.closeQuickAdd();

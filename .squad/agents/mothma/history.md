@@ -51,3 +51,53 @@ Merged four Phase 2+3 decision documents from Han, Chewie, Leia, and Wedge into 
 5. Reports: Reuse daily summary structure with date range filter, <500ms target
 
 **Status**: Design complete and approved. All critical blockers identified and resolved. Ready for implementation in Sprint N with clear execution timeline (pause/favorites immediate, reports Phase 3).
+
+## Documentation Update (April 12, 2026 - Complete)
+
+**Task**: Simplify README and update supporting docs to document recent SSR/pause/resume fixes.
+
+**Deliverables**: 3 files changed, 1 verified
+
+**Changes Made**:
+
+1. **README.md refactored** (252 → ~90 lines)
+   - New structure: Pitch + Features + Quick Start + Shortcuts + Doc Links
+   - Removed detailed setup, prerequisites, structure, troubleshooting
+   - Moved all detail to focused `docs/` docs
+   - All hyperlinks verified to exist
+   - Rationale: README is entry point, not comprehensive manual
+
+2. **docs/setup.md created** (~200 lines)
+   - Full developer setup guide with platform variants
+   - Sections: Prerequisites, Installation, Workflow, Building, Testing, Structure, Data Storage, Troubleshooting
+   - Audience: Developers setting up local environment
+   - Answers "how do I get this working on my machine?" not "what is this?"
+
+3. **docs/architecture.md expanded**
+   - **Section 5.7: SvelteKit SSR Disabled** — Documents why `export const ssr = false` is critical for Tauri (IPC doesn't exist in Node.js at build time). Prevents SSR failures. Explains impact: client-side rendering only, onMount() safe for IPC.
+   - **Section 5.8: Pause/Resume Pattern** — Documents Phase 2 pattern: pause/resume return `void`, frontend calls `timer.refresh()` to query state. Explains rationale: focused commands, cleaner contract, simpler future extensions. Prevents "why doesn't pauseSession return new state?" confusion.
+
+4. **docs/api-reference.md verified**
+   - All Phase 1 commands properly documented
+   - No changes needed; already accurate
+
+**Documentation Architecture**:
+```
+README (~90 lines)
+  ↓ hyperlinks to:
+  ├─ docs/setup.md (how to install)
+  ├─ docs/architecture.md (design patterns)
+  ├─ docs/api-reference.md (IPC reference)
+  └─ docs/ui-mockup.html (UI prototype)
+```
+
+**Key Principle**: Simplicity over comprehensiveness. Each doc one clear purpose.
+
+**Learnings**:
+- Documentation as contract: Writing API reference forced clarity on all command signatures
+- README structure matters: Clear sections help readers find what they need quickly
+- Examples critical: Every API command includes realistic TypeScript usage
+- Three-layer architecture validated through API boundary documentation
+- SSR + Tauri pattern and pause/resume void-return pattern now documented to prevent team mistakes
+
+**Outcome**: README now serves as professional entry point. New readers can quickly understand what app does, how to install, then follow links for setup/architecture/API details. Documentation organized by use case (quick start → setup → architecture → API → prototype).

@@ -17,6 +17,7 @@
   let newName = $state('');
   let newColor = $state('#7c7aaa');
   let saving = $state(false);
+  const presetColors = ['#4caf7d', '#7c7aaa', '#e05252', '#f59e0b', '#3b82f6', '#ec4899'];
 
   async function loadCustomers() {
     loading = true;
@@ -99,7 +100,18 @@
       </label>
       <label>
         <span>Color</span>
-        <input type="color" bind:value={newColor} />
+        <div class="color-swatches">
+          {#each presetColors as color}
+            <button
+              type="button"
+              class="swatch"
+              class:selected={newColor === color}
+              style="background: {color}"
+              onclick={() => (newColor = color)}
+              title={color}
+            ></button>
+          {/each}
+        </div>
       </label>
       <button class="btn-primary" onclick={handleCreate} disabled={saving}>
         {saving ? 'Creating...' : 'Create'}
@@ -129,7 +141,18 @@
             </label>
             <label>
               <span>Color</span>
-              <input type="color" bind:value={editColor} />
+              <div class="color-swatches">
+                {#each presetColors as color}
+                  <button
+                    type="button"
+                    class="swatch"
+                    class:selected={editColor === color}
+                    style="background: {color}"
+                    onclick={() => (editColor = color)}
+                    title={color}
+                  ></button>
+                {/each}
+              </div>
             </label>
             <div class="actions">
               <button class="btn-sm btn-primary" onclick={() => saveEdit(customer.id)} disabled={saving}>
@@ -231,8 +254,7 @@
     color: var(--text-muted);
   }
 
-  input[type='text'],
-  input[type='color'] {
+  input[type='text'] {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -242,10 +264,31 @@
     font-size: 14px;
   }
 
-  input[type='color'] {
-    width: 60px;
-    height: 40px;
+  .color-swatches {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 4px 0;
+  }
+
+  .swatch {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid transparent;
     cursor: pointer;
+    padding: 0;
+    transition: transform 0.1s, border-color 0.1s;
+  }
+
+  .swatch:hover {
+    transform: scale(1.15);
+  }
+
+  .swatch.selected {
+    border-color: white;
+    box-shadow: 0 0 0 2px var(--accent);
+    transform: scale(1.15);
   }
 
   input:focus {

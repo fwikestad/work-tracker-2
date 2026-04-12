@@ -54,10 +54,8 @@ export const timer = {
 
   async pause() {
     try {
-      const updated = await apiPauseSession();
-      activeSession = updated;
-      stopTick();
-      updateTrayTooltip();
+      await apiPauseSession();
+      await timer.refresh();
     } catch (e: any) {
       alert(e?.message ?? 'Failed to pause');
     }
@@ -65,13 +63,8 @@ export const timer = {
 
   async resume() {
     try {
-      const updated = await apiResumeSession();
-      activeSession = updated;
-      if (updated && !updated.isPaused) {
-        elapsedSeconds = updated.elapsedSeconds;
-        startTick();
-      }
-      updateTrayTooltip();
+      await apiResumeSession();
+      await timer.refresh();
     } catch (e: any) {
       alert(e?.message ?? 'Failed to resume');
     }

@@ -5,6 +5,7 @@
   import { save } from '@tauri-apps/plugin-dialog';
   import { writeTextFile } from '@tauri-apps/plugin-fs';
   import type { ReportData, ReportEntry } from '$lib/types';
+  import { onMount } from 'svelte';
 
   let reportData = $state<ReportData | null>(null);
   let loading = $state(false);
@@ -14,8 +15,8 @@
   let endDate = $state('');
   let expandedCustomers = $state<Set<string>>(new Set());
 
-  // Initialize with "this week"
-  updateDateRange('week');
+  // Initialize with "this week" once mounted (client-only; avoids SSR invoke failure)
+  onMount(() => updateDateRange('week'));
 
   function updateDateRange(type: 'week' | 'month' | 'custom') {
     rangeType = type;

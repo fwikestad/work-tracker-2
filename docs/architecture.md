@@ -592,6 +592,90 @@ npm run tauri build
 
 **Auto-updates** (Phase 2+): Tauri supports auto-update via `tauri-plugin-updater`.
 
+### 5.7 SvelteKit SSR Disabled (Critical for Tauri)
+
+**Why SSR must be disabled**: Tauri apps are fully client-side. SvelteKit's default behavior attempts to pre-render pages in Node.js at build time, but Tauri IPC commands (e.g., `invoke()`) don't exist in Node.js — they only exist in the Tauri app runtime. This causes build failures and runtime errors in components that call Tauri at initialization time.
+
+**Solution**: Disable SSR and prerendering globally in `src/routes/+layout.ts`:
+
+```typescript
+// src/routes/+layout.ts
+export const ssr = false;
+export const prerender = false;
+```
+
+**Impact**:
+- SvelteKit routes render only in the browser after the Tauri app starts
+- IPC commands are safe to use in component initialization (`onMount`, top-level effects)
+- No build-time pre-rendering
+- Reduces bundle size slightly (no SSR overhead)
+
+**Related**: This pattern applies to any full-page components that use Tauri IPC (e.g., `ReportView.svelte`). Use `onMount()` to defer data fetching to runtime.
+
+### 5.8 Pause/Resume Pattern (Phase 2 Preparation)
+
+**Phase 1 scope**: Only Running/Stopped states. Pause is Phase 2+.
+
+**When pause becomes relevant**: In Phase 2, sessions will support a paused state where the timer is frozen but the session remains open. This requires special handling in both backend and frontend.
+
+**Backend pattern** (Phase 2):
+```rust
+// pauseSession command
+pub fn pause_session(state: State<AppState>) -> Result<(), AppError> {
+    let conn = state.db.lock().unwrap();
+    let now = Utc::now().to_rfc3339();
+    
+    // Record pause time without closing session
+    conn.execute(
+        "UPDATE time_sessions 
+         SET paused_at = ?, total_paused_seconds = total_paused_seconds + 0
+         WHERE id = (SELECT session_id FROM active_session)",
+        [&now]
+    )?;
+    Ok(())
+}
+
+// resumeSession command
+pub fn resume_session(state: State<AppState>) -> Result<(), AppError> {
+    let conn = state.db.lock().unwrap();
+    
+    // Clear pause state
+    conn.execute(
+        "UPDATE time_sessions 
+         SET paused_at = NULL
+         WHERE id = (SELECT session_id FROM active_session)",
+        []
+    )?;
+    Ok(())
+}
+```
+
+**Key point**: `pauseSession` and `resumeSession` return `void` (not `Session`), because they only update the pause state. The frontend must call `timer.refresh()` to query the updated active session state.
+
+**Frontend pattern**:
+```typescript
+// src/lib/stores/timer.svelte.ts
+async pause() {
+  try {
+    await apiPauseSession();   // Returns void
+    await timer.refresh();     // Fetch updated session (isPaused, etc.)
+  } catch (e) {
+    alert(e?.message ?? 'Failed to pause');
+  }
+}
+
+async resume() {
+  try {
+    await apiResumeSession();  // Returns void
+    await timer.refresh();     // Fetch updated session
+  } catch (e) {
+    alert(e?.message ?? 'Failed to resume');
+  }
+}
+```
+
+**Why this matters**: The void return type is intentional—commands should be focused and return only what's necessary. If pause/resume need to update UI, the frontend queries the fresh state via a separate `getActiveSession()` call. This pattern is simpler than trying to return complex data structures.
+
 ---
 
 ## 6. Phase 1 Deliverables Checklist

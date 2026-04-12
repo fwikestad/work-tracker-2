@@ -10,7 +10,7 @@ pub fn get_daily_summary(conn: &Connection, date: &str) -> Result<DailySummary, 
             c.color,
             wo.id,
             wo.name,
-            SUM(COALESCE(ts.duration_override, ts.duration_seconds) - ts.total_paused_seconds),
+            SUM(COALESCE(ts.duration_override, ts.duration_seconds) - COALESCE(ts.total_paused_seconds, 0)),
             COUNT(ts.id)
         FROM time_sessions ts
         JOIN work_orders wo ON ts.work_order_id = wo.id
@@ -195,7 +195,7 @@ pub fn get_report(conn: &Connection, start_date: &str, end_date: &str) -> Result
             c.color,
             wo.id,
             wo.name,
-            SUM(COALESCE(ts.duration_override, ts.duration_seconds) - ts.total_paused_seconds),
+            SUM(COALESCE(ts.duration_override, ts.duration_seconds) - COALESCE(ts.total_paused_seconds, 0)),
             COUNT(ts.id)
         FROM time_sessions ts
         JOIN work_orders wo ON ts.work_order_id = wo.id
@@ -204,7 +204,7 @@ pub fn get_report(conn: &Connection, start_date: &str, end_date: &str) -> Result
           AND date(ts.start_time) <= date(?)
           AND ts.end_time IS NOT NULL
         GROUP BY c.id, wo.id
-        ORDER BY SUM(COALESCE(ts.duration_override, ts.duration_seconds) - ts.total_paused_seconds) DESC
+        ORDER BY SUM(COALESCE(ts.duration_override, ts.duration_seconds) - COALESCE(ts.total_paused_seconds, 0)) DESC
     ")?;
     
     let entries: Result<Vec<ReportEntry>, _> = stmt.query_map(params![start_date, end_date], |row| {
@@ -236,7 +236,7 @@ pub fn get_report(conn: &Connection, start_date: &str, end_date: &str) -> Result
             ts.end_time,
             ts.duration_seconds,
             ts.duration_override,
-            COALESCE(ts.duration_override, ts.duration_seconds) - ts.total_paused_seconds,
+            COALESCE(ts.duration_override, ts.duration_seconds) - COALESCE(ts.total_paused_seconds, 0),
             ts.activity_type,
             ts.notes,
             ts.created_at,

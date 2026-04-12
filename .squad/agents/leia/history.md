@@ -17,9 +17,33 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 - **A11y for interactive divs**: Divs with `onclick` need `role="button"`, `tabindex="0"`, and `onkeydown={(e) => e.key === 'Enter' && handler(e)}` to satisfy `a11y_click_events_have_key_events` + `a11y_no_static_element_interactions`. Prefer converting to `<button>` when there are no nested buttons; use div+role when nesting constraints apply (e.g., a delete button inside the clickable row).
 - **Tauri parameter naming convention**: When Tauri command parameters are NOT wrapped in a serde struct, the parameter names in Rust (snake_case) must match EXACTLY what JavaScript sends. For direct parameters like `include_archived: Option<bool>`, JavaScript must send `{ include_archived: value }` not `{ includeArchived: value }`. The `#[serde(rename_all = "camelCase")]` attribute only works on structs, not on loose function parameters. Always use snake_case for non-struct parameters or wrap them in a struct with serde rename.
 
-## Session Log
+## 2026-04-12: Bug Fix: QuickAdd Type Safety
 
-### 2026-04-11 — UI Mockup v2
+**Issue Identified**: Han's code review flagged QuickAdd.svelte manually constructing `ActiveSession` object missing required `isPaused: false` field.
+
+**Root Cause**: Manual object construction `timer.setActive({...})` omitted the `isPaused` field, even though `ActiveSession` type requires it.
+
+**Context**: Runtime guards elsewhere (e.g., `activeSession?.isPaused ?? false`) mask the missing field, so app runs fine. However, type safety best practice is to complete the object literal for IDE support and maintainability.
+
+**Fix**: Added `isPaused: false` to the object literal in QuickAdd.svelte (lines 56-64):
+```typescript
+timer.setActive({
+  sessionId: result.session.id,
+  workOrderId: result.workOrder.id,
+  workOrderName: result.workOrder.name,
+  customerName: result.customer.name,
+  customerColor: result.customer.color,
+  startedAt: result.session.startTime,
+  elapsedSeconds: 0,
+  isPaused: false,  // ← Added
+});
+```
+
+**Severity**: P2 (type safety, no runtime impact)
+
+**Verification**: TypeScript now validates all required fields in `ActiveSession` type. IDE autocompletion improved.
+
+**Learning**: Even when runtime guards exist, complete the object literal for type safety. This improves code clarity, IDE support, and maintainability. Best practice for manual object construction of complex types.
 Complete rewrite of `docs/ui-mockup.html`:
 - Palette darkened to near-black (#0d0d0d bg, #1a1a1a surface)
 - Single teal accent (#4caf7d) for running state only
