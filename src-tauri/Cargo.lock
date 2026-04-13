@@ -5054,7 +5054,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
  "tauri-plugin-global-shortcut",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "uuid",
 ]
 
