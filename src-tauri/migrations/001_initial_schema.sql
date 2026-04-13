@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS customers (
     name TEXT NOT NULL,
     code TEXT,
     color TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     archived_at TEXT
 );
 
@@ -33,8 +33,8 @@ CREATE TABLE IF NOT EXISTS work_orders (
     code TEXT,
     description TEXT,
     status TEXT NOT NULL DEFAULT 'active',
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     archived_at TEXT,
     
     FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
@@ -56,8 +56,8 @@ CREATE TABLE IF NOT EXISTS time_sessions (
     duration_override INTEGER,
     activity_type TEXT,
     notes TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     
     FOREIGN KEY (work_order_id) REFERENCES work_orders(id) ON DELETE CASCADE
 );
@@ -90,7 +90,7 @@ VALUES (1, NULL, NULL, NULL, NULL);
 -- ============================================
 CREATE TABLE IF NOT EXISTS recent_work_orders (
     work_order_id TEXT PRIMARY KEY NOT NULL,
-    last_used_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_used_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     use_count INTEGER NOT NULL DEFAULT 1,
     
     FOREIGN KEY (work_order_id) REFERENCES work_orders(id) ON DELETE CASCADE

@@ -61,7 +61,9 @@ export const timer = {
       stopTick();
       await timer.refresh();
     } catch (e: any) {
-      alert(e?.message ?? 'Failed to pause');
+      console.error('Pause failed:', e);
+      const errorMsg = e?.message || e?.toString() || 'Unknown error occurred';
+      alert(`Failed to pause: ${errorMsg}`);
     }
   },
 
@@ -71,7 +73,9 @@ export const timer = {
       await timer.refresh();
       startTick();
     } catch (e: any) {
-      alert(e?.message ?? 'Failed to resume');
+      console.error('Resume failed:', e);
+      const errorMsg = e?.message || e?.toString() || 'Unknown error occurred';
+      alert(`Failed to resume: ${errorMsg}`);
     }
   }
 };

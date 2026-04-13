@@ -869,3 +869,139 @@ Event handler types updated from `MouseEvent` → `Event` where needed to suppor
 ### Build Status
 
 `npm run build` ✅ passes after all fixes.
+
+---
+
+## Smoke Testing Pattern for Svelte 5 Stores and Components
+
+**Date**: 2026-04-13  
+**Author**: Wedge (Tester)  
+**Status**: ACCEPTED — implemented and all tests passing  
+
+---
+
+### Context
+
+Work-tracker-2 had a critical black-window bug: `timer.svelte.ts` contained a module-level `$effect()` call. In Svelte 5, `$effect()` requires a component context (or `$effect.root()`). At app startup, importing the timer store threw `"Effect can only be created inside an effect"`, crashing the entire app — blank screen, no error visible to the user.
+
+The fix was simple (remove the misplaced `$effect`), but **no test existed to catch this before it reached production**. This decision documents the pattern to prevent recurrence.
+
+---
+
+### Decision
+
+Add two categories of smoke tests to the frontend test suite:
+
+#### 1. Store Import Smoke Tests (`src/lib/__tests__/smoke.test.ts`)
+
+**Pattern**: Static-import every key store module at the top of a test file (before any `describe`/`it` blocks). If a module throws at import time, the entire test file fails to load — Vitest reports it as a file-level error. This is the intended behavior: a module-level crash is a hard failure.
+
+```typescript
+// These imports ARE the smoke test. If any throws, the file fails.
+import { timer } from '$lib/stores/timer.svelte';
+import { sessionsStore } from '$lib/stores/sessions.svelte';
+import { uiStore } from '$lib/stores/ui.svelte';
+```
+
+Then verify the exported shape:
+```typescript
+it('timer exposes expected API shape', () => {
+  expect(timer).toHaveProperty('active');
+  expect(timer).toHaveProperty('elapsed');
+  expect(typeof timer.setActive).toBe('function');
+  // ...
+});
+```
+
+**What this catches**:
+- Module-level `$effect()` (the original bug)
+- Circular imports that throw on resolution
+- Syntax errors in compiled output
+- Any `throw` or synchronous rejection at module initialization
+
+#### 2. Component Mount Smoke Tests (`src/lib/__tests__/components.smoke.test.ts`)
+
+**Pattern**: Use `@testing-library/svelte` to `render()` each key component in a mocked environment. Verify it mounts without throwing and renders a key landmark.
+
+```typescript
+vi.mock('$lib/stores/timer.svelte', () => ({
+  timer: { active: null, elapsed: 0, isTracking: false, isPaused: false,
+           setActive: vi.fn(), refresh: vi.fn(), pause: vi.fn(), resume: vi.fn() }
+}));
+
+it('Timer mounts without throwing', () => {
+  expect(() => render(Timer)).not.toThrow();
+});
+
+it('renders Not tracking in idle state', () => {
+  render(Timer);
+  expect(screen.getByText('Not tracking')).toBeTruthy();
+});
+```
+
+**What this catches**:
+- Runtime errors in `onMount` or `$effect` within components
+- Template logic that crashes on null/undefined props
+- Store access patterns that fail in test environment
+
+---
+
+### Required Vitest Configuration
+
+Svelte 5 resolves to `index-server.js` by default in Vitest because the `import` ESM condition maps to the server runtime. To use the browser/component runtime, add:
+
+```typescript
+// vitest.config.ts
+resolve: {
+  conditions: ['browser'],
+}
+```
+
+Without this, `@testing-library/svelte` throws `lifecycle_function_unavailable: mount(...) is not available on the server`.
+
+---
+
+### Mock Setup Requirements
+
+For store smoke tests (no component rendering):
+```typescript
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('$lib/api/sessions', () => ({ getActiveSession: vi.fn().mockResolvedValue(null), ... }));
+```
+
+For component smoke tests (full component render):
+- Mock ALL stores the component imports (stores are module singletons, not props)
+- Mock ALL API modules (prevent real network/IPC calls)
+- `vi.stubGlobal('alert', vi.fn())` — components may call `alert()` in error handlers
+
+---
+
+### What NOT to Do
+
+- ❌ `describe.skip(...)` — skipped blocks don't catch import errors
+- ❌ Commented-out `import` statements — these don't run; they provide zero protection
+- ❌ Dynamic `import()` inside test bodies — defers the error, loses the "file fails to load" signal
+- ❌ Mocking the store inside the smoke test file — defeats the purpose; the import IS the test
+
+---
+
+### Maintenance Rules
+
+1. **Add a smoke test whenever a new store is created** — one import line + shape assertions
+2. **Add a component smoke test whenever a new top-level component is created** — `render()` + one landmark assertion  
+3. **Keep store mock shapes in sync with the real store interface** — if `timer` gains a new method, add it to the mock
+4. **Never use `describe.skip` to defer a smoke test** — if the test can't run, find out why and fix it
+
+---
+
+### Results
+
+Before this pattern:
+- 7 timer store tests skipped (could not catch the black-window class of bug)
+- 0 component mount tests
+
+After:
+- 7 timer store tests passing
+- 9 store/module smoke tests passing  
+- 9 component mount tests passing
+- **Total: 40 tests, 0 skipped, 0 failing**

@@ -71,7 +71,8 @@
       newCustomerName = '';
       useNewCustomer = false;
     } catch (e: any) {
-      error = e?.message ?? 'Something went wrong';
+      console.error('Quick add failed:', e);
+      error = e?.message || e?.toString() || 'Something went wrong';
     } finally {
       submitting = false;
     }

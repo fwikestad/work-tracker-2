@@ -70,7 +70,11 @@
       query = '';
       searchResults = [];
     } catch (e: any) {
-      alert(e?.message ?? 'Failed to switch');
+      // Log full error for debugging
+      console.error('Switch failed:', e);
+      // Show actual error message from backend
+      const errorMsg = e?.message || e?.toString() || 'Unknown error occurred';
+      alert(`Failed to switch: ${errorMsg}`);
     }
   }
 
@@ -83,7 +87,9 @@
         await search(query);
       }
     } catch (e: any) {
-      alert(e?.message ?? 'Failed to toggle favorite');
+      console.error('Toggle favorite failed:', e);
+      const errorMsg = e?.message || e?.toString() || 'Unknown error occurred';
+      alert(`Failed to toggle favorite: ${errorMsg}`);
     }
   }
 

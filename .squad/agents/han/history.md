@@ -243,3 +243,75 @@ Coordinated concurrent work by all 4 team members (Leia, Chewie, Wedge). All age
 
 **New Learning**: Parallel work by specialized agents with clear dependencies (architecture → implementation → testing) significantly accelerates delivery. Critical path analysis upfront allows agents to work in parallel without conflicts. Orchestration log + session log provide audit trail and handoff documentation.
 
+---
+
+### 2026-04-13: Phase 2b Planning — System Tray Right-Click Menu
+
+Defined Phase 2b scope and architecture for dynamic system tray menu with work order switching capability.
+
+**Deliverable**: `.squad/decisions/inbox/han-phase2b-plan.md` — Comprehensive 10-hour implementation plan with architecture decisions, agent assignments, SQL queries, testing checklist, and risk mitigations.
+
+**Key Findings**:
+
+1. **Current Tray State (Post-Phase 2a)**:
+   - Tray icon shows state (green/amber/grey) ✅
+   - Tooltip shows current work order name ✅
+   - Static right-click menu exists ✅
+   - Single-click toggles pause/resume ✅
+   - "Switch Project..." opens main window ✅
+
+2. **Phase 2b Additions**:
+   - Populate right-click menu with **favorites** (pinned work orders, last 5 items)
+   - Populate right-click menu with **recent** (frequently used work orders, last 10 items)
+   - Each menu item is clickable → atomic session switch
+   - Menu rebuilds **event-driven** (when `update_tray_state()` is called, not polling)
+
+3. **Architecture Decision: Event-Driven Menu Updates**:
+   - Frontend already calls `update_tray_state()` after every session change
+   - Extended to fetch work order list + rebuild menu (not just tooltip + icon)
+   - No new polling, no new event subscriptions
+   - Trade-off: Menu doesn't update if work order is favorited while tray is open (acceptable for Phase 2b)
+
+4. **New Backend Command: `get_tray_menu_data()`**:
+   - Returns `{ favorites: WorkOrderSummary[], recent: WorkOrderSummary[] }`
+   - Single DB query with indexes on `is_favorite` and `recent_work_orders.last_used_at`
+   - Performance target: <50ms
+   - SQL: JOIN work_orders + customers, filter by is_favorite and recent history, sort by last_used_at
+
+5. **Modified: `build_dynamic_menu()` Function**:
+   - Replaces static `build_menu()`
+   - Sections: Favorites (if present) → Recent (if present) → Control panel (pause, switch, open, quit)
+   - Limit to 5 favorites + 10 recent (~15 items total, within normal tray menu size)
+   - Disabled menu items used as section headers (no submenu support in Tauri 2 at runtime)
+
+6. **No Tauri API Constraints Found**:
+   - Flat menus with many items work fine
+   - Menu item IDs follow pattern "favorite-{uuid}" / "recent-{uuid}" (no collision)
+   - Synchronous menu building acceptable (<50ms queries)
+   - All platforms supported (Windows, macOS, Linux)
+
+7. **Implementation Plan** (8–10 hours total):
+   - **Chewie (Backend)**: `get_tray_menu_data()` + `build_dynamic_menu()` + event handler (6–8h)
+   - **Leia (Frontend)**: Review API, optional new binding (1h)
+   - **Wedge (Tester)**: 5 unit tests + 2 integration tests + E2E (2h)
+   - **Han (Lead)**: PR review + approval (1h)
+   - **Timeline**: 3–4 days
+
+8. **Risk Mitigations**:
+   - Menu slowness: Indexes ensure <50ms queries
+   - Race conditions: Snapshot-based menu, no locking issues
+   - Platform differences: Tauri abstracts; test on Windows + macOS
+   - Menu length: Limit to 15 items, within user expectations
+   - Stale menu: Expected behavior (updates on session change), documented
+
+9. **Testing** (7 tests total):
+   - Unit: Favorites sort order, recent filtering, archiving, atomic switch, menu structure
+   - Integration: E2E workflow, performance benchmarks
+   - Manual: Cross-platform right-click behavior
+
+**New Learning**: Event-driven architecture pays dividends in Phase 2 — the tray system doesn't need polling or subscriptions because the core session changes (start/stop/pause/resume) already trigger the `update_tray_state()` hook. Extending that hook to rebuild a full menu (instead of just icon + tooltip) is a minimal incremental change. This validates the Phase 1 architectural decision to centralize tray state management through a single command.
+
+**Key Insight on Tauri Tray Limitations**: Tauri 2 does not support dynamic native menus with custom icons or hierarchical submenus at runtime on all platforms. Phase 2b solves this pragmatically: use flat menus with disabled items as headers, runtime icon/color support (green/amber/grey dots work), and runtime menu item IDs. This keeps the implementation simple while delivering the full feature set.
+
+**Next Steps**: Plan approved and ready for implementation. Chewie to begin Phase 2b development. Wedge to prepare test cases in parallel.
+

@@ -6,6 +6,46 @@ Tester for work-tracker-2 — native desktop time tracker for consultant Fredrik
 
 ## Learnings
 
+### 2026-04-13: UI Smoke Tests + Timer Store Tests Unlocked
+
+**Context**: Module-level `$effect()` in `timer.svelte.ts` caused app startup to crash (the black-window bug). Fix was simple (move `$effect` inside component), but no regression guard existed. Wedge built smoke testing pattern to catch this class of bugs before they ship.
+
+**Pattern: Module-Level Static Imports Catch Initialization Errors**
+
+Key insight: If a `.svelte.ts` file throws at import time, static imports at the top of a test file will fail immediately when Vitest loads the test file. This is the intended behavior — a hard failure signal that blocks all tests in that file.
+
+```typescript
+// src/lib/__tests__/smoke.test.ts
+// These imports ARE the regression guard. If any throws, file fails to load.
+import { timer } from '$lib/stores/timer.svelte';
+import { sessionsStore } from '$lib/stores/sessions.svelte';
+import { uiStore } from '$lib/stores/ui.svelte';
+```
+
+Then verify the store shape is correct:
+```typescript
+it('timer exposes expected API shape', () => {
+  expect(timer).toHaveProperty('active');
+  expect(timer).toHaveProperty('elapsed');
+  // ... etc
+});
+```
+
+**Why This Works**: 
+- If `$effect()` creeps back into module level → import throws → test file fails to load
+- If module has syntax errors → import throws → immediate signal
+- Component-level testing also requires `@testing-library/svelte` render tests (`components.smoke.test.ts`)
+
+**Vitest Configuration Required**: Add `resolve.conditions: ['browser']` to use Svelte 5 browser runtime instead of server runtime (prevents `lifecycle_function_unavailable` error when running @testing-library/svelte).
+
+**Results**: 
+- 7 previously-skipped timer store tests now passing (pause/resume/freeze state machine fully covered)
+- 9 module smoke tests (stores + API modules)
+- 9 component mount tests (Timer, SearchSwitch, SessionList render without throwing)
+- **40 total tests, 0 failing, 0 skipped**
+
+**Maintenance Rule**: Add smoke test for every new store and every new top-level component. Keeps black-window class of bugs out forever.
+
 ### 2026-04-12: Test Coverage Audit — Pre-Refactor Gap Analysis
 
 **Context**: Han (Lead) is conducting full code review in parallel with this audit. Goal: identify test coverage gaps so post-refactor test backfill is clear and targeted.
@@ -466,3 +506,41 @@ Completed all Phase 2 test work items (P2-TEST-UI-1, P2-TEST-INT-1, P2-PERF-1) i
 - All test files reviewed and integrated by Han
 
 **New Learning**: Writing spec tests before implementation accelerates development — tests serve as executable acceptance criteria, guide implementation decisions, and prevent regressions. "Spec tests" (tests that document desired behavior) are distinct from "implementation tests" (tests that validate existing code) — both have value.
+
+---
+
+### 2026-04-13: UI Load Smoke Tests — Black-Window Bug Regression Guard
+
+**Context**: The app had a critical black-window bug caused by a module-level `$effect()` in `timer.svelte.ts`. Svelte 5's `$effect()` requires a component context (or `$effect.root()`) and throws "Effect can only be created inside an effect" at runtime when called at module level. This crashed the entire app — blank screen. The fix (commit `4234d38`) removed the module-level `$effect`. The task: write tests that would catch this class of bug permanently.
+
+**Work completed**:
+1. ✅ **Unlocked 7 timer store tests** — `src/lib/stores/timer.test.ts`: removed all `describe.skip`/`it.skip` wrappers and `//` comment markers. Added `timer.setActive(null)` + `vi.clearAllMocks()` to `beforeEach` for proper state isolation. Tests now run and pass.
+2. ✅ **Created `src/lib/__tests__/smoke.test.ts`** — 9 tests verifying that key store modules import without throwing. The test that would have caught the black-window bug: static import of `$lib/stores/timer.svelte` at file load time. Any module-level error would fail the whole file.
+3. ✅ **Created `src/lib/__tests__/components.smoke.test.ts`** — 9 tests that mount Timer, SearchSwitch, and SessionList components using `@testing-library/svelte`. Verifies no runtime errors in `$effect`, template rendering, or store access.
+
+**Test results**:
+- Before: 22 passing, 7 skipped, 0 component tests
+- After: 40 passing, 0 skipped, 0 failing
+
+**Key learnings**:
+
+1. **Svelte 5 module resolution in Vitest requires `conditions: ['browser']`**: By default, Vitest resolves the `svelte` package using the `import` ESM condition, which maps to `svelte/src/index-server.js`. This is the server-side Svelte runtime that throws `lifecycle_function_unavailable` when `mount()` is called. Fix: add `conditions: ['browser']` to `resolve` in `vitest.config.ts`. This makes `svelte` resolve to `index-client.js` — the proper browser/component runtime.
+
+2. **`$state` and `$derived` at module level are safe in Vitest; only `$effect` is problematic**: After the fix, importing `timer.svelte.ts` in Vitest works fine. The Svelte compiler transforms `$state()`/`$derived()` into reactive variables that don't require component context. Only `$effect()` (without `.root()`) requires a live component tree.
+
+3. **Static imports are the right tool for smoke tests**: A `describe.skip` + commented-out import doesn't catch import-time errors. A smoke test that does `import { timer } from '$lib/stores/timer.svelte'` at the TOP of the test file (before any `describe` block) will fail the entire file if the import throws — exactly the signal we want. One static import = one smoke test.
+
+4. **Store state is shared across tests (module singleton)**: `timer.svelte.ts` exports a module-level singleton. Without `timer.setActive(null)` in `beforeEach`, state bleeds between tests (e.g., TC-P2-TIMER-02's resumed session is still active when TC-P2-TIMER-03 runs). Always reset module-level store state in `beforeEach`.
+
+5. **`vi.clearAllMocks()` belongs in `beforeEach`, not just `afterEach`**: Putting it only in `afterEach` leaves mock call counts dirty at the start of the first test in a fresh suite. Putting it in `beforeEach` ensures each test starts with a clean slate regardless of test ordering.
+
+6. **Component smoke tests need all store AND API modules mocked**: Components import stores directly (not through props). `vi.mock('$lib/stores/timer.svelte', () => ({ timer: { ... } }))` replaces the real store singleton with an inert object. Without this, mounting a component would trigger the real store's `setActive` calls, which call `invoke` — which throws in test environment.
+
+7. **THE TEST THAT WOULD HAVE CAUGHT THE BUG**: `smoke.test.ts` line: `import { timer } from '$lib/stores/timer.svelte'`. If `timer.svelte.ts` had a module-level `$effect()`, this import would throw `"Effect can only be created inside an effect"`. The entire smoke.test.ts file would fail to load. Vitest would report: `Error while processing "src/lib/__tests__/smoke.test.ts"`. The developer would see the error immediately before any tests ran.
+
+**Files created/modified**:
+- `src/lib/stores/timer.test.ts` — Unlocked 7 tests (was 7 skipped, now 7 passing)
+- `src/lib/__tests__/smoke.test.ts` — NEW: 9 import/shape smoke tests
+- `src/lib/__tests__/components.smoke.test.ts` — NEW: 9 component mount tests
+- `vitest.config.ts` — Added `conditions: ['browser']` to `resolve`
+

@@ -372,11 +372,32 @@ pub fn update_heartbeat(conn: &Connection) -> Result<(), AppError> {
 
 // Helper functions
 
+/// Parse a timestamp string that may be in RFC3339 or SQLite datetime format.
+/// 
+/// Supports:
+/// - RFC3339: "2024-01-15T10:30:00Z" or "2024-01-15T10:30:00+00:00"
+/// - SQLite: "2024-01-15 10:30:00"
+fn parse_timestamp(timestamp: &str) -> Result<chrono::DateTime<chrono::FixedOffset>, AppError> {
+    // Try RFC3339 first (current format)
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(timestamp) {
+        return Ok(dt);
+    }
+    
+    // Try SQLite datetime format: "YYYY-MM-DD HH:MM:SS"
+    // Convert to RFC3339 by replacing space with 'T' and adding 'Z'
+    if timestamp.len() == 19 && timestamp.chars().nth(10) == Some(' ') {
+        let rfc3339 = format!("{}T{}Z", &timestamp[..10], &timestamp[11..]);
+        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&rfc3339) {
+            return Ok(dt);
+        }
+    }
+    
+    Err(AppError::Validation(format!("Invalid timestamp format: {}", timestamp)))
+}
+
 fn calculate_duration(start: &str, end: &str) -> Result<i64, AppError> {
-    let start_dt = chrono::DateTime::parse_from_rfc3339(start)
-        .map_err(|_| AppError::Validation("Invalid start time".into()))?;
-    let end_dt = chrono::DateTime::parse_from_rfc3339(end)
-        .map_err(|_| AppError::Validation("Invalid end time".into()))?;
+    let start_dt = parse_timestamp(start)?;
+    let end_dt = parse_timestamp(end)?;
     
     let duration = end_dt.signed_duration_since(start_dt);
     Ok(duration.num_seconds())
@@ -481,3 +502,63 @@ fn get_work_order_by_id(conn: &Connection, id: &str) -> Result<WorkOrder, AppErr
         e => AppError::Database(e),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_timestamp_rfc3339() {
+        // RFC3339 with Z suffix
+        let result = parse_timestamp("2024-01-15T10:30:00Z");
+        assert!(result.is_ok());
+        
+        // RFC3339 with timezone offset
+        let result = parse_timestamp("2024-01-15T10:30:00+00:00");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_timestamp_sqlite_format() {
+        // SQLite datetime format: "YYYY-MM-DD HH:MM:SS"
+        let result = parse_timestamp("2024-01-15 10:30:00");
+        assert!(result.is_ok());
+        
+        // Verify it parses correctly
+        let dt = result.unwrap();
+        assert_eq!(dt.format("%Y-%m-%d %H:%M:%S").to_string(), "2024-01-15 10:30:00");
+    }
+
+    #[test]
+    fn test_calculate_duration_mixed_formats() {
+        // SQLite format start, RFC3339 end
+        let result = calculate_duration("2024-01-15 10:00:00", "2024-01-15T11:00:00Z");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 3600); // 1 hour = 3600 seconds
+        
+        // RFC3339 start, SQLite format end
+        let result = calculate_duration("2024-01-15T10:00:00Z", "2024-01-15 11:00:00");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 3600);
+        
+        // Both RFC3339
+        let result = calculate_duration("2024-01-15T10:00:00Z", "2024-01-15T11:00:00Z");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 3600);
+        
+        // Both SQLite format
+        let result = calculate_duration("2024-01-15 10:00:00", "2024-01-15 11:00:00");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 3600);
+    }
+
+    #[test]
+    fn test_parse_timestamp_invalid() {
+        let result = parse_timestamp("invalid");
+        assert!(result.is_err());
+        
+        let result = parse_timestamp("2024-01-15");
+        assert!(result.is_err());
+    }
+}
+

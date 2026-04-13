@@ -323,6 +323,68 @@ All P0 + P1 backend fixes implemented and verified. Build passes, all tests pass
 - TC-SESSION-13: daily summary with paused sessions → total_seconds reflects gross duration
 - TC-SESSION-14: heartbeat during pause → is_paused remains 1, paused_at preserved
 
+---
+
+### 2026-04-13: Session Switching Bug Fixed — Timestamp Format Mismatch
+
+**Problem**: Session creation failed with "Failed to switch" error.
+
+**Root Cause**: Timestamp format mismatch between SQL schema defaults and Rust parsing.
+- SQL `datetime('now')` produces: `"2024-01-15 10:30:00"` (SQLite format)
+- Rust `chrono::DateTime::parse_from_rfc3339()` expects: `"2024-01-15T10:30:00Z"` (RFC3339)
+- Parsing failure was silent, caught as generic error
+
+**Solution**: Standardized on RFC3339 with backward compatibility.
+
+**Changes**:
+1. **SQL Schema** (`migrations/001_initial_schema.sql`):
+   - `datetime('now')` → `strftime('%Y-%m-%dT%H:%M:%SZ', 'now')`
+   - Applied to all DEFAULT timestamp columns (created_at, updated_at, last_used_at)
+
+2. **Rust Parsing** (`src-tauri/src/services/session_service.rs`):
+   - New `parse_timestamp()` helper function
+   - Accepts **both** RFC3339 (`"2024-01-15T10:30:00Z"`) and SQLite format (`"2024-01-15 10:30:00"`)
+   - No data migration required — mixed formats handled transparently
+   - 4 unit tests added and passing:
+     - RFC3339 parsing ✅
+     - SQLite format parsing ✅
+     - Duration calc with mixed formats ✅
+     - Invalid input error handling ✅
+
+**Why RFC3339?**
+- Industry standard (ISO 8601), timezone-aware, sortable, portable
+- Matches Rust `chrono` library design
+- Clear date/time separation (`T`), explicit UTC marker (`Z`)
+
+**Backward Compatibility**:
+- Existing data in SQLite format works without migration
+- `parse_timestamp()` transparently converts old format to new
+- Future: All new defaults use RFC3339, old data fades out naturally
+
+**Pattern for Future Work**:
+```sql
+-- Always use this for new timestamp columns:
+my_timestamp TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+```
+
+```rust
+// Always use robust parser:
+use crate::services::session_service::parse_timestamp;
+let dt = parse_timestamp(&timestamp_string)?;
+```
+
+**Impact**:
+- ✅ Session switching works reliably
+- ✅ Duration calculations consistent
+- ✅ No data loss
+- ✅ Debugging easier (timestamps are human-readable)
+
+**Cross-team context**:
+- **Leia (Frontend)**: Fixed error swallowing in catch blocks, so timestamp errors now visible to users
+- Both fixes were required — timestamp error was masked by generic frontend error handling
+
+**Status**: Shipped. Build passes. Tests pass.
+
 **Test results**: 16/16 session tests pass, 8/8 crud tests pass. 2 pre-existing doc test failures (illustrative examples in comments without `no_run` annotation — not caused by my changes, confirmed via git stash test).
 
 **Key files**:
@@ -378,3 +440,52 @@ Completed all Phase 2 backend work items (P2-TAURI-1, P2-TEST-BACKEND-1, duratio
 
 **New Learning**: Tauri 2 requires programmatic icon setup using RGBA pixel data (no PNG file loading). Tray event handling requires careful attention to Rust borrow checker — use named intermediate variables to scope database access separately from emit calls.
 
+
+---
+
+### 2026-04-11: Session Switch Bug Fix — Timestamp Format Mismatch
+
+**Problem Reported**: Starting time tracking sessions fails with "Failed to switch" error in production. Core feature completely broken.
+
+**Root Cause**: **Timestamp format mismatch between SQL defaults and Rust parsing**
+- SQL schema used `datetime('now')` which produces SQLite format: `"2024-01-15 10:30:00"` (no T separator, no timezone)
+- Rust code used `chrono::DateTime::parse_from_rfc3339()` which expects: `"2024-01-15T10:30:00Z"` (T separator + Z suffix)
+- When database DEFAULT values were used (instead of explicit Rust-provided timestamps), parsing failed
+- Error surfaced as generic "Failed to switch" to frontend, hiding the real validation error
+
+**Investigation Steps**:
+1. Examined session_service.rs `switch_to_work_order()` logic — atomic transaction structure was correct
+2. Found `calculate_duration()` helper using `parse_from_rfc3339()` without fallback
+3. Checked SQL migrations — all DEFAULT clauses used `datetime('now')`
+4. Confirmed mismatch: SQLite format incompatible with RFC3339 parser
+
+**Fix Applied** (2 parts):
+
+**Part 1: Update SQL schema to use RFC3339 format**
+- Changed all `DEFAULT (datetime('now'))` → `DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`
+- Updated in `migrations/001_initial_schema.sql` for: customers, work_orders, time_sessions, recent_work_orders
+- New rows will now have RFC3339-compatible timestamps by default
+
+**Part 2: Make timestamp parsing robust for both formats** (backward compatibility)
+- Created `parse_timestamp()` helper that accepts both RFC3339 AND SQLite datetime format
+- Tries RFC3339 first (current standard), then converts SQLite format if needed
+- Updated `calculate_duration()` to use new helper
+- Handles existing data created with old format + new data with RFC3339
+
+**Code Changes**:
+- `src-tauri/migrations/001_initial_schema.sql`: 4 DEFAULT clause updates
+- `src-tauri/src/services/session_service.rs`: Added `parse_timestamp()` helper, updated `calculate_duration()`
+- Added comprehensive tests: `test_parse_timestamp_rfc3339`, `test_parse_timestamp_sqlite_format`, `test_calculate_duration_mixed_formats`, `test_parse_timestamp_invalid`
+
+**Test Results**: All 4 new tests pass ✅
+
+**Build Status**: Compiles successfully ✅
+
+**Impact**:
+- ✅ New sessions will write RFC3339 timestamps
+- ✅ Old sessions with SQLite format can still be read/calculated
+- ✅ Session switching now works reliably
+- ✅ Duration calculations handle mixed timestamp formats
+- ✅ No data migration needed — backward compatible
+
+**Key Learning**: When using SQLite with Rust/chrono, always use `strftime('%Y-%m-%dT%H:%M:%SZ', 'now')` instead of `datetime('now')` for RFC3339 compatibility. If migrating from old format, implement fallback parsing to handle both formats gracefully.

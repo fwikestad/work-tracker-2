@@ -3,9 +3,76 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     App, AppHandle, Emitter, Manager, Wry,
 };
+use rusqlite::Connection;
 use crate::{AppState, services::session_service};
 
 const ICON_SIZE: u32 = 32;
+
+// ---------------------------------------------------------------------------
+// Tray Menu Data Structures
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub struct WorkOrderSummary {
+    pub id: String,
+    pub name: String,
+    pub customer_name: String,
+    pub is_favorite: bool,
+}
+
+#[derive(Debug)]
+pub struct TrayMenuData {
+    pub favorites: Vec<WorkOrderSummary>,
+    pub recent: Vec<WorkOrderSummary>,
+}
+
+/// Query the database for favorites and recent work orders to populate the dynamic tray menu.
+pub fn get_tray_menu_data(conn: &Connection) -> Result<TrayMenuData, rusqlite::Error> {
+    // Get favorites (up to 5)
+    let mut stmt = conn.prepare(
+        "SELECT wo.id, wo.name, c.name AS customer_name, wo.is_favorite
+         FROM work_orders wo
+         JOIN customers c ON wo.customer_id = c.id
+         WHERE wo.is_favorite = 1 AND wo.archived_at IS NULL
+         ORDER BY wo.updated_at DESC
+         LIMIT 5"
+    )?;
+    
+    let favorites = stmt.query_map([], |row| {
+        Ok(WorkOrderSummary {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            customer_name: row.get(2)?,
+            is_favorite: row.get::<_, i64>(3)? == 1,
+        })
+    })?.collect::<Result<Vec<_>, _>>()?;
+    
+    // Get recent (up to 10, excluding favorites)
+    let mut stmt = conn.prepare(
+        "SELECT wo.id, wo.name, c.name AS customer_name, wo.is_favorite
+         FROM work_orders wo
+         JOIN customers c ON wo.customer_id = c.id
+         LEFT JOIN recent_work_orders rwo ON wo.id = rwo.work_order_id
+         WHERE wo.is_favorite = 0 AND wo.archived_at IS NULL AND rwo.work_order_id IS NOT NULL
+         ORDER BY rwo.last_used_at DESC
+         LIMIT 10"
+    )?;
+    
+    let recent = stmt.query_map([], |row| {
+        Ok(WorkOrderSummary {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            customer_name: row.get(2)?,
+            is_favorite: row.get::<_, i64>(3)? == 1,
+        })
+    })?.collect::<Result<Vec<_>, _>>()?;
+    
+    Ok(TrayMenuData { favorites, recent })
+}
+
+// ---------------------------------------------------------------------------
+// Tray Setup
+// ---------------------------------------------------------------------------
 
 /// Set up the system tray icon with right-click menu and single-click toggle.
 ///
@@ -105,22 +172,86 @@ fn make_circle_icon(r: u8, g: u8, b: u8) -> tauri::image::Image<'static> {
 
 fn build_menu(app: &AppHandle, work_order: &str, is_paused: bool) -> tauri::Result<Menu<Wry>> {
     let pause_label = if is_paused { "Resume" } else { "Pause" };
-    Menu::with_items(
-        app,
-        &[
-            &MenuItem::with_id(app, "current-work", work_order, false, None::<&str>)?,
-            &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "pause-resume", pause_label, true, None::<&str>)?,
-            &MenuItem::with_id(app, "switch-project", "Switch Project...", true, None::<&str>)?,
-            &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "open-app", "Open Work Tracker", true, None::<&str>)?,
-            &MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?,
-        ],
-    )
+    
+    // Get tray menu data from database
+    let menu_data = {
+        let state = app.state::<AppState>();
+        state.db.lock()
+            .ok()
+            .and_then(|conn| get_tray_menu_data(&conn).ok())
+    };
+    
+    let (favorites, recent) = match menu_data {
+        Some(data) => (data.favorites, data.recent),
+        None => (Vec::new(), Vec::new()),
+    };
+    
+    // Build menu items dynamically
+    let mut items: Vec<Box<dyn tauri::menu::IsMenuItem<Wry>>> = vec![
+        Box::new(MenuItem::with_id(app, "current-work", work_order, false, None::<&str>)?),
+        Box::new(PredefinedMenuItem::separator(app)?),
+    ];
+    
+    // Add favorites section if any exist
+    if !favorites.is_empty() {
+        items.push(Box::new(MenuItem::with_id(app, "favorites-header", "⭐ Favorites", false, None::<&str>)?));
+        for wo in &favorites {
+            let label = format!("  • {} ({})", wo.name, wo.customer_name);
+            let menu_id = format!("switch-{}", wo.id);
+            items.push(Box::new(MenuItem::with_id(app, &menu_id, label, true, None::<&str>)?));
+        }
+        items.push(Box::new(PredefinedMenuItem::separator(app)?));
+    }
+    
+    // Add recent section if any exist
+    if !recent.is_empty() {
+        items.push(Box::new(MenuItem::with_id(app, "recent-header", "⏱ Recent", false, None::<&str>)?));
+        for wo in &recent {
+            let label = format!("  • {} ({})", wo.name, wo.customer_name);
+            let menu_id = format!("switch-{}", wo.id);
+            items.push(Box::new(MenuItem::with_id(app, &menu_id, label, true, None::<&str>)?));
+        }
+        items.push(Box::new(PredefinedMenuItem::separator(app)?));
+    }
+    
+    // Add standard menu items
+    items.push(Box::new(MenuItem::with_id(app, "pause-resume", pause_label, true, None::<&str>)?));
+    items.push(Box::new(MenuItem::with_id(app, "switch-project", "Switch Project...", true, None::<&str>)?));
+    items.push(Box::new(PredefinedMenuItem::separator(app)?));
+    items.push(Box::new(MenuItem::with_id(app, "open-app", "Open Work Tracker", true, None::<&str>)?));
+    items.push(Box::new(MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?));
+    
+    // Convert Vec<Box<dyn IsMenuItem>> to Vec<&dyn IsMenuItem>
+    let item_refs: Vec<&dyn tauri::menu::IsMenuItem<Wry>> = items.iter().map(|item| item.as_ref()).collect();
+    
+    Menu::with_items(app, &item_refs)
 }
 
 fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
-    match event.id().as_ref() {
+    let event_id = event.id().as_ref();
+    
+    // Handle switch-{id} pattern
+    if event_id.starts_with("switch-") {
+        let work_order_id = &event_id["switch-".len()..];
+        
+        // Switch to the selected work order
+        let success = {
+            let state = app.state::<AppState>();
+            let result = state.db.lock()
+                .ok()
+                .and_then(|conn| session_service::switch_to_work_order(&conn, work_order_id).ok());
+            result.is_some()
+        };
+        
+        // Emit event to frontend to update UI
+        if success {
+            let _ = app.emit("tray-action", "switch");
+        }
+        return;
+    }
+    
+    // Handle other menu events
+    match event_id {
         "quit" => {
             // Stop any active session before quitting so time is not lost.
             // Scoped block ensures MutexGuard is dropped before app.exit().

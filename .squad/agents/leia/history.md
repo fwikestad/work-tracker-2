@@ -377,6 +377,58 @@ All P0 + P1 frontend fixes implemented and verified. Build passes cleanly, no ne
 
 **Ship readiness**: Frontend is production-ready. All type safety improvements in place. Refactoring did not break any functionality. Note: timer pause/resume tests skipped due to Svelte 5 `$effect` context limitation (Phase 2 to resolve). Manual testing recommended before release.
 
+---
+
+### 2026-04-13: Error Reporting Pattern Fix — Timestamp Bug Surfaced
+
+**Problem**: "Failed to switch" error messages masked real backend errors.
+
+**Root Cause**: Frontend catch blocks were replacing backend error details with generic strings:
+```typescript
+// ❌ Before:
+catch (e: any) {
+  alert(e?.message ?? 'Failed to switch');  // Loses backend context!
+}
+```
+
+**Pattern Fix**: Preserve full backend error messages in both logs and UI.
+
+```typescript
+// ✅ After:
+catch (e: any) {
+  console.error('Operation failed:', e);  // Full log for debugging
+  error = e?.message || e?.toString() || 'Something went wrong';  // Actual error to user
+}
+```
+
+**Files Updated**:
+- ✅ `SearchSwitch.svelte` — switchTo, handleToggleFavorite
+- ✅ `timer.svelte.ts` — pause, resume
+- ✅ `QuickAdd.svelte` — handleSubmit
+
+**Why It Matters**:
+- Chewie's timestamp parsing error was completely hidden by generic "Failed to switch"
+- Backend error messages (e.g., "Invalid timestamp: ...") were never reaching user or developer
+- Console logging enables debugging without adding verbose UI
+- Pattern applies to all error handling across frontend
+
+**Impact**:
+- ✅ Timestamp bug immediately visible in console
+- ✅ Error messages now actionable for users
+- ✅ Developers can debug without network inspection
+- ✅ All error states traceable
+
+**Anti-patterns** (DO NOT):
+- ❌ `alert(e?.message ?? 'Failed to...')` — swallows backend error
+- ❌ No console logging — no debug context
+- ❌ Silent failures — user never knows it failed
+
+**Cross-team context**:
+- **Chewie (Backend)**: Fixed timestamp format mismatch in SQL schema + added robust parsing
+- Both fixes required together: Backend error would have remained invisible without frontend error reporting fix
+
+**Status**: Shipped. Build passes. Applied consistently across critical paths.
+
 **New patterns established**:
 1. **Edit State Object**: Consolidate multi-field forms into single `{ id, field1, field2 } | null` state var — easier to reset, pass, validate
 2. **Generation Counter**: Track request ID for debounced searches — discard stale results before updating UI
@@ -446,3 +498,65 @@ Completed all Phase 2 frontend work items (P2-STORE-1, P2-UI-3, P2-SEARCH-1/2, P
 
 **New Learning**: Phase 2 frontend work is primarily glue and refinement — pause state was 90% implemented in Phase 1, favorites infrastructure existed, only needed grouping UI and global hotkey wiring.
 
+## 2026-04-12: Fixed Error Reporting in Session Switch Flow
+
+**Issue**: User-reported "Failed to switch" generic error masked the actual backend errors when starting time tracking sessions.
+
+**Root Cause**: Frontend catch blocks in several components were replacing detailed error messages from Rust backend with generic strings. Specifically:
+- SearchSwitch.svelte line 73: lert(e?.message ?? 'Failed to switch') — replaced real error with generic message
+- 	imer.svelte.ts pause/resume: Same pattern for pause/resume errors
+- QuickAdd.svelte: Had better handling (displayed error in UI) but wasn't logging for debugging
+
+**Error Path Traced**:
+1. User clicks work order in SearchSwitch.svelte
+2. switchTo() calls startSession(workOrderId) from $lib/api/sessions.ts
+3. API calls Tauri invoke('start_session', { work_order_id: workOrderId })
+4. Rust session_service::switch_to_work_order() validates work order exists, returns detailed error if not
+5. Frontend catch block swallowed the error and replaced with "Failed to switch"
+
+**Fix Applied**:
+1. **SearchSwitch.svelte** — Enhanced error handling in switchTo() and handleToggleFavorite():
+   `	ypescript
+   catch (e: any) {
+     console.error('Switch failed:', e);  // Log full error for debugging
+     const errorMsg = e?.message || e?.toString() || 'Unknown error occurred';
+     alert(Failed to switch: );  // Show actual backend error
+   }
+   `
+
+2. **timer.svelte.ts** — Enhanced error handling in pause() and esume():
+   `	ypescript
+   catch (e: any) {
+     console.error('Pause failed:', e);
+     const errorMsg = e?.message || e?.toString() || 'Unknown error occurred';
+     alert(Failed to pause: );
+   }
+   `
+
+3. **QuickAdd.svelte** — Added console.error logging:
+   `	ypescript
+   catch (e: any) {
+     console.error('Quick add failed:', e);
+     error = e?.message || e?.toString() || 'Something went wrong';
+   }
+   `
+
+**Changes**:
+- src/lib/components/SearchSwitch.svelte: Enhanced error reporting in 2 catch blocks
+- src/lib/stores/timer.svelte.ts: Enhanced error reporting in pause/resume
+- src/lib/components/QuickAdd.svelte: Added console logging
+
+**Verification**:
+- Build succeeded: 
+pm run build passed with no errors
+- Error messages now show actual backend errors (e.g., "Work order XYZ not found")
+- Console logs provide full error context for debugging
+
+**Learning**:
+- Always preserve original error messages from backend — never replace with generic strings
+- Log full error to console.error for debugging, show user-friendly message to user
+- Use ?.message || e?.toString() || 'Unknown error' pattern to safely extract error text
+- Quick wins: Search for lert(e?.message ?? 'Failed to...') pattern across codebase
+
+**Severity**: P1 (user-facing error reporting broken)
+**Status**: Fixed, verified

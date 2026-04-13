@@ -2,6 +2,232 @@
 
 ## Active Decisions
 
+### 2026-04-13: Session Switching Bug Fixes — Fixed
+
+**From**: Chewie, Leia (Backend + Frontend Dev)  
+**Status**: IMPLEMENTED
+
+#### Chewie: Timestamp Format Standardization (RFC3339)
+
+**Status**: Implemented  
+**Date**: 2026-04-11  
+**Author**: Chewie (Backend Dev)  
+**Context**: Bug fix for session switch failures
+
+##### Problem
+
+Starting time tracking sessions failed with "Failed to switch" error. Investigation revealed a **timestamp format mismatch** between SQLite DEFAULT values and Rust parsing logic.
+
+Root Cause:
+1. **SQL schema** used `datetime('now')` which produces: `"2024-01-15 10:30:00"` (SQLite format)
+2. **Rust code** used `chrono::DateTime::parse_from_rfc3339()` which expects: `"2024-01-15T10:30:00Z"` (RFC3339 format)
+3. When DEFAULT values were used, parsing failed with validation error
+4. Error propagated to frontend as generic "Failed to switch" message
+
+##### Decision
+
+**Standardize on RFC3339 format for all timestamps** with backward compatibility.
+
+Implementation:
+- **SQL Schema Updates**: Changed all DEFAULT timestamp clauses from `datetime('now')` to `strftime('%Y-%m-%dT%H:%M:%SZ', 'now')`
+- **Rust Parsing Robustness**: Created `parse_timestamp()` helper in `session_service.rs` that accepts both RFC3339 and SQLite formats (backward compatible)
+- **Updated Migrations**: `migrations/001_initial_schema.sql` — all timestamp columns (created_at, updated_at, last_used_at)
+
+##### Rationale
+
+RFC3339 is the industry standard (ISO 8601), timezone-aware, sortable, and matches Rust ecosystem. Backward compatibility via dual parsing ensures no data migration needed.
+
+##### Testing
+
+Added 4 unit tests to `session_service.rs`:
+- `test_parse_timestamp_rfc3339` — RFC3339 parsing ✅
+- `test_parse_timestamp_sqlite_format` — SQLite format parsing ✅
+- `test_calculate_duration_mixed_formats` — mixed formats ✅
+- `test_parse_timestamp_invalid` — error handling ✅
+
+All tests pass. Build passes.
+
+##### Impact
+
+✅ Session switching works reliably  
+✅ Duration calculations handle mixed formats  
+✅ No data migration required  
+✅ Future-proof for multi-timezone scenarios  
+
+---
+
+#### Leia: Error Reporting Pattern for Frontend-Backend Communication
+
+**Status**: Proposed  
+**Author**: Leia (Frontend Dev)  
+**Date**: 2026-04-12  
+**Context**: Fixing generic "Failed to switch" error that masked real backend errors
+
+##### Decision
+
+**All frontend catch blocks that handle Tauri invoke() errors MUST:**
+
+1. **Log the full error to console** for debugging
+2. **Extract and display the actual error message** to the user
+3. **Never replace backend errors with generic strings**
+
+Standard Pattern:
+```typescript
+try {
+  await invoke('some_command', { params });
+  error = '';  // clear previous error
+} catch (e: any) {
+  console.error('Operation failed:', e);
+  error = e?.message || e?.toString() || 'Something went wrong';
+}
+```
+
+Display in UI: `{#if error}<div class="error">{error}</div>{/if}`
+
+##### Rationale
+
+Generic error messages hide the actual problem:
+- User can't understand what went wrong
+- Developer has no debugging info
+- Backend error messages (e.g., "Work order XYZ not found") are lost
+
+Solution: Preserve backend errors and log for debugging.
+
+##### Applied To
+
+- ✅ `SearchSwitch.svelte` — switchTo, handleToggleFavorite
+- ✅ `timer.svelte.ts` — pause, resume
+- ✅ `QuickAdd.svelte` — handleSubmit
+
+##### Anti-patterns (DO NOT)
+
+❌ Generic replacement: `alert(e?.message ?? 'Failed to switch')`  
+❌ No logging: `alert(e?.message || 'Error')`  
+❌ Silent failure: no error handling  
+
+---
+
+### 2026-04-13: Phase 2b Implementation Plan — Ready for Implementation
+
+**Owner**: Han (Lead)  
+**Status**: READY FOR IMPLEMENTATION  
+**Date**: 2026-04-13  
+**Scope**: System tray right-click menu listing work orders for direct switching + dynamic menu updates
+
+#### Executive Summary
+
+Phase 2b adds a dynamic right-click menu to the system tray, allowing consultants to switch work orders directly from the tray without opening the main window. The tray already displays the current work order and state (running/paused/stopped) via tooltip and icon color. Phase 2b extends this by:
+
+1. **Populated right-click menu** — shows favorites and recent work orders grouped by customer
+2. **Dynamic menu updates** — menu refreshes when the active session changes or work orders change
+3. **Quick direct switch** — click a work order in tray menu to immediately switch to it (atomic switch)
+
+**Effort Estimate**: 8–10 hours (Chewie backend)  
+**Timeline**: 3–4 days  
+**Blockers**: None (Phase 2a completed, all infrastructure in place)
+
+#### Architecture Decision
+
+Current State (Phase 2a Complete):
+- ✅ Icon shows state (green/amber/grey)
+- ✅ Tooltip shows "Work Tracker 2 — ▶ ProjectName"
+- ✅ Right-click menu exists but is static
+- ✅ Single-click toggles pause/resume
+
+Phase 2b Changes:
+- Right-click menu is rebuilt every time `update_tray_state()` is called
+- Menu includes **favorites section** (pinned work orders)
+- Menu includes **recent section** (frequently used work orders grouped by customer)
+- Each work order in menu is clickable and triggers session switch
+
+#### Implementation Details
+
+Backend (Chewie) — 6-8 Hours:
+
+**New Tauri Command: `get_tray_menu_data()`**
+- Fetch structured data needed to build the menu
+- Returns `TrayMenuData { favorites: WorkOrderSummary[], recent: WorkOrderSummary[] }`
+- Each entry includes: id, name, customerName, isFavorite
+- Performance target: <50ms
+
+**Modify: `update_tray_state()` Function**
+- After fetching icon/tooltip, call `get_tray_menu_data()`
+- Pass data to `build_dynamic_menu()` (new helper)
+- Set the rebuilt menu on the tray
+
+**New Helper: `build_dynamic_menu()`**
+- Build menu with current work order (disabled label)
+- Favorites section (max 5 items)
+- Recent section (max 10 items)
+- Pause/Resume, Switch Project, Open, Quit buttons
+
+**Update: `on_menu_event()` Handler**
+- If event.id matches `favorite-{work_order_id}` or `recent-{work_order_id}`:
+  - Extract work_order_id
+  - Call `start_session(work_order_id)` command
+  - Atomically stops old session + starts new one
+
+Frontend (Leia) — Minimal Changes, ~1 Hour:
+- No changes required to existing code
+- Menu builds and updates automatically on session changes
+- Optional: New Tauri binding for debugging (not required)
+
+Testing (Wedge) — ~2 Hours:
+- 5 unit tests for backend (favorites, recent, archived, empty, menu building)
+- 2 integration tests for E2E workflow
+- Manual tests on Windows + macOS
+
+#### Key Decisions
+
+1. **Event-Driven Menu Updates** (Not Polling): Menu rebuilds only when `update_tray_state()` is called
+2. **Flat Menu with Section Headers** (No Submenus): Use disabled items as headers ("⭐ Favorites", "⏱ Recent")
+3. **Synchronous Menu Building** (No Async): Tauri menu building is sync, DB query <50ms
+4. **Direct Session Switch from Tray** (No Dialog): Click work order immediately switches (aligns with <3s UX goal)
+
+#### Risk Mitigations
+
+| Risk | Mitigation |
+|------|-----------|
+| Menu query slow | Indexes ensure <50ms. Performance test required. |
+| Session starts while menu open | Menu is read-only snapshot. Next update refreshes. |
+| Menu not updating after favorited | Expected (updates on session changes). Phase 3 can add real-time push. |
+| Menu items exceed limits | Limit to 5 favorites + 10 recent (~15 items). Within normal tray menu size. |
+| Menu ID collision | Use format "favorite-{uuid}" and "recent-{uuid}" — UUIDs are unique. |
+
+#### Testing Checklist
+
+Unit Tests (Chewie):
+- [ ] `get_tray_menu_data()` returns favorites sorted by last_used
+- [ ] `get_tray_menu_data()` returns recent work orders (not favorited)
+- [ ] `get_tray_menu_data()` excludes archived work orders
+- [ ] `build_dynamic_menu()` includes sections when present
+- [ ] Menu item click switches session atomically
+
+Integration Tests (Wedge):
+- [ ] E2E tray menu switch workflow
+- [ ] Menu updates after pause/resume
+- [ ] Performance: menu build < 50ms with 50 work orders
+
+#### Timeline & Milestones
+
+| Date | Milestone | Owner |
+|------|-----------|-------|
+| Day 1 (AM) | Implement `get_tray_menu_data()` + tests | Chewie |
+| Day 1 (PM) | Implement `build_dynamic_menu()` + refactor | Chewie |
+| Day 2 (AM) | Implement event handler + integration tests | Chewie + Wedge |
+| Day 2 (PM) | Code review + feedback | Han + Leia |
+| Day 3 (AM) | Manual E2E testing + performance check | Wedge |
+| Day 3 (PM) | Final merge + learnings doc | Han |
+
+#### Approval & Sign-Off
+
+- **Proposed by**: Han (Lead)
+- **Reviewed by**: Chewie, Leia, Wedge (pending)
+- **Status**: READY FOR IMPLEMENTATION
+- **Date**: 2026-04-13
+
+---
+
 ### 2026-04-11: Instruction Framework Review — Fixed
 
 **From**: Han (Lead)  

@@ -7,7 +7,7 @@ mod commands;
 pub mod db;
 pub mod models;
 pub mod services;
-mod tray;
+pub mod tray;
 
 pub use db::AppState;
 
