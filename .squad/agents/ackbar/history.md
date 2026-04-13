@@ -69,3 +69,36 @@ Document: docs/security-review-001.md. Decisions merged into squad/decisions.md.
 - **npm audit found 3 low** (`cookie` in @sveltejs/kit). Not exploitable in a desktop app with no HTTP cookies. Do not apply the breaking fix.
 - **Tauri capabilities are reasonable.** `fs:default` is scoped to app directories. `dialog:default` is safe. Only `shell:default` is unnecessary.
 - **Trust boundary is simple.** WebView → IPC → Rust → SQLite. No network listeners. Attack requires local access or WebView compromise.
+
+---
+
+### 2026-04-13: Pre-Public Security & Privacy Audit — PASSED ✅
+
+**Purpose**: Comprehensive audit before making repository public on GitHub.
+
+**Scope**: Privacy-focused review for PII, local paths, credentials, secrets, and internal information that could compromise developer or machine.
+
+**Result**: **SAFE TO GO PUBLIC** — No blocking issues found.
+
+**What Was Checked**:
+- All source files (`*.ts`, `*.rs`, `*.svelte`, `*.json`, `*.toml`, `*.yml`, `*.md`)
+- Git-tracked files list
+- .gitignore coverage
+- .squad/ tracked content
+- Dependency audits (npm audit, cargo audit)
+
+**Findings Summary**:
+- ✅ No credentials, API keys, tokens, or passwords
+- ✅ No local paths (`C:\Users\`, `/home/`, `frewikes`)
+- ✅ No machine names or hostnames
+- ✅ No private IPs or internal URLs
+- ✅ Developer name appears only in expected metadata (Cargo.toml authors, project docs) — acceptable
+- ✅ .gitignore properly excludes .env, node_modules, build artifacts, sensitive .squad dirs
+- ✅ npm audit: 3 low (cookie in sveltejs/kit, not exploitable)
+- ✅ cargo audit: 0 vulnerabilities
+
+**Previously Flagged (Non-Blocking)**:
+- CSP disabled — code-level concern, not privacy risk
+- withGlobalTauri: true — code-level concern, not privacy risk
+
+**Document**: `.squad/decisions/inbox/ackbar-pre-public-security-review.md`
