@@ -289,7 +289,7 @@ fn on_tray_icon_event(tray: &tauri::tray::TrayIcon, event: TrayIconEvent) {
         ..
     } = event
     {
-        toggle_pause_resume(tray.app_handle());
+        show_main_window(tray.app_handle());
     }
 }
 
