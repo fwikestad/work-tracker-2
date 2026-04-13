@@ -5,7 +5,7 @@ export const createCustomer = (params: CreateCustomerParams) =>
   invoke<Customer>('create_customer', { params });
 
 export const listCustomers = (includeArchived = false) =>
-  invoke<Customer[]>('list_customers', { include_archived: includeArchived });
+  invoke<Customer[]>('list_customers', { includeArchived });
 
 export const updateCustomer = (id: string, params: UpdateCustomerParams) =>
   invoke<Customer>('update_customer', { id, params });
