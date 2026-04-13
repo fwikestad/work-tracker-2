@@ -11,15 +11,6 @@ let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
 const isPaused = $derived(activeSession?.isPaused ?? false);
 
-// Reactive effect to restart tick when unpausing
-$effect(() => {
-  if (activeSession && !isPaused) {
-    startTick();
-  } else {
-    stopTick();
-  }
-});
-
 export const timer = {
   get active() {
     return activeSession;
@@ -41,14 +32,18 @@ export const timer = {
     activeSession = session;
     if (session) {
       elapsedSeconds = session.elapsedSeconds;
+      if (!session.isPaused) {
+        startTick();
+      } else {
+        stopTick();
+      }
       startHeartbeat();
-      updateTrayTooltip();
     } else {
       stopTick();
       stopHeartbeat();
       elapsedSeconds = 0;
-      updateTrayTooltip();
     }
+    updateTrayState();
   },
 
   setOrphan(session: OrphanSession | null) {
@@ -63,6 +58,7 @@ export const timer = {
   async pause() {
     try {
       await apiPauseSession();
+      stopTick();
       await timer.refresh();
     } catch (e: any) {
       alert(e?.message ?? 'Failed to pause');
@@ -73,6 +69,7 @@ export const timer = {
     try {
       await apiResumeSession();
       await timer.refresh();
+      startTick();
     } catch (e: any) {
       alert(e?.message ?? 'Failed to resume');
     }
@@ -111,12 +108,11 @@ function stopHeartbeat() {
   }
 }
 
-function updateTrayTooltip() {
-  let tooltip = 'Work Tracker — Not tracking';
-  if (activeSession) {
-    tooltip = `⏱ Work Tracker — ${activeSession.workOrderName} (${activeSession.customerName})`;
-  }
-  invoke('update_tray_tooltip', { tooltip }).catch((e) => {
-    console.error('Failed to update tray tooltip:', e);
+function updateTrayState() {
+  invoke('update_tray_state', {
+    workOrderName: activeSession?.workOrderName ?? null,
+    isPaused: activeSession?.isPaused ?? false,
+  }).catch((e) => {
+    console.error('Failed to update tray state:', e);
   });
 }
