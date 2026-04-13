@@ -71,6 +71,7 @@ pub fn run() {
             commands::customers::list_customers,
             commands::customers::update_customer,
             commands::customers::archive_customer,
+            commands::customers::unarchive_customer,
             commands::work_orders::create_work_order,
             commands::work_orders::list_work_orders,
             commands::work_orders::update_work_order,

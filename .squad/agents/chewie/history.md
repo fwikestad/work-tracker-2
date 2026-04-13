@@ -696,3 +696,41 @@ win.destroy() forcefully destroys the window without triggering CloseRequested (
 4. **Transactional Quit**: Stop active session, destroy window, then exit — all in the correct order to prevent data loss and cleanup errors.
 
 **Pre-Release Readiness**: All three critical bugs fixed. App ready for release testing.
+
+
+### 2026-04-11 16:30 : Archive Handling Fixes
+
+**Task**: Three Rust fixes for archive state filtering
+
+**Changes implemented**:
+
+1. **FIX 1: list_work_orders — Added include_archived parameter**
+   - File: src-tauri/src/commands/work_orders.rs
+   - Replaced match-on-tuple approach with dynamic WHERE clause building
+   - New parameter: include_archived: Option<bool> (defaults to false)
+   - When include_archived = true, removes wo.archived_at IS NULL filter
+   - Maintains proper ORDER BY based on whether customer_id is provided
+   - Cleaner implementation — no code duplication across 4 match arms
+
+2. **FIX 2: unarchive_customer command**
+   - File: src-tauri/src/commands/customers.rs
+   - Added inverse of archive_customer: sets archived_at = NULL
+   - Updates updated_at timestamp
+   - Returns 404 error if customer not found
+   - Registered in src-tauri/src/lib.rs invoke_handler list
+
+3. **FIX 3: Filter archived customers from recent work orders**
+   - File: src-tauri/src/services/summary_service.rs, get_recent_work_orders
+   - Added AND c.archived_at IS NULL to WHERE clause
+   - Prevents work orders of archived customers from appearing in recent list
+   - Matches existing pattern (work orders already filtered by wo.archived_at IS NULL)
+
+**Verification**:
+- cargo build: Success (compiled in 10.01s)
+- cargo test: All 7 tests pass
+- No regressions, no breaking changes
+
+**Architecture notes**:
+- Dynamic SQL building (format!) is safe here because all conditions are boolean flags, not user input
+- Maintains consistent pattern: include_archived parameter across both list_customers and list_work_orders
+- Recent work orders now correctly exclude archived entities at both levels (work_order + customer)

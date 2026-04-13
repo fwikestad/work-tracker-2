@@ -10,8 +10,8 @@
   import { listen } from '@tauri-apps/api/event';
 
   let activeView = $state<'track' | 'reports'>('track');
-  let summaryRef: DailySummary;
-  let searchSwitchRef: SearchSwitch;
+  let summaryRef = $state<DailySummary | null>(null);
+  let searchSwitchRef = $state<SearchSwitch | null>(null);
 
   onMount(() => {
     summaryRef?.refresh();

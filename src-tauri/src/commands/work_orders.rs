@@ -53,48 +53,33 @@ pub fn create_work_order(state: State<AppState>, params: CreateWorkOrderParams) 
 }
 
 #[tauri::command]
-pub fn list_work_orders(state: State<AppState>, customer_id: Option<String>, favorites_only: Option<bool>) -> Result<Vec<WorkOrder>, AppError> {
+pub fn list_work_orders(
+    state: State<AppState>, 
+    customer_id: Option<String>, 
+    favorites_only: Option<bool>,
+    include_archived: Option<bool>
+) -> Result<Vec<WorkOrder>, AppError> {
     let conn = get_conn(&state)?;
+    let include_archived = include_archived.unwrap_or(false);
     
-    let (sql, params_vec): (&str, Vec<String>) = match (customer_id, favorites_only) {
-        (Some(cid), Some(true)) => (
-            "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
-             FROM work_orders wo 
-             JOIN customers c ON wo.customer_id = c.id 
-             WHERE wo.customer_id = ? AND wo.archived_at IS NULL AND wo.is_favorite = 1
-             ORDER BY wo.name",
-            vec![cid]
-        ),
-        (Some(cid), _) => (
-            "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
-             FROM work_orders wo 
-             JOIN customers c ON wo.customer_id = c.id 
-             WHERE wo.customer_id = ? AND wo.archived_at IS NULL 
-             ORDER BY wo.name",
-            vec![cid]
-        ),
-        (None, Some(true)) => (
-            "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
-             FROM work_orders wo 
-             JOIN customers c ON wo.customer_id = c.id 
-             WHERE wo.archived_at IS NULL AND wo.is_favorite = 1
-             ORDER BY c.name, wo.name",
-            vec![]
-        ),
-        (None, _) => (
-            "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
-             FROM work_orders wo 
-             JOIN customers c ON wo.customer_id = c.id 
-             WHERE wo.archived_at IS NULL 
-             ORDER BY c.name, wo.name",
-            vec![]
-        )
-    };
+    let archived_clause = if include_archived { "" } else { "AND wo.archived_at IS NULL " };
+    let favorites_clause = if favorites_only.unwrap_or(false) { "AND wo.is_favorite = 1 " } else { "" };
+    let customer_clause = if customer_id.is_some() { "AND wo.customer_id = ? " } else { "" };
+    let order_by = if customer_id.is_some() { "ORDER BY wo.name" } else { "ORDER BY c.name, wo.name" };
     
-    let mut stmt = conn.prepare(sql)?;
+    let sql = format!(
+        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, 
+                wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at
+         FROM work_orders wo
+         JOIN customers c ON wo.customer_id = c.id
+         WHERE 1=1 {archived_clause}{favorites_clause}{customer_clause}
+         {order_by}"
+    );
     
-    let work_orders: Result<Vec<_>, _> = if params_vec.is_empty() {
-        stmt.query_map([], |row| {
+    let mut stmt = conn.prepare(&sql)?;
+    
+    let work_orders: Result<Vec<_>, _> = if let Some(cid) = customer_id {
+        stmt.query_map(params![cid], |row| {
             Ok(WorkOrder {
                 id: row.get(0)?,
                 customer_id: row.get(1)?,
@@ -111,7 +96,7 @@ pub fn list_work_orders(state: State<AppState>, customer_id: Option<String>, fav
             })
         })?.collect()
     } else {
-        stmt.query_map(params![&params_vec[0]], |row| {
+        stmt.query_map([], |row| {
             Ok(WorkOrder {
                 id: row.get(0)?,
                 customer_id: row.get(1)?,

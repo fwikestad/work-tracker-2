@@ -722,3 +722,98 @@ px @tauri-apps/cli icon to auto-generate all sizes
 - Tauri icon generator handles all platform variants from single source (massive time saver)
 - Sharp library excellent for programmatic SVG→PNG conversion (no manual design tool needed)
 
+---
+
+## 2026-04-13 — Archive Functionality Frontend Fixes
+
+**Context**: Four frontend fixes requested by Fredrik to complete archive functionality:
+
+### FIX 1: Add `includeArchived` to WorkOrders API
+
+**Issue**: Work order list couldn't show archived items because the API didn't accept the parameter.
+
+**Fix**: 
+- Updated `listWorkOrders()` in `src/lib/api/workOrders.ts` to accept `includeArchived?: boolean` parameter
+- Updated call in `WorkOrderList.svelte` to pass `showArchived` state: `listWorkOrders(filterCustomerId || undefined, undefined, showArchived)`
+- Added `sessionsStore.refreshRecent()` to `handleArchive()` to update recent list
+- Verified existing `$effect` already triggers reload when `showArchived` changes
+
+**Key Pattern**: Used camelCase `includeArchived` in frontend per Tauri naming convention (converts to `include_archived` for Rust backend)
+
+---
+
+### FIX 2: Add Un-archive for Customers
+
+**Issue**: Customers could be archived but not restored.
+
+**Fix**:
+- Added `unarchiveCustomer()` API wrapper in `src/lib/api/customers.ts`
+- Added `handleUnarchive()` function in `CustomerList.svelte`
+- Updated UI to conditionally show Archive/Unarchive button based on `customer.archivedAt` field
+- Added `sessionsStore.refreshRecent()` to both archive and unarchive handlers
+- Imported `sessionsStore` for cache refresh
+- Added `.btn-unarchive` CSS with accent color hover (vs danger color for archive)
+
+**Type Verification**: Confirmed `Customer` type has `archivedAt: string | null` field in `src/lib/types.ts`
+
+---
+
+### FIX 3: Fix Component Refs in +page.svelte
+
+**Issue**: Svelte 5 `non_reactive_update` warning for `bind:this` refs.
+
+**Fix**: Changed component refs from plain variables to `$state`:
+
+```typescript
+// Before
+let summaryRef: DailySummary;
+let searchSwitchRef: SearchSwitch;
+
+// After
+let summaryRef = $state<DailySummary | null>(null);
+let searchSwitchRef = $state<SearchSwitch | null>(null);
+```
+
+**Rationale**: In Svelte 5 runes mode, `bind:this` requires `$state` variables to track assignments reactively. Plain variables trigger warnings.
+
+---
+
+### FIX 4: Fix A11y Warnings — `<div onclick>` → `<button>`
+
+**Issue**: Accessibility warnings for interactive divs without keyboard support.
+
+**Fix**: Converted `<div onclick>` to `<button type="button">` in two files:
+- `WorkOrderList.svelte` line 205: `.item-info` div → button
+- `CustomerList.svelte` line 168: `.item-info` div → button
+
+**CSS Updates**: Added button reset styles to `.item-info`:
+```css
+background: none;
+border: none;
+padding: 0;
+text-align: left;
+font-family: inherit;
+font-size: inherit;
+color: inherit;
+```
+
+**Impact**: Proper semantic HTML, keyboard accessible, satisfies `a11y_click_events_have_key_events` and `a11y_no_static_element_interactions` warnings.
+
+---
+
+### Verification
+
+✅ **All tests pass**: 55 tests across 5 files (5 passed)  
+✅ **Build succeeds**: No TypeScript errors  
+✅ **Warnings cleared**: A11y warnings for these specific elements resolved
+
+---
+
+### Learnings
+
+- **Svelte 5 `bind:this` refs**: Must always be `$state` variables, not plain typed variables
+- **Button semantics**: When converting div→button, must add reset styles to maintain appearance
+- **Archive consistency**: Always refresh `sessionsStore.refreshRecent()` after archive/unarchive to keep recent list in sync
+- **Conditional UI patterns**: `{#if archivedAt}...{:else}...{/if}` for archive/unarchive toggle
+- **camelCase invoke params**: `includeArchived` in TypeScript → `include_archived` in Rust (Tauri auto-conversion)
+

@@ -7,6 +7,7 @@
     toggleFavorite
   } from '$lib/api/workOrders';
   import { listCustomers } from '$lib/api/customers';
+  import { sessionsStore } from '$lib/stores/sessions.svelte';
   import SearchableSelect from '$lib/components/SearchableSelect.svelte';
   import type { WorkOrder, Customer } from '$lib/types';
 
@@ -31,7 +32,7 @@
     loadError = null;
     try {
       [workOrders, customers] = await Promise.all([
-        listWorkOrders(filterCustomerId || undefined),
+        listWorkOrders(filterCustomerId || undefined, undefined, showArchived),
         listCustomers()
       ]);
     } catch (e: any) {
@@ -92,6 +93,7 @@
     try {
       await archiveWorkOrder(woId);
       await loadData();
+      await sessionsStore.refreshRecent();
     } catch (e: any) {
       alert(e?.message ?? 'Failed to archive');
     }
@@ -202,7 +204,7 @@
           </div>
         {:else}
           <div class="item">
-            <div class="item-info" onclick={() => startEdit(wo)}>
+            <button type="button" class="item-info" onclick={() => startEdit(wo)}>
               <div class="item-main-info">
                 <span
                   class="star-btn"
@@ -230,7 +232,7 @@
                 </div>
               </div>
               <span class="badge badge-{wo.status}">{wo.status}</span>
-            </div>
+            </button>
             <button class="btn-archive" onclick={() => handleArchive(wo.id)}>Archive</button>
           </div>
         {/if}
@@ -386,6 +388,13 @@
     gap: 10px;
     cursor: pointer;
     flex: 1;
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
   }
 
   .item-main-info {

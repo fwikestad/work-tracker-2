@@ -120,3 +120,20 @@ pub fn archive_customer(state: State<AppState>, id: String) -> Result<(), AppErr
     
     Ok(())
 }
+
+#[tauri::command]
+pub fn unarchive_customer(state: State<AppState>, id: String) -> Result<(), AppError> {
+    let conn = get_conn(&state)?;
+    let now = Utc::now().to_rfc3339();
+    
+    let rows_affected = conn.execute(
+        "UPDATE customers SET archived_at = NULL, updated_at = ? WHERE id = ?",
+        params![&now, &id]
+    )?;
+    
+    if rows_affected == 0 {
+        return Err(AppError::NotFound(format!("Customer {} not found", id)));
+    }
+    
+    Ok(())
+}

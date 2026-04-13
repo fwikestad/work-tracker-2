@@ -12,3 +12,6 @@ export const updateCustomer = (id: string, params: UpdateCustomerParams) =>
 
 export const archiveCustomer = (id: string) =>
   invoke<void>('archive_customer', { id });
+
+export const unarchiveCustomer = (id: string) =>
+  invoke<void>('unarchive_customer', { id });

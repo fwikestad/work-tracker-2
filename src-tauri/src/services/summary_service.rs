@@ -147,6 +147,7 @@ pub fn get_recent_work_orders(conn: &Connection, limit: i64) -> Result<Vec<WorkO
         JOIN work_orders wo ON r.work_order_id = wo.id
         JOIN customers c ON wo.customer_id = c.id
         WHERE wo.archived_at IS NULL
+          AND c.archived_at IS NULL
         ORDER BY wo.is_favorite DESC, r.last_used_at DESC
         LIMIT ?
     ")?;

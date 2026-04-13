@@ -3,8 +3,10 @@
     listCustomers,
     createCustomer,
     updateCustomer,
-    archiveCustomer
+    archiveCustomer,
+    unarchiveCustomer
   } from '$lib/api/customers';
+  import { sessionsStore } from '$lib/stores/sessions.svelte';
   import type { Customer, CreateCustomerParams, UpdateCustomerParams } from '$lib/types';
 
   let customers = $state<Customer[]>([]);
@@ -74,8 +76,19 @@
     try {
       await archiveCustomer(customerId);
       await loadCustomers();
+      await sessionsStore.refreshRecent();
     } catch (e: any) {
       alert(e?.message ?? 'Failed to archive');
+    }
+  }
+
+  async function handleUnarchive(customerId: string) {
+    try {
+      await unarchiveCustomer(customerId);
+      await loadCustomers();
+      await sessionsStore.refreshRecent();
+    } catch (e: any) {
+      alert(e?.message ?? 'Failed to unarchive');
     }
   }
 
@@ -165,15 +178,19 @@
           </div>
         {:else}
           <div class="item">
-            <div class="item-info" onclick={() => startEdit(customer)}>
+            <button type="button" class="item-info" onclick={() => startEdit(customer)}>
               {#if customer.color}
                 <span class="dot" style="background: {customer.color}"></span>
               {/if}
               <div>
                 <div class="item-name">{customer.name}</div>
               </div>
-            </div>
-            <button class="btn-archive" onclick={() => handleArchive(customer.id)}>Archive</button>
+            </button>
+            {#if customer.archivedAt}
+              <button class="btn-unarchive" onclick={() => handleUnarchive(customer.id)}>Unarchive</button>
+            {:else}
+              <button class="btn-archive" onclick={() => handleArchive(customer.id)}>Archive</button>
+            {/if}
           </div>
         {/if}
       {/each}
@@ -331,6 +348,13 @@
     gap: 10px;
     cursor: pointer;
     flex: 1;
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
   }
 
   .dot {
@@ -360,6 +384,22 @@
   .btn-archive:hover {
     border-color: var(--danger);
     color: var(--danger);
+  }
+
+  .btn-unarchive {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px 12px;
+    font-family: inherit;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .btn-unarchive:hover {
+    border-color: var(--accent);
+    color: var(--accent);
   }
 
   .actions {
