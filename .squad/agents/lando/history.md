@@ -122,7 +122,99 @@ Decisions merged into squad/decisions.md. Ready for implementation.
    - Fail early: Lint before test, test before build (cheapest failures first)
    - Trade-off: More YAML files to maintain (4 vs 1), but clarity wins
 
-## Session: CI/CD Implementation (2026-04-12)
+## Session: Documentation Overhaul Pre-Delivery (2026-04-13)
+
+**Task**: Create comprehensive user-facing and technical documentation before first delivery.
+
+**Deliverables**:
+
+1. **README.md** (Rewritten, user-focused)
+   - Plain English description (not tech jargon)
+   - System requirements and installation
+   - Quick start guide (30-second first session)
+   - Key features overview
+   - Keyboard shortcuts reference
+   - FAQ (6 common questions)
+   - Data storage location (platform-specific)
+   - Developer setup instructions
+   - Links to detailed docs
+
+2. **docs/development.md** (Created, 400+ lines)
+   - Prerequisites and platform-specific setup (Windows/macOS/Linux)
+   - Clone and setup steps
+   - Development workflow (tauri:dev)
+   - Test execution (frontend: npm test ~55 tests, backend: cargo test ~7 tests)
+   - Build instructions (npm run tauri:build)
+   - Project structure overview
+   - Key conventions (camelCase params, Svelte runes, database patterns)
+   - Common dev tasks (add command, add migration, write tests)
+   - Debugging tips (frontend DevTools, Rust debugging, DB inspection)
+   - Troubleshooting (dependency issues, crash recovery, test failures)
+   - CI/CD local simulation and release process
+
+3. **docs/data-model.md** (Created, 500+ lines)
+   - Database schema documentation (5 core tables)
+   - Entity relationships and ER diagram
+   - Column definitions with types and constraints
+   - Session states (Running/Paused/Stopped with Phase 2+)
+   - Duration calculation (automatic vs. manual override)
+   - Crash recovery mechanism on startup
+   - SQLite configuration (WAL mode, synchronous NORMAL)
+   - Query patterns (daily summary, weekly report, quick-switch, search)
+   - Data validation rules (business + database constraints)
+   - Index rationale and query performance targets
+   - Migrations (001 initial, 002 Phase 2+ features)
+
+4. **docs/features.md** (Created, 350+ lines)
+   - Phase 1: Core tracking (timer, customers/work orders, summary, export, crash recovery, tray)
+   - Phase 2: Multi-customer workflows (paused sessions, favorites, advanced quick-switch)
+   - Phase 3: Background and reports (minimize to tray, reports tab, archive, tray menu)
+   - Phase 4+: Team & integrations (planned, out of scope)
+   - Session states summary table
+   - Keyboard shortcuts complete reference
+   - Test coverage matrix (Rust 7 tests, Vitest ~55 tests)
+   - Performance targets with current status
+   - Feature gating explanation
+   - Backward compatibility notes
+
+5. **docs/architecture.md** (Updated)
+   - Added quick reference header (stack, size, memory, build time, distribution)
+   - Updated version to 2.0 and status to "Implemented"
+   - Existing content remains comprehensive and accurate
+
+**Style Guidelines Applied**:
+- README: Plain English, no jargon, assumes non-technical reader
+- docs/development.md: Precise, complete, developer-friendly with examples
+- docs/data-model.md: Technical but accessible, explains why indexes/pragmas matter
+- docs/features.md: Organized by phase with clear completion status
+- docs/architecture.md: Existing high-quality content preserved, header updated
+
+**Key Decisions Made**:
+1. **README as primary entry point** — New users read README first, not setup.md
+2. **Separate dev guide** — development.md focused on contributors, not users
+3. **Comprehensive schema docs** — data-model.md serves as both reference and learning resource
+4. **Feature inventory** — features.md tracks what's shipped and planned (no TODOs in final docs)
+5. **No duplicated content** — Cross-links between docs prevent redundancy
+
+**Verification**:
+- All docs are current (reflect Phases 1, 2, 3 implemented)
+- No placeholder text or TODO markers
+- README is genuinely simple (non-technical, 200+ lines but digestible)
+- Technical docs are precise and complete (schema, queries, conventions all documented)
+- Keyboard shortcuts, features, and performance targets verified against implementation
+
+**Pre-Delivery Checklist**:
+- ✅ README rewritten for users (simple, clear, actionable)
+- ✅ development.md complete (setup, tests, build, conventions, troubleshooting)
+- ✅ data-model.md comprehensive (schema, relationships, queries, validation)
+- ✅ features.md current (all 3 phases documented, no incomplete features listed)
+- ✅ architecture.md updated (version, status, tech stack reference)
+- ✅ No duplicated sections between docs
+- ✅ All cross-links valid
+- ✅ No jargon in user-facing README
+- ✅ All example code is Tauri 2 + Svelte 5 + Rust syntax correct
+
+_Populated as Lando works on the project._
 
 **Task**: Implement the approved DevOps strategy
 

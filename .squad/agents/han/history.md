@@ -333,3 +333,50 @@ pm run build both passing
 - No blockers remaining
 
 **Phase 3 Completion**: All deliverables complete, 0 failures. Ready for merge to main and first release build.
+
+---
+
+### 2026-04-13: Full Security Review — Pre-Delivery Audit
+
+Conducted comprehensive security review of the entire Tauri 2 application before first delivery. Identified and fixed security issues, documented findings.
+
+**Deliverables**:
+- ✅ `docs/security-review.md` — Full security audit report
+- ✅ `.squad/decisions/inbox/han-security-review.md` — Security decisions for team
+
+**Security Assessment Summary**:
+- **Overall Risk**: LOW for intended use case (local-only desktop app)
+- **Critical**: 0 findings
+- **High**: 1 finding — FIXED (unused shell plugin)
+- **Medium**: 2 findings — 1 FIXED, 1 NOTED (CSP recommendation)
+- **Low/Info**: 5 findings — Documented
+
+**Fixes Applied** (safe, obvious, no user approval needed):
+1. Removed `tauri-plugin-shell` from Cargo.toml (unused, attack vector)
+2. Removed `.plugin(tauri_plugin_shell::init())` from lib.rs
+3. Removed `shell:default` and `fs:default` from capabilities/default.json
+
+**Items Verified as Safe**:
+- All SQL queries use parameterized statements (no injection risk)
+- No XSS vectors (`{@html}` not used in any component)
+- No hardcoded secrets or API keys
+- Database stored in secure app data directory
+- All IPC commands validate inputs properly
+- Error handling is consistent and graceful
+
+**Items Noted but Not Fixed** (require user approval):
+- CSP disabled (`csp: null`) — recommended enabling after testing
+- No input length validation — low priority, recommended for UX
+
+**Dependency Audit Results**:
+- `npm audit`: 3 low-severity issues (cookie package in SvelteKit transitive deps)
+- `cargo audit`: Unmaintained GTK3 bindings (Tauri transitive deps, not security issues)
+
+**New Learning**: For local-only desktop apps, many traditional web security concerns (CORS, cookies, CSP) are lower priority, but capability-based permission systems (Tauri's model) become critical. Principle of least privilege applies: remove unused plugins entirely rather than just not using them.
+
+**Verification**:
+- `cargo check`: ✅ Passes
+- `npm run build`: ✅ Passes
+- `cargo test --lib`: ✅ 4/4 tests pass
+
+**Verdict**: ✅ APPROVED FOR DELIVERY — Application is secure for its intended use case.

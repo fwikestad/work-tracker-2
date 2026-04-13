@@ -1,9 +1,21 @@
 # Work Tracker 2 — Architecture Document
 
-**Version**: 1.0  
-**Author**: Han (Lead)  
-**Date**: 2026-04-11  
-**Status**: Draft — Ready for Review
+**Version**: 2.0  
+**Authors**: Han (Lead), Lando (DevOps)  
+**Date**: 2026-04-13  
+**Status**: Implemented (Phase 1, 2, 3 shipped)  
+
+---
+
+## Quick Reference
+
+**Tech Stack**: Tauri 2 + Rust + SQLite + Svelte 5 + TypeScript  
+**App Size**: ~10-15 MB (vs Electron's 150+ MB)  
+**Memory**: ~50-80 MB runtime  
+**Build Time**: ~3-4 minutes (warm cache)  
+**Target Platform**: Windows, macOS, Linux (x64)  
+**Data Storage**: Local-only SQLite with WAL mode (crash-safe)  
+**Distribution**: GitHub Releases (GitHub Actions CI/CD)
 
 ---
 
