@@ -23,9 +23,8 @@ vi.mock('$lib/api/sessions', () => ({
   resumeSession: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Cannot import due to $effect at module level
-// import { timer } from '$lib/stores/timer.svelte';
-// import * as sessionsApi from '$lib/api/sessions';
+import { timer } from '$lib/stores/timer.svelte';
+import * as sessionsApi from '$lib/api/sessions';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -48,10 +47,11 @@ function makeSession(isPaused: boolean): ActiveSession {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe.skip('timer store — pause/resume fix (SKIPPED: $effect context issue)', () => {
+describe('timer store — pause/resume fix', () => {
   beforeEach(async () => {
+    vi.clearAllMocks();
     vi.useFakeTimers();
-    // Cannot import timer.svelte.ts due to top-level $effect requiring Svelte context
+    timer.setActive(null);
   });
 
   afterEach(() => {
@@ -64,48 +64,44 @@ describe.skip('timer store — pause/resume fix (SKIPPED: $effect context issue)
    * After the fix, pause() calls timer.refresh() which re-fetches the active
    * session. The active session must NOT be null and must show isPaused = true.
    * (Before the fix, it called setActive(null) — wiping the session entirely.)
-   *
-   * SKIPPED: Cannot test due to $effect context requirement
    */
-  it.skip('TC-TIMER-01: pause() calls refresh() — active session stays set with isPaused=true', async () => {
-    // const runningSession = makeSession(false);
-    // const pausedSession = makeSession(true);
+  it('TC-TIMER-01: pause() calls refresh() — active session stays set with isPaused=true', async () => {
+    const runningSession = makeSession(false);
+    const pausedSession = makeSession(true);
 
-    // // Start with a running session
-    // timer.setActive(runningSession);
-    // expect(timer.active).not.toBeNull();
+    // Start with a running session
+    timer.setActive(runningSession);
+    expect(timer.active).not.toBeNull();
 
-    // // After pause, getActiveSession will return a paused session
-    // vi.mocked(sessionsApi.getActiveSession).mockResolvedValue(pausedSession);
+    // After pause, getActiveSession will return a paused session
+    vi.mocked(sessionsApi.getActiveSession).mockResolvedValue(pausedSession);
 
-    // await timer.pause();
+    await timer.pause();
 
-    // expect(timer.active).not.toBeNull();
-    // expect(timer.active?.isPaused).toBe(true);
+    expect(timer.active).not.toBeNull();
+    expect(timer.active?.isPaused).toBe(true);
   });
 
   /**
    * TC-TIMER-02
    * After the fix, resume() calls timer.refresh() which re-fetches the active
    * session. The active session must NOT be null and must show isPaused = false.
-   *
-   * SKIPPED: Cannot test due to $effect context requirement
    */
-  it.skip('TC-TIMER-02: resume() calls refresh() — active session stays set with isPaused=false', async () => {
-    // const pausedSession = makeSession(true);
-    // const runningSession = makeSession(false);
+  it('TC-TIMER-02: resume() calls refresh() — active session stays set with isPaused=false', async () => {
+    const pausedSession = makeSession(true);
+    const runningSession = makeSession(false);
 
-    // // Start with a paused session
-    // timer.setActive(pausedSession);
-    // expect(timer.active?.isPaused).toBe(true);
+    // Start with a paused session
+    timer.setActive(pausedSession);
+    expect(timer.active?.isPaused).toBe(true);
 
-    // // After resume, getActiveSession will return a running session
-    // vi.mocked(sessionsApi.getActiveSession).mockResolvedValue(runningSession);
+    // After resume, getActiveSession will return a running session
+    vi.mocked(sessionsApi.getActiveSession).mockResolvedValue(runningSession);
 
-    // await timer.resume();
+    await timer.resume();
 
-    // expect(timer.active).not.toBeNull();
-    // expect(timer.active?.isPaused).toBe(false);
+    expect(timer.active).not.toBeNull();
+    expect(timer.active?.isPaused).toBe(false);
   });
 });
 
@@ -120,10 +116,11 @@ describe.skip('timer store — pause/resume fix (SKIPPED: $effect context issue)
 // Assigned to: Leia (Frontend) to implement the testable surface.
 // ---------------------------------------------------------------------------
 
-describe.skip('timer store — Phase 2 pause/resume state (SKIPPED: $effect context issue)', () => {
+describe('timer store — Phase 2 pause/resume state', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.useFakeTimers();
-    // Cannot import timer.svelte.ts due to top-level $effect requiring Svelte context
+    timer.setActive(null);
   });
 
   afterEach(() => {
@@ -136,20 +133,20 @@ describe.skip('timer store — Phase 2 pause/resume state (SKIPPED: $effect cont
    * pause() should set isPaused=true AND freeze elapsedSeconds so that the
    * setInterval tick no longer increments the counter.
    */
-  it.skip('TC-P2-TIMER-01: pause() sets isPaused=true and freezes elapsedSeconds', async () => {
-    // const runningSession = makeSession(false);
-    // const pausedSession = makeSession(true); // isPaused: true
+  it('TC-P2-TIMER-01: pause() sets isPaused=true and freezes elapsedSeconds', async () => {
+    const runningSession = makeSession(false);
+    const pausedSession = makeSession(true); // isPaused: true
 
-    // vi.mocked(sessionsApi.getActiveSession).mockResolvedValue(pausedSession);
-    // timer.setActive(runningSession);
+    vi.mocked(sessionsApi.getActiveSession).mockResolvedValue(pausedSession);
+    timer.setActive(runningSession);
 
-    // const elapsedBefore = timer.elapsed;
-    // await timer.pause();
-    // vi.advanceTimersByTime(3000); // 3 ticks
+    const elapsedBefore = timer.elapsed;
+    await timer.pause();
+    vi.advanceTimersByTime(3000); // 3 ticks
 
-    // expect(timer.isPaused).toBe(true);
-    // // elapsedSeconds must NOT have advanced during the 3 fake ticks
-    // expect(timer.elapsed).toBe(elapsedBefore);
+    expect(timer.isPaused).toBe(true);
+    // elapsedSeconds must NOT have advanced during the 3 fake ticks
+    expect(timer.elapsed).toBe(elapsedBefore);
   });
 
   /**
@@ -157,24 +154,24 @@ describe.skip('timer store — Phase 2 pause/resume state (SKIPPED: $effect cont
    * resume() should set isPaused=false AND restart the tick so that
    * elapsedSeconds begins incrementing again from the frozen value.
    */
-  it.skip('TC-P2-TIMER-02: resume() sets isPaused=false and restarts tick', async () => {
-    // const pausedSession = makeSession(true);
-    // const runningSession = makeSession(false);
+  it('TC-P2-TIMER-02: resume() sets isPaused=false and restarts tick', async () => {
+    const pausedSession = makeSession(true);
+    const runningSession = makeSession(false);
 
-    // // Start in paused state
-    // vi.mocked(sessionsApi.getActiveSession).mockResolvedValue(pausedSession);
-    // timer.setActive(pausedSession);
-    // const frozenElapsed = timer.elapsed;
+    // Start in paused state
+    vi.mocked(sessionsApi.getActiveSession).mockResolvedValue(pausedSession);
+    timer.setActive(pausedSession);
+    const frozenElapsed = timer.elapsed;
 
-    // // Now resume
-    // vi.mocked(sessionsApi.getActiveSession).mockResolvedValue(runningSession);
-    // await timer.resume();
-    // vi.advanceTimersByTime(3000); // 3 ticks
+    // Now resume
+    vi.mocked(sessionsApi.getActiveSession).mockResolvedValue(runningSession);
+    await timer.resume();
+    vi.advanceTimersByTime(3000); // 3 ticks
 
-    // expect(timer.isPaused).toBe(false);
-    // // elapsedSeconds should have advanced by ~3 seconds since resume
-    // expect(timer.elapsed).toBeGreaterThan(frozenElapsed);
-    // expect(timer.elapsed).toBe(frozenElapsed + 3);
+    expect(timer.isPaused).toBe(false);
+    // elapsedSeconds should have advanced by ~3 seconds since resume
+    expect(timer.elapsed).toBeGreaterThan(frozenElapsed);
+    expect(timer.elapsed).toBe(frozenElapsed + 3);
   });
 
   /**
@@ -182,18 +179,18 @@ describe.skip('timer store — Phase 2 pause/resume state (SKIPPED: $effect cont
    * Calling pause() when already paused must be idempotent — the second call
    * should not change any state or throw an error.
    */
-  it.skip('TC-P2-TIMER-03: pause() when already paused is idempotent', async () => {
-    // const pausedSession = makeSession(true);
-    // vi.mocked(sessionsApi.getActiveSession).mockResolvedValue(pausedSession);
-    // timer.setActive(pausedSession);
+  it('TC-P2-TIMER-03: pause() when already paused is idempotent', async () => {
+    const pausedSession = makeSession(true);
+    vi.mocked(sessionsApi.getActiveSession).mockResolvedValue(pausedSession);
+    timer.setActive(pausedSession);
 
-    // const elapsedBefore = timer.elapsed;
-    // await timer.pause(); // first pause — no-op (already paused)
-    // await timer.pause(); // second pause — still idempotent
+    const elapsedBefore = timer.elapsed;
+    await timer.pause(); // first pause — no-op (already paused)
+    await timer.pause(); // second pause — still idempotent
 
-    // expect(timer.isPaused).toBe(true);
-    // expect(timer.elapsed).toBe(elapsedBefore);
-    // // API should have been called twice (refresh each time) but state unchanged
+    expect(timer.isPaused).toBe(true);
+    expect(timer.elapsed).toBe(elapsedBefore);
+    // API should have been called twice (refresh each time) but state unchanged
   });
 
   /**
@@ -201,17 +198,17 @@ describe.skip('timer store — Phase 2 pause/resume state (SKIPPED: $effect cont
    * setActive() with a session where isPaused=true should leave isPaused=true
    * immediately (not start the tick). Timer should be frozen from the start.
    */
-  it.skip('TC-P2-TIMER-04: setActive() with isPaused=true starts in paused state', () => {
-    // const pausedSession = makeSession(true);
-    // timer.setActive(pausedSession);
+  it('TC-P2-TIMER-04: setActive() with isPaused=true starts in paused state', () => {
+    const pausedSession = makeSession(true);
+    timer.setActive(pausedSession);
 
-    // expect(timer.active).not.toBeNull();
-    // expect(timer.isPaused).toBe(true);
+    expect(timer.active).not.toBeNull();
+    expect(timer.isPaused).toBe(true);
 
-    // const elapsed = timer.elapsed;
-    // vi.advanceTimersByTime(5000); // 5 ticks
-    // // elapsedSeconds must not advance — tick must be stopped
-    // expect(timer.elapsed).toBe(elapsed);
+    const elapsed = timer.elapsed;
+    vi.advanceTimersByTime(5000); // 5 ticks
+    // elapsedSeconds must not advance — tick must be stopped
+    expect(timer.elapsed).toBe(elapsed);
   });
 
   /**
@@ -220,22 +217,19 @@ describe.skip('timer store — Phase 2 pause/resume state (SKIPPED: $effect cont
    *   - active → null
    *   - elapsedSeconds → 0
    *   - isPaused → false
-   *
-   * NOTE: timer currently has no dedicated clear() method. setActive(null)
-   * is the equivalent. If Leia adds clear(), this test should call it directly.
    */
-  it.skip('TC-P2-TIMER-05: clear/setActive(null) resets all state including isPaused', () => {
-    // const pausedSession = makeSession(true);
-    // timer.setActive(pausedSession);
-    // expect(timer.active).not.toBeNull();
-    // expect(timer.isPaused).toBe(true);
-    // expect(timer.elapsed).toBeGreaterThan(0);
+  it('TC-P2-TIMER-05: clear/setActive(null) resets all state including isPaused', () => {
+    const pausedSession = makeSession(true);
+    timer.setActive(pausedSession);
+    expect(timer.active).not.toBeNull();
+    expect(timer.isPaused).toBe(true);
+    expect(timer.elapsed).toBeGreaterThan(0);
 
-    // timer.setActive(null); // or timer.clear() once added
+    timer.setActive(null); // or timer.clear() once added
 
-    // expect(timer.active).toBeNull();
-    // expect(timer.isPaused).toBe(false);
-    // expect(timer.elapsed).toBe(0);
-    // expect(timer.isTracking).toBe(false);
+    expect(timer.active).toBeNull();
+    expect(timer.isPaused).toBe(false);
+    expect(timer.elapsed).toBe(0);
+    expect(timer.isTracking).toBe(false);
   });
 });
