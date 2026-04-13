@@ -1,4 +1,5 @@
 use rusqlite::{Connection, params};
+use chrono::{NaiveDateTime, Timelike};
 use crate::models::{session::*, work_order::WorkOrder, error::AppError};
 
 // SQL fragment for calculating effective duration.
@@ -6,6 +7,73 @@ use crate::models::{session::*, work_order::WorkOrder, error::AppError};
 // intervals) per decisions.md Section 618.  duration_override lets the user substitute
 // a manual value.  The COALESCE prefers the manual override when set.
 const EFFECTIVE_DURATION_SQL: &str = "COALESCE(ts.duration_override, ts.duration_seconds)";
+
+// ---------------------------------------------------------------------------
+// Rounding utilities
+// ---------------------------------------------------------------------------
+
+/// Floor a datetime to the nearest 30-minute boundary.
+///
+/// Examples: 09:17 → 09:00, 09:47 → 09:30, 14:58 → 14:30
+pub fn floor_to_half_hour(dt: NaiveDateTime) -> NaiveDateTime {
+    let floored = (dt.minute() / 30) * 30;
+    dt.with_minute(floored).unwrap()
+        .with_second(0).unwrap()
+        .with_nanosecond(0).unwrap()
+}
+
+/// Parse a datetime string (RFC3339 or SQLite `YYYY-MM-DD HH:MM:SS` format).
+fn parse_datetime(s: &str) -> Option<NaiveDateTime> {
+    // RFC3339 / ISO 8601 with timezone offset (e.g. "2024-01-15T09:17:00Z")
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Some(dt.naive_utc());
+    }
+    // SQLite datetime string (e.g. "2024-01-15 09:17:00")
+    NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").ok()
+}
+
+/// Compute the export duration in seconds, applying half-hour floor rounding when requested.
+///
+/// - `duration_override` takes precedence unconditionally (respects the user's manual edit).
+/// - When `round` is true and no override is set, floor `start_time` to the nearest 30-minute
+///   boundary and compute `end_time − floored_start`.
+/// - Falls back to the stored `duration_seconds` when rounding is disabled or timestamps
+///   cannot be parsed.
+fn compute_export_duration(
+    start_time: &str,
+    end_time: Option<&str>,
+    duration_seconds: Option<i64>,
+    duration_override: Option<i64>,
+    round: bool,
+) -> i64 {
+    if let Some(v) = duration_override {
+        return v;
+    }
+    if round {
+        if let Some(end_str) = end_time {
+            if let (Some(start_dt), Some(end_dt)) = (parse_datetime(start_time), parse_datetime(end_str)) {
+                let floored = floor_to_half_hour(start_dt);
+                let secs = end_dt.signed_duration_since(floored).num_seconds();
+                return secs.max(0);
+            }
+        }
+    }
+    duration_seconds.unwrap_or(0)
+}
+
+/// Read the `round_to_half_hour` setting from the database (default: false).
+pub fn get_round_to_half_hour(conn: &Connection) -> Result<bool, AppError> {
+    let result: rusqlite::Result<String> = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'round_to_half_hour'",
+        [],
+        |row| row.get(0),
+    );
+    match result {
+        Ok(v) => Ok(v.trim().eq_ignore_ascii_case("true")),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+        Err(e) => Err(AppError::Database(e)),
+    }
+}
 
 /// Fetch sessions with work order and customer details joined.
 ///
@@ -172,7 +240,7 @@ pub fn get_recent_work_orders(conn: &Connection, limit: i64) -> Result<Vec<WorkO
     work_orders.map_err(AppError::Database)
 }
 
-pub fn export_csv(conn: &Connection, start_date: &str, end_date: &str) -> Result<String, AppError> {
+pub fn export_csv(conn: &Connection, start_date: &str, end_date: &str, round_to_half_hour: bool) -> Result<String, AppError> {
     let mut stmt = conn.prepare("
         SELECT 
             date(ts.start_time),
@@ -180,7 +248,8 @@ pub fn export_csv(conn: &Connection, start_date: &str, end_date: &str) -> Result
             wo.name,
             ts.start_time,
             ts.end_time,
-            COALESCE(ts.duration_override, ts.duration_seconds),
+            ts.duration_seconds,
+            ts.duration_override,
             ts.activity_type,
             ts.notes
         FROM time_sessions ts
@@ -201,12 +270,24 @@ pub fn export_csv(conn: &Connection, start_date: &str, end_date: &str) -> Result
         let start_time: String = row.get(3)?;
         let end_time: Option<String> = row.get(4)?;
         let duration_seconds: Option<i64> = row.get(5)?;
-        let activity_type: Option<String> = row.get(6)?;
-        let notes: Option<String> = row.get(7)?;
+        let duration_override: Option<i64> = row.get(6)?;
+        let activity_type: Option<String> = row.get(7)?;
+        let notes: Option<String> = row.get(8)?;
         
-        let duration_minutes = duration_seconds.map(|s| s / 60).unwrap_or(0);
-        
-        Ok(format!(
+        Ok((date, customer, work_order, start_time, end_time, duration_seconds, duration_override, activity_type, notes))
+    })?;
+    
+    for row in rows {
+        let (date, customer, work_order, start_time, end_time, duration_seconds, duration_override, activity_type, notes) = row?;
+        let duration_secs = compute_export_duration(
+            &start_time,
+            end_time.as_deref(),
+            duration_seconds,
+            duration_override,
+            round_to_half_hour,
+        );
+        let duration_minutes = duration_secs / 60;
+        csv.push_str(&format!(
             "{},{},{},{},{},{},{},{}\n",
             escape_csv(&date),
             escape_csv(&customer),
@@ -216,11 +297,7 @@ pub fn export_csv(conn: &Connection, start_date: &str, end_date: &str) -> Result
             duration_minutes,
             escape_csv(&activity_type.unwrap_or_default()),
             escape_csv(&notes.unwrap_or_default())
-        ))
-    })?;
-    
-    for row in rows {
-        csv.push_str(&row?);
+        ));
     }
     
     Ok(csv)
@@ -280,12 +357,13 @@ pub fn get_report(conn: &Connection, start_date: &str, end_date: &str) -> Result
     })
 }
 
-pub fn export_servicenow_csv(conn: &Connection, start_date: &str, end_date: &str) -> Result<String, AppError> {
+pub fn export_servicenow_csv(conn: &Connection, start_date: &str, end_date: &str, round_to_half_hour: bool) -> Result<String, AppError> {
     let mut stmt = conn.prepare("
         SELECT 
-            strftime('%Y-%m-%d %H:%M:%S', ts.start_time),
-            strftime('%Y-%m-%d %H:%M:%S', ts.end_time),
-            COALESCE(ts.duration_override, ts.duration_seconds),
+            ts.start_time,
+            ts.end_time,
+            ts.duration_seconds,
+            ts.duration_override,
             wo.name,
             c.name,
             ts.notes,
@@ -303,18 +381,39 @@ pub fn export_servicenow_csv(conn: &Connection, start_date: &str, end_date: &str
     let mut csv = String::from("opened_at,closed_at,duration_hours,short_description,assignment_group,work_notes,work_order,activity_type\n");
 
     let rows = stmt.query_map(params![start_date, end_date], |row| {
-        let opened_at: String = row.get(0)?;
-        let closed_at: Option<String> = row.get(1)?;
+        let start_time_raw: String = row.get(0)?;
+        let end_time_raw: Option<String> = row.get(1)?;
         let duration_seconds: Option<i64> = row.get(2)?;
-        let work_order_name: String = row.get(3)?;
-        let customer_name: String = row.get(4)?;
-        let notes: Option<String> = row.get(5)?;
-        let work_order_code: Option<String> = row.get(6)?;
-        let activity_type: Option<String> = row.get(7)?;
+        let duration_override: Option<i64> = row.get(3)?;
+        let work_order_name: String = row.get(4)?;
+        let customer_name: String = row.get(5)?;
+        let notes: Option<String> = row.get(6)?;
+        let work_order_code: Option<String> = row.get(7)?;
+        let activity_type: Option<String> = row.get(8)?;
 
-        let duration_hours = duration_seconds
-            .map(|s| (s as f64 / 3600.0 * 100.0).round() / 100.0)
-            .unwrap_or(0.0);
+        Ok((start_time_raw, end_time_raw, duration_seconds, duration_override, work_order_name, customer_name, notes, work_order_code, activity_type))
+    })?;
+
+    for row in rows {
+        let (start_time_raw, end_time_raw, duration_seconds, duration_override, work_order_name, customer_name, notes, work_order_code, activity_type) = row?;
+
+        // Format timestamps for display (raw start/end are preserved; only duration is affected by rounding)
+        let opened_at = parse_datetime(&start_time_raw)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_else(|| start_time_raw.clone());
+        let closed_at = end_time_raw.as_deref()
+            .and_then(parse_datetime)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_default();
+
+        let duration_secs = compute_export_duration(
+            &start_time_raw,
+            end_time_raw.as_deref(),
+            duration_seconds,
+            duration_override,
+            round_to_half_hour,
+        );
+        let duration_hours = (duration_secs as f64 / 3600.0 * 100.0).round() / 100.0;
 
         let short_description = match &notes {
             Some(n) if !n.is_empty() => format!("{} - {}", work_order_name, n),
@@ -325,21 +424,17 @@ pub fn export_servicenow_csv(conn: &Connection, start_date: &str, end_date: &str
             .filter(|c| !c.is_empty())
             .unwrap_or_else(|| work_order_name.clone());
 
-        Ok(format!(
+        csv.push_str(&format!(
             "{},{},{:.2},{},{},{},{},{}\n",
             escape_csv(&opened_at),
-            escape_csv(&closed_at.unwrap_or_default()),
+            escape_csv(&closed_at),
             duration_hours,
             escape_csv(&short_description),
             escape_csv(&customer_name),
             escape_csv(&notes.unwrap_or_default()),
             escape_csv(&work_order_ref),
             escape_csv(&activity_type.unwrap_or_default()),
-        ))
-    })?;
-
-    for row in rows {
-        csv.push_str(&row?);
+        ));
     }
 
     Ok(csv)

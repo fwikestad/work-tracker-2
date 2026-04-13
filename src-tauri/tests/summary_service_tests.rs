@@ -102,7 +102,7 @@ fn tc_summary_03_export_csv_header() {
     let conn = init_test_db().expect("DB init failed");
     setup_customer_and_work_order(&conn, "Customer A", "Work Order A");
 
-    let csv = summary_service::export_csv(&conn, "2025-04-01", "2025-04-30")
+    let csv = summary_service::export_csv(&conn, "2025-04-01", "2025-04-30", false)
         .expect("export_csv failed");
 
     // Check header row
@@ -121,7 +121,7 @@ fn tc_summary_04_export_csv_with_data() {
 
     insert_session(&conn, &wo_id, "2025-04-15", 3600); // 1 hour = 60 minutes
 
-    let csv = summary_service::export_csv(&conn, "2025-04-01", "2025-04-30")
+    let csv = summary_service::export_csv(&conn, "2025-04-01", "2025-04-30", false)
         .expect("export_csv failed");
 
     let lines: Vec<&str> = csv.lines().collect();
@@ -144,7 +144,7 @@ fn tc_summary_05_export_csv_escapes_commas() {
 
     insert_session(&conn, &wo_id, "2025-04-15", 1800);
 
-    let csv = summary_service::export_csv(&conn, "2025-04-01", "2025-04-30")
+    let csv = summary_service::export_csv(&conn, "2025-04-01", "2025-04-30", false)
         .expect("export_csv failed");
 
     // CSV escaping: fields with commas should be quoted
@@ -199,4 +199,115 @@ fn tc_summary_07_get_report_date_boundaries() {
 
     assert_eq!(result.sessions.len(), 1, "should only include session within range");
     assert_eq!(result.total_seconds, 2000, "should only sum session within range");
+}
+
+// ---------------------------------------------------------------------------
+// TC-ROUND-01: floor_to_half_hour rounds correctly for all cases
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_round_01_floor_to_half_hour() {
+    use app_lib::services::summary_service::floor_to_half_hour;
+    use chrono::NaiveDateTime;
+
+    let cases = [
+        ("2025-04-15 09:17:00", "2025-04-15 09:00:00"),
+        ("2025-04-15 09:47:00", "2025-04-15 09:30:00"),
+        ("2025-04-15 10:05:00", "2025-04-15 10:00:00"),
+        ("2025-04-15 14:58:00", "2025-04-15 14:30:00"),
+        ("2025-04-15 09:00:00", "2025-04-15 09:00:00"), // already on boundary
+        ("2025-04-15 09:30:00", "2025-04-15 09:30:00"), // already on boundary
+    ];
+
+    for (input, expected) in cases {
+        let dt = NaiveDateTime::parse_from_str(input, "%Y-%m-%d %H:%M:%S").unwrap();
+        let floored = floor_to_half_hour(dt);
+        let expected_dt = NaiveDateTime::parse_from_str(expected, "%Y-%m-%d %H:%M:%S").unwrap();
+        assert_eq!(floored, expected_dt, "floor_to_half_hour({}) should be {}", input, expected);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TC-ROUND-02: export_csv with rounding extends duration to started half-hour
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_round_02_export_csv_rounds_duration() {
+    use rusqlite::params;
+
+    let conn = init_test_db().expect("DB init failed");
+    let (_, wo_id) = setup_customer_and_work_order(&conn, "Acme Corp", "Project Beta");
+
+    // Session: 09:17 → 10:20 (63 min raw). With rounding: 09:00 → 10:20 = 80 min.
+    let session_id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO time_sessions (id, work_order_id, start_time, end_time, duration_seconds, created_at, updated_at) \
+         VALUES (?, ?, '2025-04-15 09:17:00', '2025-04-15 10:20:00', 3780, datetime('now'), datetime('now'))",
+        params![&session_id, &wo_id],
+    ).expect("insert session");
+
+    // Without rounding: 63 minutes
+    let csv_plain = summary_service::export_csv(&conn, "2025-04-01", "2025-04-30", false)
+        .expect("export_csv failed");
+    let plain_row = csv_plain.lines().nth(1).unwrap();
+    assert!(plain_row.contains(",63,"), "plain export should show 63 minutes");
+
+    // With rounding: 09:00 → 10:20 = 80 minutes
+    let csv_rounded = summary_service::export_csv(&conn, "2025-04-01", "2025-04-30", true)
+        .expect("export_csv rounded failed");
+    let rounded_row = csv_rounded.lines().nth(1).unwrap();
+    assert!(rounded_row.contains(",80,"), "rounded export should show 80 minutes (09:00→10:20)");
+}
+
+// ---------------------------------------------------------------------------
+// TC-ROUND-03: rounding respects duration_override (manual edits win)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_round_03_rounding_respects_override() {
+    use rusqlite::params;
+
+    let conn = init_test_db().expect("DB init failed");
+    let (_, wo_id) = setup_customer_and_work_order(&conn, "Override Corp", "Manual Project");
+
+    // Session with a manual override of 45 minutes (2700s)
+    let session_id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO time_sessions (id, work_order_id, start_time, end_time, duration_seconds, duration_override, created_at, updated_at) \
+         VALUES (?, ?, '2025-04-15 09:17:00', '2025-04-15 10:20:00', 3780, 2700, datetime('now'), datetime('now'))",
+        params![&session_id, &wo_id],
+    ).expect("insert session with override");
+
+    // Even with rounding enabled, override should win → 45 minutes
+    let csv = summary_service::export_csv(&conn, "2025-04-01", "2025-04-30", true)
+        .expect("export_csv failed");
+    let row = csv.lines().nth(1).unwrap();
+    assert!(row.contains(",45,"), "override should win over rounding (45 min)");
+}
+
+// ---------------------------------------------------------------------------
+// TC-ROUND-04: get/set round_to_half_hour setting persists correctly
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_round_04_setting_persists() {
+    use rusqlite::params;
+
+    let conn = init_test_db().expect("DB init failed");
+
+    // Default from migration should be false
+    let default_val = summary_service::get_round_to_half_hour(&conn)
+        .expect("get_round_to_half_hour failed");
+    assert!(!default_val, "default should be false");
+
+    // Set to true
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('round_to_half_hour', 'true')
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![],
+    ).expect("update setting");
+
+    let updated_val = summary_service::get_round_to_half_hour(&conn)
+        .expect("get_round_to_half_hour after update failed");
+    assert!(updated_val, "should now be true");
 }
