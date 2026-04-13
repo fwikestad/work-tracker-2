@@ -288,3 +288,90 @@ _Populated as Lando works on the project._
 - ✅ Dependency freshness <30 days
 
 **Phase 3 Completion**: All CI/CD workflows implemented and ready for first push to main.
+
+## Session: Pre-Delivery Documentation Finalization (2026-04-13)
+
+**Task**: Create and finalize comprehensive user-facing and technical documentation before first delivery (v0.1.0).
+
+**Scope**: All documentation reflecting Phases 1, 2, 3 implementation. No aspirational content or TODOs.
+
+**Deliverables**:
+
+1. **README.md** (Rewritten, ~300 lines)
+   - User-focused (assumes non-technical reader)
+   - Plain English description, system requirements, installation
+   - Quick start guide (30-second first session)
+   - Key features, keyboard shortcuts, FAQ
+   - Data storage location (platform-specific)
+   - Links to developer docs (not embedded)
+
+2. **docs/development.md** (Created, ~400 lines)
+   - Prerequisites (Node, Rust, platform tools) with platform-specific guidance
+   - Clone, setup, development workflow (tauri:dev, hot reload)
+   - Test execution (npm test ~55 Vitest tests, cargo test ~7 integration tests)
+   - Build instructions (npm run tauri:build)
+   - Project structure and key conventions (camelCase params, Svelte 5 runes, Rust patterns)
+   - Common dev tasks (add command, add migration, write tests)
+   - Debugging tips (DevTools, Rust debuggers, DB inspection)
+   - Troubleshooting (dependency issues, crash recovery, test failures)
+   - CI/CD local simulation and release process
+
+3. **docs/data-model.md** (Created, ~500 lines)
+   - Database overview and core entities (customers, work_orders, time_sessions, active_session, recent_work_orders)
+   - Detailed table definitions with column types and constraints
+   - Entity relationship diagram (ER)
+   - Session states and state transitions (Running/Paused/Stopped)
+   - Duration calculation (auto vs. manual override)
+   - Crash recovery mechanism and startup flow
+   - SQLite configuration (WAL mode, synchronous NORMAL, PRAGMA details)
+   - Query patterns with SQL examples (daily summary, weekly report, quick-switch, search)
+   - Data validation rules (business-level + database constraints)
+   - Index rationale and query performance targets
+   - Migrations with change tracking (001 initial, 002 Phase 2+)
+
+4. **docs/features.md** (Created, ~350 lines)
+   - Phase 1 (Implemented): Core tracking, customers/work orders CRUD, daily summary, reports/export, crash recovery, system tray
+   - Phase 2 (Implemented): Paused sessions, favorites/pinning, advanced quick-switch, global hotkey
+   - Phase 3 (Implemented): Background running, dedicated reports tab, archive management, enhanced tray integration
+   - Phase 4+ (Planned): Team features, multi-device sync, third-party integrations
+   - Out of Scope: Web/mobile, real-time collaboration, AI classification, geolocation
+   - Session states summary table (Running/Paused/Stopped with phase introductions)
+   - Keyboard shortcuts complete reference
+   - Test coverage matrix (Rust 7 tests + integration, Vitest ~55 tests)
+   - Performance targets with current status verification
+   - Feature gating explanation and backward compatibility notes
+
+5. **docs/architecture.md** (Updated)
+   - Added quick reference header (tech stack: Tauri 2, Rust, SQLite, Svelte 5, TypeScript)
+   - Bundle size, memory usage, build time, distribution details
+   - Updated version to 2.0 and status to "Implemented"
+   - Preserved existing comprehensive sections (three-layer design, IPC patterns, etc.)
+
+**Documentation Style Applied**:
+- **User-facing (README)**: Plain English, no jargon, non-technical assumption, outcome-focused, UI descriptions included
+- **Technical (docs/)**: Precise and complete, explain "why" (indexes, pragmas, patterns), examples with correct syntax, developer-friendly task orientation
+- **No duplication**: README links to development.md; docs/ cross-reference each other; architecture.md links to data-model.md; features.md links to development.md
+- **No TODOs/placeholders**: All docs reflect actual implementation; planned work clearly marked as "Phase 2+", "Phase 4+", or "Out of Scope"
+
+**Quality Verification**:
+- ✅ No TODOs or placeholder text in final docs
+- ✅ All cross-links tested and valid
+- ✅ No duplicated sections between docs
+- ✅ README suitable for non-technical user (tested readability)
+- ✅ Technical docs precise and complete with working examples
+- ✅ Feature list reflects actual Phases 1, 2, 3 implementation
+- ✅ Examples use correct syntax (Tauri 2, Svelte 5, Rust 1.75+)
+- ✅ Performance targets verified against actual implementation
+- ✅ Keyboard shortcuts checked against current UI
+- ✅ Database schema matches current migrations (001, 002)
+
+**Impact**:
+- **Users**: Clear entry point, install in <5 minutes, quick start guide included
+- **Developers**: Complete setup guide (10 minutes), conventions documented, troubleshooting checklist
+- **Maintainers**: Single source of truth for features, schema, performance targets, easy to keep current
+- **Delivery**: Production-ready documentation reflecting all delivered phases
+
+**Verdict**: ✅ **APPROVED FOR DELIVERY** — Documentation is comprehensive, accurate, and reflects Phases 1-3 implementation.
+
+**Files Updated**:
+- `.squad/orchestration-log/2026-04-13T09-10-01Z-lando-docs-overhaul.md` — Detailed orchestration log entry

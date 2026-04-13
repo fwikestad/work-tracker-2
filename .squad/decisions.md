@@ -3029,3 +3029,56 @@ let searchSwitchRef = $state<SearchSwitch | null>(null);
 - Tauri invoke naming: `.squad/skills/tauri-invoke-naming/SKILL.md`
 
 
+
+## Pre-Delivery Decisions
+
+### 2026-04-13: Security Review — Approved
+
+**From**: Han (Lead, Security Review)  
+**Status**: COMPLETED & APPROVED FOR DELIVERY
+
+**Decisions Made**:
+
+#### SEC-1: Remove Unused Shell Plugin (Implemented)
+
+**Decision**: Remove 	auri-plugin-shell entirely from the application.
+
+**Rationale**: 
+- Shell plugin was included but completely unused — no shell operations anywhere in codebase
+- Unused plugins with broad permissions are attack vectors if webview is compromised
+- Principle of least privilege: remove capabilities not needed
+
+**Impact**: Reduces attack surface. No functionality affected.
+
+**Verdict**: ✅ APPROVED FOR DELIVERY — Artifact: docs/security-review.md
+
+---
+
+### 2026-04-13: Documentation Overhaul — Approved
+
+**From**: Lando (DevOps, Documentation)  
+**Status**: COMPLETED & APPROVED FOR DELIVERY
+
+**Deliverables**:
+
+1. **README.md** (Rewritten, ~300 lines) — User-focused
+2. **docs/development.md** (Created, ~400 lines) — Developer setup and conventions
+3. **docs/data-model.md** (Created, ~500 lines) — Schema and query reference
+4. **docs/features.md** (Created, ~350 lines) — Phased feature inventory
+5. **docs/architecture.md** (Updated) — Quick reference header added
+
+**Quality**: ✅ No TODOs, all cross-links valid, accurate for Phases 1-3
+
+**Verdict**: ✅ APPROVED FOR DELIVERY — Total ~1,550 lines
+
+---
+
+## Delivery Status
+
+✅ **DELIVERY READY — v0.1.0**
+
+All critical items completed:
+- Security audit passed (Han)
+- Comprehensive documentation done (Lando)
+- Code review approved (Han)
+- Tests passing (Wedge)
