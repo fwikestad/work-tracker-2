@@ -147,7 +147,19 @@ This document catalogs all features of Work Tracker 2, organized by phase and st
 
 ---
 
-## Phase 4+ — Team & Integrations (Planned 📋)
+## Phase 4a — ServiceNow Integration (In Progress 🚧)
+
+### A. ServiceNow Import
+
+- 🚧 **ServiceNow Import Set CSV export** — Export sessions in ServiceNow-compatible format with format toggle in Reports UI
+  - Columns: date, customer, work order, code, start time, end time, duration (hours), activity type, notes
+  - User manually uploads via ServiceNow's CSV Import Set (no API dependency)
+  - Validates user demand before Phase 4b REST automation
+- 📋 **ServiceNow API push (Phase 4b)** — Direct REST integration; credentials in OS keychain (parked pending Phase 4a validation)
+
+---
+
+## Phase 4b+ — Team & Integrations (Planned 📋)
 
 ### A. Multi-User
 

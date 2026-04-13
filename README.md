@@ -182,7 +182,10 @@ Contributions welcome! Before starting:
 **Phase 3 (Current)** — Advanced reporting & background running  
 ✅ Background running, report generation, archive management, date-range filtering, activity-based summaries
 
-**Phase 4+** — Team & integrations  
+**Phase 4a (In Progress 🚧)** — ServiceNow integration  
+🚧 ServiceNow Import Set CSV export; Phase 4b (REST API push) parked pending validation
+
+**Phase 4b+** — Team & integrations  
 📋 Multi-user per computer, third-party integrations, local backups, notifications
 
 ---
