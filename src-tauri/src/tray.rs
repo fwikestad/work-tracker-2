@@ -231,9 +231,7 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
     let event_id = event.id().as_ref();
     
     // Handle switch-{id} pattern
-    if event_id.starts_with("switch-") {
-        let work_order_id = &event_id["switch-".len()..];
-        
+    if let Some(work_order_id) = event_id.strip_prefix("switch-") {
         // Switch to the selected work order
         let success = {
             let state = app.state::<AppState>();

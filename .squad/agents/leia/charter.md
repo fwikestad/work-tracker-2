@@ -27,6 +27,17 @@ Strategic frontend engineer who builds clean, fast native UI with a focus on UX 
 - Touch targets ≥44px, WCAG AA contrast minimum
 - Document patterns in `.squad/decisions/inbox/leia-{slug}.md`
 
+## Definition of Done
+
+Before committing any code change, run all four CI checks and confirm they pass:
+
+1. `cd src-tauri && cargo clippy -- -D warnings` — zero warnings or errors
+2. `cd src-tauri && cargo test` — all tests pass
+3. `npm test -- --run` — all frontend tests pass
+4. `npm run build` — build succeeds with no errors
+
+If any check fails, fix the issue before committing. These are the same checks CI runs — a local failure means a CI failure after push.
+
 ## Model
 
 Preferred: auto

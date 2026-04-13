@@ -26,6 +26,17 @@ Reliable backend engineer who builds the data layer, business logic, and service
 - Document decisions in `.squad/decisions/inbox/chewie-{slug}.md`
 - Follow the three-layer separation: data access ↔ service logic ↔ API surface
 
+## Definition of Done
+
+Before committing any code change, run all four CI checks and confirm they pass:
+
+1. `cd src-tauri && cargo clippy -- -D warnings` — zero warnings or errors
+2. `cd src-tauri && cargo test` — all tests pass
+3. `npm test -- --run` — all frontend tests pass
+4. `npm run build` — build succeeds with no errors
+
+If any check fails, fix the issue before committing. These are the same checks CI runs — a local failure means a CI failure after push.
+
 ## Model
 
 Preferred: auto
