@@ -417,6 +417,40 @@ Completed all Phase 2 backend work items (P2-TAURI-1, P2-TEST-BACKEND-1, duratio
 **Quality Metrics**:
 - Build: ✅ Clean (no errors, no new warnings)
 - Tests: ✅ 24 backend tests passing (16 Phase 1 + 8 Phase 2)
+
+---
+
+### 2026-04-13: Tauri invoke() Naming Convention — Skill Document Created
+
+**Context:** Team was repeatedly hit by a Tauri 2 parameter naming bug. Fredrik requested formal documentation.
+
+**Root cause:** Tauri 2 auto-converts camelCase → snake_case before passing to Rust. If frontend sends snake_case directly, Tauri leaves it untouched → Rust can't match parameter → "missing required key" error.
+
+**The rule:** ALL `invoke()` calls in `src/lib/api/*.ts` MUST use camelCase keys. No exceptions.
+
+**Real bugs this prevented** (8+ violations fixed):
+- `work_order_id` → `workOrderId` (sessions.ts, workOrders.ts)
+- `activity_type` → `activityType` (sessions.ts)
+- `start_date`/`end_date` → `startDate`/`endDate` (sessions.ts, reports.ts)
+- `session_id` → `sessionId` (sessions.ts)
+- `customer_id` → `customerId` (workOrders.ts)
+- `favorites_only` → `favoritesOnly` (workOrders.ts)
+- `include_archived` → `includeArchived` (customers.ts)
+
+**Deliverables**:
+1. **Skill document:** `.squad/skills/tauri-invoke-naming/SKILL.md`
+   - Explains Tauri 2 conversion mechanism
+   - Shows correct vs incorrect patterns
+   - Lists all known parameters with conversion table
+   - Documents all 8+ bugs this caused
+   - Provides checklist for new invoke() calls
+2. **Decision entry:** `.squad/decisions/inbox/chewie-tauri-naming-rule.md`
+   - Formal team rule with enforcement policy
+   - Links to skill document
+
+**Confidence:** High — independently confirmed through multiple production bugs across multiple agents.
+
+**Pattern for future:** All new Tauri commands must follow this convention. Code review must verify camelCase compliance before merge.
 - Duration calculations: ✅ Fixed — sessions now show correct total time in summaries
 - Regressions: ✅ Zero — all Phase 1 tests still pass
 
@@ -615,3 +649,50 @@ Completed all Phase 2 backend work items (P2-TAURI-1, P2-TEST-BACKEND-1, duratio
 3. **Integration**: Frontend (Leia) listens for event and switches to Reports tab
 
 **Phase 3 Completion**: All Chewie work complete. Backend tray integration ready for frontend handoff.
+
+### 2026-04-13: Fixed Three Critical Pre-Release Bugs
+
+**Task**: Fix export failures, grey tray icon on Windows, and graceful exit error before release.
+
+**BUG 1: Export Failed - Missing Permissions**
+**Problem**: CSV export was failing with "Export failed" error. Investigation showed src-tauri/capabilities/default.json had dialog:default (doesn't include save dialog) and s:default (doesn't include write access).
+**Root Cause**: 
+- dialog:default excludes dialog:allow-save — save file dialog threw permission error
+- s:default excludes write permissions — writeTextFile from frontend failed even if dialog worked
+**Solution**: Added two explicit permissions to default.json:
+- dialog:allow-save — enables save file dialog
+- s:allow-write-text-file — enables writing CSV content from frontend
+**Verification**: Build succeeded. Export backend (xport_csv in summary_service.rs) was already correct.
+
+**BUG 2: Tray Icon Always Grey on Windows**
+**Problem**: Tray icon showed as grey even when tracking (should be green). Paused state (should be amber) also grey.
+**Root Cause**: .icon_as_template(true) in 	ray.rs line 95. On macOS, this creates template images (respects dark/light mode). On Windows, this forces **permanent monochrome rendering** regardless of RGBA data.
+**Solution**: Removed .icon_as_template(true) from TrayIconBuilder::with_id("main") chain. The colored circles from make_circle_icon() now render correctly:
+- Green (#16a34a) when tracking
+- Amber (#f59e0b) when paused  
+- Grey (#6b7280) when stopped
+**Note**: Could make this platform-conditional with #[cfg(target_os = "macos")] but simple removal is fine since app primarily targets Windows.
+
+**BUG 3: Graceful Exit Error on Quit**
+**Problem**: Windows error on app exit: Failed to unregister class Chrome_WidgetWin_0. Error = 1412 (ERROR_CLASS_HAS_WINDOWS)
+**Root Cause**: lib.rs intercepts CloseRequested with prevent_close() and hides window. When tray "Quit" handler calls pp.exit(0), window is still alive (hidden but not destroyed). Chrome tries to unregister its window class while window still exists.
+**Solution**: Added win.destroy() before pp.exit(0) in the quit handler (	ray.rs, "quit" arm):
+`ust
+if let Some(win) = app.get_webview_window("main") {
+    let _ = win.destroy();
+}
+app.exit(0);
+`
+win.destroy() forcefully destroys the window without triggering CloseRequested (which would call prevent_close), cleaning up Chrome window class before exit.
+
+**Build Verification**: 
+- cargo build succeeded in 13.41s with no errors
+- All 14 tests passed (7 summary tests + 7 tray menu tests)
+
+**Key Learnings**:
+1. **Tauri 2 Permissions are Granular**: dialog:default and s:default are NOT sufficient for save dialogs and file writes. Must explicitly add dialog:allow-save and s:allow-write-text-file.
+2. **Platform-Specific Tray Behavior**: .icon_as_template(true) has opposite effects on macOS (good, respects theme) vs Windows (bad, forces monochrome). For cross-platform apps, wrap in #[cfg] or omit for Windows-primary apps.
+3. **Window Lifecycle and Exit**: When using prevent_close() to hide windows, must explicitly destroy() them before calling pp.exit() to avoid window class unregister errors (1412 = ERROR_CLASS_HAS_WINDOWS).
+4. **Transactional Quit**: Stop active session, destroy window, then exit — all in the correct order to prevent data loss and cleanup errors.
+
+**Pre-Release Readiness**: All three critical bugs fixed. App ready for release testing.

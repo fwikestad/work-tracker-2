@@ -92,7 +92,6 @@ pub fn setup_tray(app: &App) -> tauri::Result<()> {
 
     let _ = TrayIconBuilder::with_id("main")
         .icon(make_circle_icon(107, 114, 128)) // grey = stopped
-        .icon_as_template(true)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .tooltip("Work Tracker 2 — Not tracking")
@@ -261,6 +260,11 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
                 if let Ok(conn) = state.db.lock() {
                     let _ = session_service::stop_active_session(&conn);
                 };
+            }
+            // Destroy the window before exiting to prevent
+            // Chrome_WidgetWin_0 class unregister error 1412 on Windows
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.destroy();
             }
             app.exit(0);
         }

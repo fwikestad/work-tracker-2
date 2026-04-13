@@ -661,3 +661,64 @@ Display inline (no alert()):
 5. **No popups**: All ReportView export/error states inline (no alert())
 
 **Phase 3 Completion**: All Leia work complete. Frontend navigation and error handling aligned with Phase 3 design.
+
+## 2026-04-13: Tray Menu Fix + Clock Icon
+
+**TASK 1: Fixed "Switch Projects" tray menu handler**
+
+**Issue**: The tray menu's "Switch Projects" button in src-tauri/src/tray.rs emitted "open-search-switch" event, but src/routes/+page.svelte had no listener for it. Only "open-reports" was handled.
+
+**Fix**:
+1. Added ocus() export method to SearchSwitch.svelte using Svelte 5 pattern:
+   - Declared let inputElement: HTMLInputElement | undefined
+   - Added xport function focus() { inputElement?.focus(); }
+   - Bound input element: ind:this={inputElement}
+
+2. Updated +page.svelte to listen for "open-search-switch":
+   - Added 	ick import from svelte (for DOM update await)
+   - Created searchSwitchRef variable and bound SearchSwitch component
+   - Added second event listener in onMount:
+     `	ypescript
+     const unlistenSwitch = listen('open-search-switch', async () => {
+       activeView = 'track';
+       await tick();  // Wait for DOM update
+       searchSwitchRef?.focus();
+     });
+     `
+   - Updated cleanup to unlisten both events
+
+**Result**: Clicking "Switch Projects" in tray menu now switches to Track view AND focuses the search input. User can immediately start typing to filter work orders.
+
+**TASK 2: Created clock-themed app icon**
+
+**Requirement**: Replace default Tauri placeholder with professional clock icon.
+
+**Approach**:
+- Created scripts/gen-icon.mjs to convert SVG → PNG → all icon sizes
+- Installed sharp as dev dependency for SVG→PNG rendering
+- Used Tauri's 
+px @tauri-apps/cli icon to auto-generate all sizes
+
+**Icon Design**:
+- Dark rounded square background (#1a1a2e)
+- Green accent circle rim (#4ade80)
+- White clock hands (10:10 position)
+- 12 hour markers (major + minor)
+- Green center dot
+- 1024x1024 source → all desktop/mobile/Windows/macOS formats
+
+**Files Generated**:
+- src-tauri/icons/app-source.png (1024x1024 source)
+- All standard sizes: 32x32, 64x64, 128x128, 128x128@2x
+- Platform icons: icon.ico (Windows), icon.icns (macOS)
+- Mobile icons: iOS AppIcon set, Android mipmap resources
+
+**Verification**: All 55 tests pass. Icon files successfully generated.
+
+**Learnings**:
+- Svelte 5 xport function pattern for component methods (cleaner than  for simple methods)
+- 	ick() required after state change that updates DOM before accessing child component refs
+- Multiple event listeners in onMount require individual cleanup in return function
+- Tauri icon generator handles all platform variants from single source (massive time saver)
+- Sharp library excellent for programmatic SVG→PNG conversion (no manual design tool needed)
+

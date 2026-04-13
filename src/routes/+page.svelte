@@ -4,23 +4,31 @@
   import DailySummary from '$lib/components/DailySummary.svelte';
   import SessionList from '$lib/components/SessionList.svelte';
   import ReportView from '$lib/components/ReportView.svelte';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { timer } from '$lib/stores/timer.svelte';
   import { sessionsStore } from '$lib/stores/sessions.svelte';
   import { listen } from '@tauri-apps/api/event';
 
   let activeView = $state<'track' | 'reports'>('track');
   let summaryRef: DailySummary;
+  let searchSwitchRef: SearchSwitch;
 
   onMount(() => {
     summaryRef?.refresh();
     
-    const unlisten = listen('open-reports', () => {
+    const unlistenReports = listen('open-reports', () => {
       activeView = 'reports';
+    });
+
+    const unlistenSwitch = listen('open-search-switch', async () => {
+      activeView = 'track';
+      await tick();
+      searchSwitchRef?.focus();
     });
     
     return () => {
-      unlisten.then(fn => fn());
+      unlistenReports.then(fn => fn());
+      unlistenSwitch.then(fn => fn());
     };
   });
 
@@ -54,7 +62,7 @@
   <div class="main-view">
     {#if activeView === 'track'}
       <Timer />
-      <SearchSwitch />
+      <SearchSwitch bind:this={searchSwitchRef} />
       <DailySummary bind:this={summaryRef} />
       <SessionList />
     {:else if activeView === 'reports'}

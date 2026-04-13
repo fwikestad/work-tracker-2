@@ -12,6 +12,12 @@
   let selectedIndex = $state(0);
   let searchTimeout: ReturnType<typeof setTimeout> | null = null;
   let searchGen = 0;
+  let inputElement: HTMLInputElement | undefined;
+
+  // Expose focus method for parent component
+  export function focus() {
+    inputElement?.focus();
+  }
 
   // Grouped items for idle view (no query)
   let favs = $derived(sessionsStore.allFavorites);
@@ -109,6 +115,7 @@
 
 <section class="search-section">
   <input
+    bind:this={inputElement}
     type="text"
     class="search-input"
     placeholder="Search work orders... (Ctrl+K)"
