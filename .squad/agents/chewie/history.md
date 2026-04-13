@@ -600,3 +600,18 @@ Completed all Phase 2 backend work items (P2-TAURI-1, P2-TEST-BACKEND-1, duratio
 1. **Window Event Order Matters**: The .on_window_event() handler must be added BEFORE .build() in the Tauri builder chain to intercept events properly.
 2. **Tray Quit vs Window Close**: The tray quit handler calls pp.exit(0), which terminates the process and bypasses the window event handler - this is the correct behavior for a true quit action.
 3. **Menu Event Pattern**: Tray menu items follow a consistent pattern: add to uild_menu(), handle in on_menu_event(), emit frontend event for UI actions.
+
+### 2026-04-13: Phase 3 Close-to-Tray + View Reports Complete
+
+**Deliverables**:
+- ✅ Window close-to-tray behavior (prevents app exit, hides to system tray)
+- ✅ "View Reports" menu item added to tray right-click menu
+- ✅ Emits open-reports Tauri event for frontend navigation
+- ✅ Build verified: cargo build clean, no warnings
+
+**Implementation**:
+1. **Window event handler** (lib.rs): Intercepts CloseRequested, calls window.hide() + pi.prevent_close()
+2. **Tray menu item** (tray.rs): "View Reports" → shows window + emits open-reports event
+3. **Integration**: Frontend (Leia) listens for event and switches to Reports tab
+
+**Phase 3 Completion**: All Chewie work complete. Backend tray integration ready for frontend handoff.

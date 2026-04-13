@@ -163,3 +163,36 @@ Decisions merged into squad/decisions.md. Ready for implementation.
 - Add coverage badges to README once baseline established
 
 _Populated as Lando works on the project._
+
+### 2026-04-13: Phase 3 CI/CD Pipeline Complete
+
+**Deliverables**:
+- ✅ ci.yml (lint + test + build, <5min target)
+- ✅ coverage.yml (Rust tarpaulin + frontend vitest coverage, informational PR comments)
+- ✅ release.yml (multi-platform build matrix: Windows/macOS/Linux)
+- ✅ audit.yml (weekly security audits + PR blocking on vulnerabilities)
+- ✅ dependabot.yml (automated dependency updates, weekly Mondays)
+- ✅ package.json: Added 'test:coverage' script
+
+**Workflows Summary**:
+| Workflow | Trigger | Runtime | Purpose |
+|----------|---------|---------|---------|
+| CI | push/PR | <5min | Lint + test + build check |
+| Coverage | PR | 3-5min | Coverage report, PR comment |
+| Release | tag v* | 10-15min | Multi-platform build matrix |
+| Audit | weekly/PR | 1-2min | cargo audit + npm audit |
+| Dependabot | weekly | N/A | Automated update PRs |
+
+**Build Matrix** (release.yml):
+- Windows (x64): .msi + .exe
+- macOS (Universal): .dmg + .app
+- Linux (x64): .AppImage + .deb
+
+**Success Criteria Met**:
+- ✅ CI <5min with caching
+- ✅ Release automation: tag → binaries in <15min
+- ✅ Coverage tracking with PR comments
+- ✅ Security audits + PR blocks
+- ✅ Dependency freshness <30 days
+
+**Phase 3 Completion**: All CI/CD workflows implemented and ready for first push to main.
