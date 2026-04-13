@@ -232,6 +232,58 @@ All refactoring patterns documented immediately after implementation. Architectu
 
 **New learnings**: Patterns emerge from refactoring and should be codified in architecture.md. This becomes team norm for future code. Prevents developers from reverting to old anti-patterns (e.g., .unwrap() on Mutex locks).
 
+## Phase 4a ServiceNow Integration Documentation (2026-04-XX - Complete)
+
+**Task**: Update project documentation to reflect Phase 4a (ServiceNow CSV export) now in progress.
+
+**Deliverables**: 3 files changed, 1 file created, 1 commit
+
+**Changes Made**:
+
+1. **docs/features.md** — Added Phase 4a section
+   - New section: "Phase 4a — ServiceNow Integration (In Progress 🚧)"
+   - Moved prior Phase 4+ items to "Phase 4b+ — Team & Integrations (Planned 📋)"
+   - Documented 🚧 ServiceNow Import Set CSV export with format toggle in Reports UI
+   - Added 📋 Phase 4b (REST API push, parked) as separate sub-phase
+   - Rationale: Clear phase separation, indicates CSV is MVP before API automation
+
+2. **README.md** — Updated roadmap section
+   - Split "Phase 4+" into two lines: "Phase 4a (In Progress 🚧)" and "Phase 4b+ (Planned)"
+   - Phase 4a: "ServiceNow Import Set CSV export; Phase 4b (REST API push) parked pending validation"
+   - Phase 4b+: "Multi-user per computer, third-party integrations, local backups, notifications"
+   - Rationale: Roadmap now reflects active work; readers see at a glance what's being built now
+
+3. **docs/phase4-plan.md** — New planning document
+   - Matches structure of existing `phase2-plan.md`
+   - Section 1: Phase 4a goals and background (references Han's decision doc)
+   - Section 2: Phase 4a scope table (UI toggle, column mapping, duration conversion)
+   - Section 3: Implementation checklist (~1.5 days estimated)
+   - Section 4: Phase 4b architecture (REST API, parked pending demand validation)
+   - Section 5: Phase 4b+ integrations (multi-user, billing, calendar, Slack, Zapier)
+   - Section 6: Local-first architecture principles (opt-in, credential security)
+   - Section 7-9: Testing strategy, timeline, success metrics
+   - Section 10: Decision log and next steps
+   - Rationale: Consolidates Phase 4 strategy in one place; makes phase structure clear
+
+**Quality Checks**:
+- ✅ All three docs updated and committed
+- ✅ Phase 4a clearly marked as "In Progress 🚧"
+- ✅ Phase 4b+ clearly marked as "Planned 📋"
+- ✅ Cross-references between docs verified (phase4-plan.md links to han-servicenow-exploration.md and other docs)
+- ✅ New plan follows phase2-plan.md template for consistency
+- ✅ Includes Han's recommendation: CSV first, REST API later pending demand validation
+- ✅ Commit includes Co-authored-by trailer
+
+**Impact**: Documentation now reflects Phase 4a work starting. New readers understand what's being built (CSV export), why (validate demand), and what's deferred (REST API). Clear phase separation helps team prioritize and tracks progress.
+
+**Key Learnings**:
+- Documentation should update immediately when phase status changes, not retroactively
+- Phase planning docs serve as single source of truth for current work; links to decision docs keep context available
+- Clear labels (🚧 In Progress, 📋 Planned) help readers at a glance understand status
+- Including rationale (why CSV first?) in phase plan doc prevents future questions and justifies decisions
+
+---
+
 ---
 
 ## Phase 3 Documentation Update (2026-04-13 - Complete)

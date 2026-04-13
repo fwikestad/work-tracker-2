@@ -6,6 +6,19 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 
 ## Learnings
 
+### 2026-04-14: Settings UI — Toggle Pattern
+
+**Context**: Added "Round to started half-hour" toggle as the first setting in a new Settings tab.
+
+**Pattern established**:
+- Settings live in `SettingsView.svelte` as a dedicated tab in the main nav (alongside Track / Reports / Manage)
+- Each setting group uses `.settings-group` card with a `.group-title` header (e.g. "Export")
+- Toggle switches use `<button role="switch" aria-checked={...}>` — native button semantics give keyboard (Tab + Space) for free, no extra JS needed
+- Touch target ≥44px is achieved by setting `min-height: 44px` on the button; the visual track is narrower, centred inside via flexbox
+- Tauri invoke pattern: `get_setting` on `onMount`, `set_setting` on toggle; errors logged to console and surfaced inline — never swallowed silently
+
+**Pre-existing `cargo test` failures**: The Rust integration test suite has pre-existing type annotation errors in test closures (`E0282`) and a stale rlib artifact (`E0786`/`E0460`). These are NOT related to frontend changes and were present before this PR. Clippy and the build both pass clean.
+
 ### 2026-04-13: Charter Updated — CI Enforcement Definition of Done
 
 **What changed**: Charter now includes a formal `## Definition of Done` section requiring all four CI checks to pass before any code is committed.
@@ -26,7 +39,23 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 - If any fails: fix the issue locally before pushing
 - These are the same checks CI runs — a local failure predicts a CI failure
 
-### 2026-04-12: Bug Fix: QuickAdd Type Safety
+### 2026-04-14: ServiceNow Export Format Selector
+
+**What changed**: Added export format toggle to `ReportView.svelte` and updated `exportCsv()` API function.
+
+**Changes**:
+- `src/lib/api/reports.ts`: Added `ExportFormat` type (`'standard' | 'servicenow'`), updated `exportCsv()` with optional third param defaulting to `'standard'`
+- `src/lib/components/ReportView.svelte`: Added `exportFormat` state, inline format toggle buttons ("Standard CSV" / "ServiceNow Import Set"), wired to `handleExport()`
+
+**UX pattern used**: Two toggle buttons styled like the existing range-buttons (active/inactive with accent color). Placed inline above the Export button in an `export-row` flex container.
+
+**Keyboard/accessibility**: `aria-pressed` on buttons, standard tab order, `min-height: 44px` on all export-related buttons.
+
+**Backend contract**: `exportCsv` passes `exportFormat` as `export_format` Tauri invoke param — matching the contract Chewie's backend will consume.
+
+**Cargo test note**: Pre-existing `cargo test` failures due to OS paging file / rlib metadata issues (E0786/E0462) — unrelated to frontend work. Clippy passes, frontend tests all pass (55/55), build succeeds.
+
+
 
 **Issue Identified**: Han's code review flagged QuickAdd.svelte manually constructing `ActiveSession` object missing required `isPaused: false` field.
 
