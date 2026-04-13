@@ -4,13 +4,12 @@
   import DailySummary from '$lib/components/DailySummary.svelte';
   import SessionList from '$lib/components/SessionList.svelte';
   import ReportView from '$lib/components/ReportView.svelte';
-  import SettingsView from '$lib/components/SettingsView.svelte';
   import { onMount, tick } from 'svelte';
   import { timer } from '$lib/stores/timer.svelte';
   import { sessionsStore } from '$lib/stores/sessions.svelte';
   import { listen } from '@tauri-apps/api/event';
 
-  let activeView = $state<'track' | 'reports' | 'settings'>('track');
+  let activeView = $state<'track' | 'reports'>('track');
   let summaryRef = $state<DailySummary | null>(null);
   let searchSwitchRef = $state<SearchSwitch | null>(null);
 
@@ -66,13 +65,6 @@
     >
       Reports
     </button>
-    <button
-      class="nav-btn"
-      class:active={activeView === 'settings'}
-      onclick={() => (activeView = 'settings')}
-    >
-      Settings
-    </button>
     <a href="/manage" class="nav-btn nav-link">Manage</a>
   </nav>
 
@@ -84,8 +76,6 @@
       <SessionList />
     {:else if activeView === 'reports'}
       <ReportView />
-    {:else if activeView === 'settings'}
-      <SettingsView />
     {/if}
   </div>
 
