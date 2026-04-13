@@ -11,4 +11,4 @@ export const exportCsv = (startDate: string, endDate: string) =>
   invoke<string>('export_csv', { startDate, endDate });
 
 export const getReport = (startDate: string, endDate: string) =>
-  invoke<ReportData>('get_report', { start_date: startDate, end_date: endDate });
+  invoke<ReportData>('get_report', { startDate, endDate });
