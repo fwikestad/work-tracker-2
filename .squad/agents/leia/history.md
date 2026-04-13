@@ -381,3 +381,27 @@ All P0 + P1 frontend fixes implemented and verified. Build passes cleanly, no ne
 1. **Edit State Object**: Consolidate multi-field forms into single `{ id, field1, field2 } | null` state var — easier to reset, pass, validate
 2. **Generation Counter**: Track request ID for debounced searches — discard stale results before updating UI
 3. **Reactive Timer Control**: Use `$effect` watching multiple state vars — interval restarts automatically on state change
+
+## 2026-04-12 - Phase 2 Frontend Implementation
+
+Implemented all Phase 2 frontend work items.
+
+- P2-STORE-1: Timer store pause/resume already fully implemented in Phase 1 review.
+- P2-UI-1: Timer.svelte pause button already implemented with correct colors.
+- P2-UI-2: Skipped - Timer.svelte under 80 lines.
+- P2-UI-3: SessionList - green/amber state dots, amber Paused badge, inline Resume button.
+- P2-SEARCH-1: SearchSwitch grouped idle view - Favorites + Recent sections.
+- P2-SEARCH-2: Star toggle already in SearchSwitch. sessionsStore.allFavorites added.
+- P2-HOTKEY-1: Ctrl+Shift+S via tauri-plugin-global-shortcut. Rust focuses window + emits focus-search event. Frontend listens and opens SearchSwitch.
+
+P/R keyboard shortcuts added (no modifier, guarded against form fields).
+sessions.svelte.ts: refreshRecent now loads all work orders for allFavorites getter.
+Pre-existing tray.rs fixes: duplicate content, image-png feature, borrow checker patterns.
+
+Key learnings:
+- Edit tool matches on first occurrence - verify full file after edits, truncate with PowerShell if needed.
+- tauri::image::Image::from_bytes requires image-png feature on tauri crate.
+- use tauri::Emitter must be explicitly imported for app.emit() in Rust.
+- GlobalShortcutExt trait: use app.handle().global_shortcut() inside setup closure.
+- Global shortcut pattern: Rust handles window focus, frontend handles overlay open (clean separation).
+- allFavorites separate from recent list - shows ALL favorites even if not recently used.

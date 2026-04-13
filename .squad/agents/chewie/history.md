@@ -283,3 +283,53 @@ All P0 + P1 backend fixes implemented and verified. Build passes, all tests pass
 **Ship readiness**: Backend is production-safe. All P0 safety issues resolved. Refactoring did not break any functionality.
 
 **New pattern established**: `get_conn(&state)?` for safe Mutex lock acquisition is now the standard pattern for all new commands. Document in architecture.md Section 5.9.
+
+---
+
+### 2026-04-12: Phase 2b — System Tray + Pause/Resume Tests
+
+**What was built**: System tray with dynamic menu/icon + 8 comprehensive pause/resume backend tests.
+
+**System Tray (P2-TAURI-1)**:
+- Created `src-tauri/src/tray.rs` — full tray setup and event handling
+- `setup_tray(app)` creates tray with ID "main" via `TrayIconBuilder`, right-click menu, single-click handler
+- Right-click menu: Current work order (label), Pause/Resume (contextual), Switch Project..., Open Work Tracker, Quit
+- Single left-click: toggles pause/resume for active session; emits `tray-action` event to frontend
+- `Switch Project...` shows app window and emits `open-search-switch` event to frontend
+- `Quit` stops active session before exiting (no data loss on tray quit)
+- `update_tray_state(work_order_name, is_paused)` IPC command replaces old `update_tray_tooltip` — frontend calls this after every session state change
+- Tray icons generated at runtime via `make_circle_icon(r,g,b)` → 32×32 RGBA pixels (green/amber/grey circles)
+- PNG files kept in `src-tauri/icons/tray/` as design assets only
+
+**Key Tauri 2 API findings**:
+- `tauri::image::Image::from_bytes()` does NOT exist — use `Image::new_owned(rgba_vec, width, height)` for dynamic icons
+- `app.emit()` needs `use tauri::Emitter;` in scope
+- `app.state::<T>()` lifetime conflict with `app.emit()` in same scope — fix by scoping DB access in a block that ends before calling emit, using a named intermediate variable (see decisions.md for pattern)
+
+**Bug fixed — Duration double-subtraction**:
+- `stop_active_session` was storing NET duration (`gross - paused`) in `duration_seconds`
+- `EFFECTIVE_DURATION_SQL` was also subtracting `total_paused_seconds` → double subtraction
+- Fix: `stop_active_session` now stores GROSS duration (per decisions.md Section 618)
+- Fix: `EFFECTIVE_DURATION_SQL` is now `COALESCE(ts.duration_override, ts.duration_seconds)` — no subtraction
+- Aligns with team decision: "Include paused intervals in total tracked time"
+
+**Tests (P2-TEST-BACKEND-1)** — 8 new test cases, all passing:
+- TC-SESSION-07: pause when already paused → error
+- TC-SESSION-08: pause with no active session → error
+- TC-SESSION-09: resume when not paused → error
+- TC-SESSION-10: stop paused session → duration is gross (includes paused time) ≥ 15s
+- TC-SESSION-11: multiple pause/resume cycles → total_paused_seconds accumulates
+- TC-SESSION-12: switch while paused → old session stopped, new session starts running
+- TC-SESSION-13: daily summary with paused sessions → total_seconds reflects gross duration
+- TC-SESSION-14: heartbeat during pause → is_paused remains 1, paused_at preserved
+
+**Test results**: 16/16 session tests pass, 8/8 crud tests pass. 2 pre-existing doc test failures (illustrative examples in comments without `no_run` annotation — not caused by my changes, confirmed via git stash test).
+
+**Key files**:
+- `src-tauri/src/tray.rs` — NEW: tray setup and event handling
+- `src-tauri/src/lib.rs` — added `mod tray`, `setup_tray(app)`, replaced `update_tray_tooltip` with `update_tray_state`
+- `src-tauri/tauri.conf.json` — removed `trayIcon` config (now programmatic)
+- `src-tauri/src/services/session_service.rs` — fixed gross duration storage
+- `src-tauri/src/services/summary_service.rs` — fixed `EFFECTIVE_DURATION_SQL`
+- `src-tauri/tests/session_service_tests.rs` — added TC-SESSION-07 through TC-SESSION-14
+- `src-tauri/icons/tray/` — active.png, paused.png, stopped.png (design assets)
