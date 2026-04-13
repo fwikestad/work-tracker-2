@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getReport } from '$lib/api/reports';
   import { formatHuman } from '$lib/utils/formatters';
-  import { exportCsv, type ExportFormat } from '$lib/api/reports';
+  import { exportCsv } from '$lib/api/reports';
   import { save } from '@tauri-apps/plugin-dialog';
   import { writeTextFile } from '@tauri-apps/plugin-fs';
   import type { ReportData, ReportEntry } from '$lib/types';
@@ -16,8 +16,6 @@
   let startDate = $state('');
   let endDate = $state('');
   let expandedCustomers = $state<Set<string>>(new Set());
-
-  let exportFormat = $state<ExportFormat>('standard');
 
   // Initialize with "this week" once mounted (client-only; avoids SSR invoke failure)
   onMount(() => updateDateRange('week'));
@@ -65,7 +63,7 @@
     error = '';
     exportSuccess = false;
     try {
-      const csv = await exportCsv(startDate, endDate, exportFormat);
+      const csv = await exportCsv(startDate, endDate);
       const path = await save({
         filters: [{ name: 'CSV', extensions: ['csv'] }],
         defaultPath: `work-tracker-${startDate}-${endDate}.csv`
@@ -158,31 +156,9 @@
       </div>
     {/if}
 
-    <div class="export-row">
-      <div class="format-selector" role="group" aria-label="Export format">
-        <span class="format-label">Export Format:</span>
-        <button
-          class="format-btn"
-          class:active={exportFormat === 'standard'}
-          onclick={() => (exportFormat = 'standard')}
-          aria-pressed={exportFormat === 'standard'}
-        >
-          Standard CSV
-        </button>
-        <button
-          class="format-btn"
-          class:active={exportFormat === 'servicenow'}
-          onclick={() => (exportFormat = 'servicenow')}
-          aria-pressed={exportFormat === 'servicenow'}
-        >
-          ServiceNow Import Set
-        </button>
-      </div>
-
-      <button class="btn-export" onclick={handleExport} disabled={exporting || !reportData}>
-        {exporting ? 'Exporting...' : exportSuccess ? '✓ Exported!' : 'Export CSV'}
-      </button>
-    </div>
+    <button class="btn-export" onclick={handleExport} disabled={exporting || !reportData}>
+      {exporting ? 'Exporting...' : exportSuccess ? '✓ Exported!' : 'Export CSV'}
+    </button>
   </div>
 
   {#if error}
@@ -305,53 +281,8 @@
     border-color: var(--accent);
   }
 
-  .export-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .format-selector {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  .format-label {
-    font-size: 13px;
-    color: var(--text-muted);
-    white-space: nowrap;
-  }
-
-  .format-btn {
-    min-height: 44px;
-    padding: 8px 14px;
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 13px;
-    font-family: inherit;
-    white-space: nowrap;
-  }
-
-  .format-btn:hover {
-    color: var(--text);
-    border-color: #333;
-  }
-
-  .format-btn.active {
-    background: var(--accent);
-    color: white;
-    border-color: var(--accent);
-  }
-
   .btn-load,
   .btn-export {
-    min-height: 44px;
     background: var(--accent);
     color: white;
     border: none;
