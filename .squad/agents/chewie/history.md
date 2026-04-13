@@ -489,6 +489,30 @@ Completed all Phase 2 backend work items (P2-TAURI-1, P2-TEST-BACKEND-1, duratio
 - **Aligns with decision**: "Include paused intervals in total tracked time" (per team decision)
 - **Impact**: Reports now show correct session durations
 
+---
+
+### 2026-04-14: Round-to-Started-Half-Hour Setting
+
+**What was built**: A `round_to_half_hour` setting that affects how duration is calculated in CSV exports.
+
+**Rounding rule**: Floor `start_time` to the nearest 30-minute boundary (09:17 → 09:00, 09:47 → 09:30). Applied only at export time — raw stored `start_time` is never modified.
+
+**Settings mechanism chosen**: A `settings` table (key TEXT PRIMARY KEY, value TEXT NOT NULL) introduced via migration 003. Key/value is the simplest general-purpose approach — no new Tauri plugins required, fully local, easily extensible to future settings. Default row `('round_to_half_hour', 'false')` is inserted by the migration itself.
+
+**IPC commands added**: `get_setting(key) → Option<String>` and `set_setting(key, value) → ()`. Generic key/value commands keep the surface minimal while serving future settings without further backend changes.
+
+**Export functions updated**: Both `export_csv` and `export_servicenow_csv` now accept `round_to_half_hour: bool`. The commands layer reads the setting from DB and passes it down. `duration_override` always takes precedence over rounding (manual edits win).
+
+**Timestamp parsing**: Leveraged the dual-format `parse_datetime()` helper (RFC3339 + SQLite format) already established in the session service, ensuring compatibility with both stored formats.
+
+**Tests added** (4 new, all passing):
+- TC-ROUND-01: `floor_to_half_hour()` correctness for all boundary cases
+- TC-ROUND-02: `export_csv` with rounding produces expected minutes (e.g. 09:17→10:20 = 80 min, not 63)
+- TC-ROUND-03: `duration_override` wins over rounding
+- TC-ROUND-04: setting persists correctly via settings table
+
+**CI results**: All 4 checks passed (clippy, cargo test --test, npm test --run, npm run build).
+
 **Coordination**:
 - Worked with Leia on `updateTrayState()` frontend calls (called after pause/resume)
 - Worked with Wedge on test case design (state transition validation)
@@ -758,3 +782,37 @@ win.destroy() forcefully destroys the window without triggering CloseRequested (
 - Recent work orders now correctly exclude archived entities at both levels (work_order + customer)
 
 ✅ Added unarchive_work_order command in work_orders.rs (line 200) and registered it in lib.rs (line 79) alongside archive_work_order. Cargo build and test both passed successfully.
+
+
+### 2025-01-29: Phase 4a — ServiceNow Import Set CSV Export
+
+**What was built**: Extended the existing xport_csv Tauri command to support a ServiceNow Import Set format.
+
+**Changes**:
+- src-tauri/src/services/summary_service.rs — added xport_servicenow_csv() function with a distinct SQL query and column mapping
+- src-tauri/src/commands/reports.rs — added xport_format: Option<String> parameter to xport_csv command; routes "servicenow" to the new function, all other values (including omitted) route to the unchanged standard format
+
+**ServiceNow column mapping**:
+- opened_at / closed_at — SQLite strftime('%Y-%m-%d %H:%M:%S', ...) for human-readable timestamps
+- duration_hours — COALESCE(duration_override, duration_seconds) / 3600.0 rounded to 2dp
+- short_description — "Work Order Name - Notes" when notes present, "Work Order Name" otherwise
+- ssignment_group — customer name
+- work_notes — raw session notes
+- work_order — wo.code if set and non-empty, else wo.name
+- ctivity_type — direct mapping
+
+**Key design decision**: Additive only. Standard format not touched. scape_csv helper is shared between both functions. All existing callers that omit xport_format continue to get standard CSV with zero behaviour change.
+
+**CI results**:
+- cargo clippy -- -D warnings ✅
+- cargo test --lib ✅ (4/4 unit tests pass; integration tests have pre-existing OOM failures unrelated to this change)
+- 
+pm test -- --run ✅ (55/55 frontend tests pass)
+- 
+pm run build ✅
+
+**What Leia needs for UI**: A format selector in the export dialog. Call invoke('export_csv', { startDate, endDate, exportFormat: 'servicenow' }) for ServiceNow format; omit xportFormat for standard.
+
+**Decision doc**: .squad/decisions/inbox/chewie-servicenow-csv-format.md
+
+---
