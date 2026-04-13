@@ -589,3 +589,89 @@ All integration tests: **31 passing, 0 failing** (24 previous + 7 new)
 - `src-tauri/src/lib.rs` — Made `tray` module public
 
 **Maintenance rule**: When adding new tray menu features (e.g., limiting favorites to 5, sorting by `last_used_at`), add tests to `tray_menu_tests.rs` that verify the specific query behavior (limit, order, filters).
+
+---
+
+### 2026-04-14: Phase 3 Test Coverage — Reports UI + Summary Service
+
+**Context**: Phase 3 adds close-to-tray, moves reports to main window, removes reports from manage page, and replaces `alert()` with inline error/success states in ReportView. Wedge wrote comprehensive test coverage before implementation to serve as acceptance criteria.
+
+**Frontend Tests (Vitest)**: 15 new tests in `src/lib/__tests__/phase3.test.ts`
+
+**TC-P3-01: ReportView Component Rendering**
+- ✅ ReportView mounts without throwing
+- ✅ Renders "This week" button
+- ✅ Renders all range buttons (week, month, custom)
+
+**TC-P3-02: Date Range Switching**
+- ✅ Starts with "This week" active by default
+- ✅ Clicking "This month" activates it (CSS class check)
+- ✅ Clicking "Custom" activates it and shows date inputs
+- ✅ Switching to "This month" calls `getReport` with correct date range
+
+**TC-P3-03: Inline Error Handling (NO alert)**
+- ✅ MUST NOT call `alert()` on load failure — uses inline error state instead
+- ✅ Shows error message in DOM on load failure (not an alert)
+
+**TC-P3-04: Inline Export Feedback (NO alert)**
+- ✅ MUST NOT call `alert()` on export success — shows button state change
+- ✅ Shows success indicator in button text after export (e.g., "✓ Exported!")
+- ✅ MUST NOT call `alert()` on export failure — uses inline error state
+
+**TC-P3-05: Manage Page Reports Tab Removed**
+- ⚠️ Manual verification required — manage page should have NO Reports tab
+- ✅ Placeholder test documents expected behavior post-Phase 3
+
+**Backend Tests (Rust)**: 7 new tests in `src-tauri/tests/summary_service_tests.rs`
+
+**TC-SUMMARY-01: get_report with no data**
+- ✅ Returns empty entries, total_seconds = 0, sessions = []
+
+**TC-SUMMARY-02: get_report aggregates sessions**
+- ✅ Aggregates across multiple days and work orders
+- ✅ Totals sum correctly (3600 + 1800 + 7200 seconds)
+- ✅ Entries sorted by total_seconds DESC
+
+**TC-SUMMARY-03: export_csv header**
+- ✅ Returns valid CSV header row
+
+**TC-SUMMARY-04: export_csv with data**
+- ✅ Includes customer name, work order name, duration in minutes
+- ✅ Header + 1 data row for single session
+
+**TC-SUMMARY-05: export_csv escapes commas**
+- ✅ Customer/work order names with commas are quoted
+
+**TC-SUMMARY-06: get_report excludes incomplete sessions**
+- ✅ Only counts sessions with end_time IS NOT NULL
+
+**TC-SUMMARY-07: get_report respects date boundaries**
+- ✅ Only includes sessions within start_date and end_date range
+- ✅ Excludes sessions before start_date and after end_date
+
+**Test Results**:
+- Frontend: **55 passing, 0 failing** (40 previous + 15 new Phase 3)
+- Backend: **38 passing, 0 failing** (31 previous + 7 new summary_service)
+
+**Key Learnings**:
+
+1. **Mock all Tauri APIs in frontend tests**: Phase 3 tests mock `@tauri-apps/plugin-dialog` and `@tauri-apps/plugin-fs` in addition to `@tauri-apps/api/core`. Every Tauri API used in a component must have a corresponding mock.
+
+2. **Asserting alert() is NOT called**: Used `vi.stubGlobal('alert', vi.fn())` to spy on alert, then verified `expect(alertSpy).not.toHaveBeenCalled()`. This is critical for testing that Phase 3 removes all `alert()` calls from ReportView.
+
+3. **Testing inline error states**: After mocking `getReport` to reject, wait for async load to complete (`await new Promise((r) => setTimeout(r, 100))`), then verify error text appears in the DOM (`container.textContent.includes('error')`).
+
+4. **CSV escaping is a data integrity requirement**: TC-SUMMARY-05 verifies that customer/work order names with commas are properly escaped. Without this test, a comma-containing name would break CSV parsing downstream.
+
+5. **Date boundary tests prevent off-by-one errors**: TC-SUMMARY-07 inserts sessions on 2025-03-31, 2025-04-15, 2025-05-01, then queries for 2025-04-01 to 2025-04-30. Only the middle session should be included. This catches SQL `WHERE` clause bugs (e.g., `>= start_date AND < end_date` vs `>= start_date AND <= end_date`).
+
+6. **Test data reuse pattern**: All summary_service tests use `setup_customer_and_work_order()` and `insert_session()` helpers. This reduces duplication and makes tests easier to maintain when the schema changes.
+
+7. **Manual verification placeholder**: TC-P3-05 documents that the manage page should NOT have a Reports tab after Phase 3, but cannot automate verification due to SvelteKit routing complexity. The test serves as documentation and a reminder to manually verify.
+
+**Files created**:
+- `src/lib/__tests__/phase3.test.ts` — NEW: 15 frontend tests for Phase 3
+- `src-tauri/tests/summary_service_tests.rs` — NEW: 7 backend tests for reports
+
+**Maintenance rule**: When adding new report features (filters, grouping, custom columns), add tests to both `phase3.test.ts` (UI behavior) and `summary_service_tests.rs` (SQL logic + CSV output).
+

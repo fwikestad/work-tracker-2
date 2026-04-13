@@ -10,6 +10,8 @@
   let reportData = $state<ReportData | null>(null);
   let loading = $state(false);
   let exporting = $state(false);
+  let error = $state('');
+  let exportSuccess = $state(false);
   let rangeType = $state<'week' | 'month' | 'custom'>('week');
   let startDate = $state('');
   let endDate = $state('');
@@ -42,10 +44,11 @@
   async function loadReport() {
     if (!startDate || !endDate) return;
     loading = true;
+    error = '';
     try {
       reportData = await getReport(startDate, endDate);
     } catch (e: any) {
-      alert(e?.message ?? 'Failed to load report');
+      error = e?.message ?? 'Failed to load report';
     } finally {
       loading = false;
     }
@@ -53,10 +56,12 @@
 
   async function handleExport() {
     if (!startDate || !endDate) {
-      alert('Please select date range');
+      error = 'Please select date range';
       return;
     }
     exporting = true;
+    error = '';
+    exportSuccess = false;
     try {
       const csv = await exportCsv(startDate, endDate);
       const path = await save({
@@ -65,10 +70,11 @@
       });
       if (path) {
         await writeTextFile(path, csv);
-        alert('Export successful!');
+        exportSuccess = true;
+        setTimeout(() => exportSuccess = false, 3000);
       }
     } catch (e: any) {
-      alert(e?.message ?? 'Export failed');
+      error = e?.message ?? 'Export failed';
     } finally {
       exporting = false;
     }
@@ -151,9 +157,13 @@
     {/if}
 
     <button class="btn-export" onclick={handleExport} disabled={exporting || !reportData}>
-      {exporting ? 'Exporting...' : 'Export CSV'}
+      {exporting ? 'Exporting...' : exportSuccess ? '✓ Exported!' : 'Export CSV'}
     </button>
   </div>
+
+  {#if error}
+    <div class="error-message">{error}</div>
+  {/if}
 
   {#if loading}
     <div class="loading">Loading report...</div>
@@ -293,6 +303,15 @@
   .btn-export:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .error-message {
+    color: #ef4444;
+    font-size: 12px;
+    padding: 8px 12px;
+    background: rgba(239, 68, 68, 0.1);
+    border-radius: var(--radius);
+    margin-bottom: 12px;
   }
 
   .loading,

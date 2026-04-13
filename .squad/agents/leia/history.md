@@ -560,3 +560,85 @@ pm run build passed with no errors
 
 **Severity**: P1 (user-facing error reporting broken)
 **Status**: Fixed, verified
+
+---
+
+### Phase 3: Reports Tab Navigation Restructure
+
+**Date**: 2025-01-26  
+**Task**: Move reports from manage page to main window as tab; eliminate alert() in ReportView
+
+**Changes Made**:
+
+1. **Main Page (+page.svelte)**:
+   - Added ctiveView state: 'track' | 'reports'
+   - Changed Track from link to tab button (sets activeView)
+   - Added Reports tab button
+   - Added listen for "open-reports" event from Rust backend
+   - Conditionally render Track components or ReportView based on activeView
+   - Shortcuts footer only shows in Track view
+   - Active tab styling with bottom border accent
+
+2. **Manage Page (manage/+page.svelte)**:
+   - Removed 'reports' from activeTab type (now 'customers' | 'workorders')
+   - Removed Reports tab button
+   - Removed ReportView import
+   - Removed export CSV controls section (moved to ReportView itself)
+   - Removed unused state: startDate, endDate, exporting, handleExport
+   - Removed unused imports: exportCsv, save, writeTextFile
+
+3. **ReportView Component**:
+   - Added rror = ('') for inline error display
+   - Added xportSuccess = (false) for inline success feedback
+   - Replaced all lert() calls:
+     - Load error → rror = e?.message ?? 'Failed to load report'
+     - Export error → rror = e?.message ?? 'Export failed'
+     - Export success → xportSuccess = true; setTimeout(..., 3000)
+   - Clear error on successful load
+   - Added .error-message CSS class (red text, light red background)
+   - Export button text changes to "✓ Exported!" briefly on success
+
+4. **Test Infrastructure**:
+   - Added $routes alias to itest.config.ts for raw source imports
+   - Added @tauri-apps/api/event mock in phase3.test.ts
+   - All 55 tests passing (including 15 Phase 3 tests)
+
+**Pattern: Inline Error/Success States**:
+`svelte
+let error = ('');
+let success = (false);
+
+try {
+  await operation();
+  error = '';  // clear on success
+  success = true;
+  setTimeout(() => success = false, 3000);
+} catch (e: any) {
+  error = e?.message ?? 'Operation failed';
+}
+`
+
+Display inline (no alert()):
+`svelte
+{#if error}
+  <div class="error-message">{error}</div>
+{/if}
+`
+
+**Navigation Structure Now**:
+- **Main window**: [Track] [Reports] — [Manage →]
+- **Manage page**: [Customers] [Work Orders]
+
+**Why This Matters**:
+- Reports accessible from main window without navigation (faster workflow)
+- Manage page simplified to entity management only
+- No intrusive alert() popups — inline feedback is clearer and less disruptive
+- Event-based navigation from Rust backend (future: tray menu "Open Reports")
+- Consistent with WCAG patterns (inline errors are screen-reader friendly)
+
+**Impact**:
+- ✅ Reports tab in main window, accessible via activeView state
+- ✅ Event listener for backend-triggered report opening
+- ✅ Zero alert() calls in ReportView — all feedback inline
+- ✅ All 55 tests pass (15 Phase 3 tests validate changes)
+- ✅ Manage page cleaner, focused on CRUD operations

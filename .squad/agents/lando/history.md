@@ -122,4 +122,44 @@ Decisions merged into squad/decisions.md. Ready for implementation.
    - Fail early: Lint before test, test before build (cheapest failures first)
    - Trade-off: More YAML files to maintain (4 vs 1), but clarity wins
 
+## Session: CI/CD Implementation (2026-04-12)
+
+**Task**: Implement the approved DevOps strategy
+
+**Implementation Completed**:
+1. Created `.github/workflows/ci.yml` — Fast CI with lint, test, build check on Ubuntu
+2. Created `.github/workflows/coverage.yml` — Coverage reporting with PR comments
+3. Created `.github/workflows/release.yml` — Multi-platform releases (Windows x64, macOS Universal, Linux x64)
+4. Created `.github/workflows/audit.yml` — Weekly security audits + PR checks with auto-issue creation
+5. Created `.github/dependabot.yml` — Dependency management for Cargo + npm
+6. Updated `package.json` — Added `test:coverage` script
+
+**Key Implementation Decisions**:
+- **Combined CI job**: Lint + test + build in single job (vs separate) for faster feedback on small codebase
+- **Linux-only CI**: Fast feedback on ubuntu-latest; full platform matrix reserved for releases
+- **System deps first**: Install webkit2gtk before Rust/Node to avoid missing headers
+- **Aggressive caching**: Three-layer cache (Cargo registry, build artifacts, npm) with lock-file-based keys
+- **macOS Universal binary**: Target `universal-apple-darwin` for M1 + Intel support
+- **Coverage as informational**: No blocking thresholds in Phase 1 — PR comments only
+- **Auto-issue on audit failure**: Scheduled audits create GitHub issues if vulnerabilities detected
+- **Manual version bumping**: Keep it simple for Phase 1; automated with release-please in Phase 2+
+
+**Simplifications from Strategy Doc**:
+- No `cargo fmt -- --check` in CI (clippy is sufficient for Phase 1)
+- Combined lint+test+build into single job (vs 3 separate jobs) — acceptable for small team
+- Simplified coverage report formatting (basic text summary vs HTML parsing)
+
+**Files Created**:
+- `.github/workflows/ci.yml` (2148 bytes)
+- `.github/workflows/coverage.yml` (4038 bytes)
+- `.github/workflows/release.yml` (4629 bytes)
+- `.github/workflows/audit.yml` (3068 bytes)
+- `.github/dependabot.yml` (631 bytes)
+- Updated `package.json` with `test:coverage` script
+
+**Next Steps**:
+- Tag first release (v0.1.0) to trigger release workflow
+- Monitor CI performance and optimize if >5 minutes
+- Add coverage badges to README once baseline established
+
 _Populated as Lando works on the project._

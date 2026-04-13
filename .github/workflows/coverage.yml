@@ -1,0 +1,123 @@
+name: Coverage
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  coverage:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev
+      
+      - name: Setup Rust stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+      
+      - name: Setup Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+      
+      - name: Cache Cargo build artifacts
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-
+      
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+      
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+      
+      - name: Install frontend dependencies with coverage
+        run: |
+          npm ci
+          npm install --save-dev @vitest/coverage-v8
+      
+      - name: Run Rust coverage
+        run: |
+          cd src-tauri
+          cargo tarpaulin --out Xml --output-dir coverage
+      
+      - name: Run frontend coverage
+        run: npm run test:coverage
+      
+      - name: Generate coverage summary
+        id: coverage
+        run: |
+          echo "## Coverage Report" > coverage-summary.md
+          echo "" >> coverage-summary.md
+          echo "### Backend (Rust)" >> coverage-summary.md
+          if [ -f src-tauri/coverage/cobertura.xml ]; then
+            echo "✅ Coverage report generated" >> coverage-summary.md
+            echo "\`\`\`" >> coverage-summary.md
+            grep -A 5 '<coverage' src-tauri/coverage/cobertura.xml | head -n 6 >> coverage-summary.md || echo "XML parsing skipped" >> coverage-summary.md
+            echo "\`\`\`" >> coverage-summary.md
+          else
+            echo "⚠️ No Rust coverage report found" >> coverage-summary.md
+          fi
+          echo "" >> coverage-summary.md
+          echo "### Frontend (Vitest)" >> coverage-summary.md
+          if [ -f coverage/coverage-summary.json ]; then
+            echo "✅ Coverage report generated" >> coverage-summary.md
+          else
+            echo "⚠️ No frontend coverage report found" >> coverage-summary.md
+          fi
+          echo "" >> coverage-summary.md
+          echo "Coverage reports are informational and do not block merge." >> coverage-summary.md
+      
+      - name: Comment PR with coverage
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: coverage
+          path: coverage-summary.md
+      
+      - name: Upload Rust coverage artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-coverage
+          path: src-tauri/coverage/
+          retention-days: 30
+      
+      - name: Upload frontend coverage artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-coverage
+          path: coverage/
+          retention-days: 30

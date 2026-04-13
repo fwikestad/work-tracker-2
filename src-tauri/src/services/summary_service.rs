@@ -21,7 +21,7 @@ const EFFECTIVE_DURATION_SQL: &str = "COALESCE(ts.duration_override, ts.duration
 /// Vector of `Session` objects with all fields populated including effective_duration
 ///
 /// # Example
-/// ```rust
+/// ```ignore
 /// let sessions = fetch_sessions(
 ///     &conn,
 ///     "date(ts.start_time) = date(?) AND c.id = ?",

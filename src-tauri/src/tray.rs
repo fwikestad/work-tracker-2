@@ -217,6 +217,7 @@ fn build_menu(app: &AppHandle, work_order: &str, is_paused: bool) -> tauri::Resu
     // Add standard menu items
     items.push(Box::new(MenuItem::with_id(app, "pause-resume", pause_label, true, None::<&str>)?));
     items.push(Box::new(MenuItem::with_id(app, "switch-project", "Switch Project...", true, None::<&str>)?));
+    items.push(Box::new(MenuItem::with_id(app, "view-reports", "View Reports", true, None::<&str>)?));
     items.push(Box::new(PredefinedMenuItem::separator(app)?));
     items.push(Box::new(MenuItem::with_id(app, "open-app", "Open Work Tracker", true, None::<&str>)?));
     items.push(Box::new(MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?));
@@ -268,6 +269,10 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         "switch-project" => {
             show_main_window(app);
             let _ = app.emit("open-search-switch", ());
+        }
+        "view-reports" => {
+            show_main_window(app);
+            let _ = app.emit("open-reports", ());
         }
         _ => {}
     }

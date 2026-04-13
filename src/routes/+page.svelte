@@ -3,14 +3,25 @@
   import SearchSwitch from '$lib/components/SearchSwitch.svelte';
   import DailySummary from '$lib/components/DailySummary.svelte';
   import SessionList from '$lib/components/SessionList.svelte';
+  import ReportView from '$lib/components/ReportView.svelte';
   import { onMount } from 'svelte';
   import { timer } from '$lib/stores/timer.svelte';
   import { sessionsStore } from '$lib/stores/sessions.svelte';
+  import { listen } from '@tauri-apps/api/event';
 
+  let activeView = $state<'track' | 'reports'>('track');
   let summaryRef: DailySummary;
 
   onMount(() => {
     summaryRef?.refresh();
+    
+    const unlisten = listen('open-reports', () => {
+      activeView = 'reports';
+    });
+    
+    return () => {
+      unlisten.then(fn => fn());
+    };
   });
 
   $effect(() => {
@@ -23,25 +34,44 @@
 
 <div class="app">
   <nav class="nav">
-    <a href="/" class="nav-btn">Track</a>
-    <a href="/manage" class="nav-btn">Manage</a>
+    <button
+      class="nav-btn"
+      class:active={activeView === 'track'}
+      onclick={() => (activeView = 'track')}
+    >
+      Track
+    </button>
+    <button
+      class="nav-btn"
+      class:active={activeView === 'reports'}
+      onclick={() => (activeView = 'reports')}
+    >
+      Reports
+    </button>
+    <a href="/manage" class="nav-btn nav-link">Manage</a>
   </nav>
 
   <div class="main-view">
-    <Timer />
-    <SearchSwitch />
-    <DailySummary bind:this={summaryRef} />
-    <SessionList />
+    {#if activeView === 'track'}
+      <Timer />
+      <SearchSwitch />
+      <DailySummary bind:this={summaryRef} />
+      <SessionList />
+    {:else if activeView === 'reports'}
+      <ReportView />
+    {/if}
   </div>
 
-  <footer class="shortcuts">
-    <span>Ctrl+N Quick add</span>
-    <span>Ctrl+K Search</span>
-    <span>Ctrl+S Stop</span>
-    <span>P Pause</span>
-    <span>R Resume</span>
-    <span>Esc Cancel</span>
-  </footer>
+  {#if activeView === 'track'}
+    <footer class="shortcuts">
+      <span>Ctrl+N Quick add</span>
+      <span>Ctrl+K Search</span>
+      <span>Ctrl+S Stop</span>
+      <span>P Pause</span>
+      <span>R Resume</span>
+      <span>Esc Cancel</span>
+    </footer>
+  {/if}
 </div>
 
 <style>
@@ -80,6 +110,15 @@
 
   .nav-btn:hover {
     color: var(--text);
+  }
+
+  .nav-btn.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+
+  .nav-link {
+    margin-left: auto;
   }
 
   .main-view {

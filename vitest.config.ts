@@ -12,6 +12,7 @@ export default defineConfig({
   resolve: {
     alias: {
       $lib: fileURLToPath(new URL('./src/lib', import.meta.url)),
+      $routes: fileURLToPath(new URL('./src/routes', import.meta.url)),
     },
     conditions: ['browser'],
   },

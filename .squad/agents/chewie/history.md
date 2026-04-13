@@ -565,3 +565,38 @@ Completed all Phase 2 backend work items (P2-TAURI-1, P2-TEST-BACKEND-1, duratio
 
 **Key Learning**: When adding optional parameters to Tauri commands, ALWAYS update both the Rust signature AND the frontend API wrapper. Tauri 2 enforces strict parameter presence - missing parameters cause runtime errors, not compile-time errors.
 
+
+## Learnings
+
+### 2026-04-12: Implemented Close-to-Tray and "View Reports" Menu Item
+
+**Task 1: Close-to-Tray Behavior**
+
+**Problem**: The app was exiting when the user closed the main window. Users wanted the app to stay alive in the system tray for quick access.
+
+**Implementation**: Added .on_window_event() handler to the Tauri builder chain in lib.rs that intercepts CloseRequested events and hides the window instead of closing it.
+
+**Solution**:
+- Intercepted WindowEvent::CloseRequested before .build() in the builder chain
+- Called window.hide() to hide the window instead of closing it  
+- Called pi.prevent_close() to prevent the default close behavior
+- Existing tray "Quit" handler already calls pp.exit(0), which correctly terminates the app
+
+**Task 2: View Reports Tray Menu Item**
+
+**Problem**: Users needed a quick way to jump directly to the reports view from the system tray.
+
+**Implementation**: Added a "View Reports" menu item to the tray menu and its corresponding event handler in 	ray.rs.
+
+**Solution**:
+- Added menu item in uild_menu() after "Switch Project..." with ID iew-reports
+- Added handler in on_menu_event() that:
+  - Shows the main window with show_main_window(app)
+  - Emits open-reports event for the frontend to navigate to reports view
+
+**Build Verification**: cargo build succeeded cleanly in 43.83 seconds with no warnings or errors.
+
+**Key Learnings**:
+1. **Window Event Order Matters**: The .on_window_event() handler must be added BEFORE .build() in the Tauri builder chain to intercept events properly.
+2. **Tray Quit vs Window Close**: The tray quit handler calls pp.exit(0), which terminates the process and bypasses the window event handler - this is the correct behavior for a true quit action.
+3. **Menu Event Pattern**: Tray menu items follow a consistent pattern: add to uild_menu(), handle in on_menu_event(), emit frontend event for UI actions.

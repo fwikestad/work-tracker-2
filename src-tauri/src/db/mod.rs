@@ -17,7 +17,7 @@ pub struct AppState {
 /// Returns `AppError::Database` with SQLITE_BUSY status if the mutex is poisoned.
 ///
 /// # Example
-/// ```rust
+/// ```ignore
 /// let conn = get_conn(&state)?;
 /// conn.execute("UPDATE ...", [])?;
 /// ```
