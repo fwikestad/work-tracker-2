@@ -1,5 +1,6 @@
 <script lang="ts">
   import { sessionsStore } from '$lib/stores/sessions.svelte';
+  import { timer } from '$lib/stores/timer.svelte';
   import { updateSession, deleteSession } from '$lib/api/sessions';
   import { formatTime, formatHuman } from '$lib/utils/formatters';
   import type { Session } from '$lib/types';
@@ -7,6 +8,14 @@
   type EditState = { id: string; notes: string; duration: string; activityType: string };
   let editState = $state<EditState | null>(null);
   let saving = $state(false);
+
+  function isRunning(session: Session) {
+    return session.id === timer.active?.sessionId && !timer.isPaused;
+  }
+
+  function isPaused(session: Session) {
+    return session.id === timer.active?.sessionId && timer.isPaused;
+  }
 
   function startEdit(session: Session) {
     editState = {
@@ -48,6 +57,10 @@
     } catch (e: any) {
       alert(e?.message ?? 'Failed to delete');
     }
+  }
+
+  async function handleResume() {
+    await timer.resume();
   }
 </script>
 
@@ -100,6 +113,8 @@
         {:else}
           <div
             class="session"
+            class:running={isRunning(session)}
+            class:paused-session={isPaused(session)}
             role="button"
             tabindex="0"
             onclick={() => startEdit(session)}
@@ -108,8 +123,15 @@
           >
             <div class="session-header">
               <div class="session-main">
+                {#if isRunning(session)}
+                  <span class="state-dot running" title="Running">●</span>
+                {:else if isPaused(session)}
+                  <span class="state-dot paused" title="Paused">●</span>
+                {/if}
                 <span class="session-name">{session.workOrderName}</span>
-                {#if session.activityType}
+                {#if isPaused(session)}
+                  <span class="activity-badge paused-label">Paused</span>
+                {:else if session.activityType}
                   <span class="activity-badge">{session.activityType}</span>
                 {/if}
               </div>
@@ -139,6 +161,19 @@
             </div>
             {#if session.notes}
               <div class="session-notes">{session.notes}</div>
+            {/if}
+            {#if isPaused(session)}
+              <div class="inline-actions">
+                <button
+                  class="btn-sm btn-resume"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    handleResume();
+                  }}
+                >
+                  ▶ Resume
+                </button>
+              </div>
             {/if}
           </div>
         {/if}
@@ -204,6 +239,32 @@
     cursor: default;
   }
 
+  .session.running {
+    border-top-color: var(--accent);
+    border-right-color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .session.paused-session {
+    border-top-color: #f59e0b;
+    border-right-color: #f59e0b;
+    border-bottom-color: #f59e0b;
+  }
+
+  .state-dot {
+    font-size: 10px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .state-dot.running {
+    color: var(--accent);
+  }
+
+  .state-dot.paused {
+    color: #f59e0b;
+  }
+
   .session-header {
     display: flex;
     align-items: flex-start;
@@ -232,6 +293,11 @@
     background: var(--border);
     color: var(--text-muted);
     font-weight: 500;
+  }
+
+  .paused-label {
+    background: #f59e0b22;
+    color: #f59e0b;
   }
 
   .session-duration {
@@ -285,6 +351,21 @@
     color: var(--text-muted);
     font-style: italic;
     line-height: 1.5;
+  }
+
+  .inline-actions {
+    margin-top: 8px;
+  }
+
+  .btn-resume {
+    background: var(--accent);
+    color: white;
+    min-height: 44px;
+    width: 100%;
+  }
+
+  .btn-resume:hover:not(:disabled) {
+    background: #3d9e6a;
   }
 
   .edit-form {

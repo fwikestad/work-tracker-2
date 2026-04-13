@@ -12,15 +12,14 @@ pub fn stop_active_session(conn: &Connection) -> Result<Option<String>, AppError
     if let Some(sid) = session_id {
         let now = Utc::now().to_rfc3339();
         
-        // Get start time and total_paused_seconds (COALESCE guards against NULL on older rows)
-        let (start_time, total_paused_seconds): (String, i64) = conn.query_row(
-            "SELECT start_time, COALESCE(total_paused_seconds, 0) FROM time_sessions WHERE id = ?",
+        // Fetch start time; total_paused_seconds is informational only since we store gross duration
+        let start_time: String = conn.query_row(
+            "SELECT start_time FROM time_sessions WHERE id = ?",
             params![&sid],
-            |row| Ok((row.get(0)?, row.get(1)?))
+            |row| row.get(0)
         )?;
         
-        let gross_duration = calculate_duration(&start_time, &now)?;
-        let duration = gross_duration - total_paused_seconds;
+        let duration = calculate_duration(&start_time, &now)?;
         
         // Update session
         conn.execute(

@@ -38,6 +38,8 @@
     <span>Ctrl+N Quick add</span>
     <span>Ctrl+K Search</span>
     <span>Ctrl+S Stop</span>
+    <span>P Pause</span>
+    <span>R Resume</span>
     <span>Esc Cancel</span>
   </footer>
 </div>

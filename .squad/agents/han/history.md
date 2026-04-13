@@ -170,3 +170,30 @@ Orchestrated and verified full refactoring cycle: review findings → backend fi
 **Ship Decision**: ✅ APPROVED TO SHIP. Caveat: Manual test timer pause/resume before production (frontend tests skipped due to Svelte 5 limitation). Continue Phase 2 next sprint.
 
 **New Learning**: Surgical refactoring pattern — small, focused changes with clear ownership (backend/frontend/testing/docs). Enables parallel work, easy to verify each piece independently.
+
+---
+
+### 2026-04-12: Phase 2 Architecture Document Delivered (P2-ARCH-1)
+
+Wrote `docs/phase2-architecture.md` — the implementation spec that unblocks Leia, Chewie, Wedge, and Mon Mothma for Phase 2 work.
+
+**Key Deliverables**:
+1. `docs/phase2-architecture.md` — Full architecture doc with component interaction diagrams, store extension plan, hotkey integration, SearchSwitch refactor algorithm, tray architecture, race condition mitigations, and definition of done
+2. `.squad/decisions/inbox/han-phase2-arch.md` — 6 new decisions: Phase 2a/2b split confirmed, plugin choice (tauri-plugin-global-shortcut), UI transitioning guard pattern, frontend-only grouping, tray tooltip reactivity fix, strict backend validation
+
+**Architecture Findings**:
+1. **Timer store is 90% done** — pause/resume methods, `isPaused` derived, and `$effect` tick control all exist from Phase 1. Only needs: transitioning guard + tray tooltip update on pause/resume.
+2. **SearchSwitch grouping is frontend-only** — `WorkOrder.isFavorite` already returned by backend. Pure function splits into favorites/recent/all groups. No backend changes.
+3. **Race condition mitigated at UI layer** — `transitioning` flag disables buttons during IPC. Simpler and more reliable than backend idempotency or optimistic UI.
+4. **Global hotkey is straightforward** — `tauri-plugin-global-shortcut` is first-party, 3 lines to register. Main risk: platform shortcut conflicts (test early).
+5. **System tray (Phase 2b) deferred cleanly** — existing tooltip works, dynamic menu is the only new work. Doesn't block 2a.
+
+**Key File Paths**:
+- Architecture doc: `docs/phase2-architecture.md`
+- Decisions: `.squad/decisions/inbox/han-phase2-arch.md`
+- Timer store (needs transitioning guard): `src/lib/stores/timer.svelte.ts`
+- SearchSwitch (needs grouping refactor): `src/lib/components/SearchSwitch.svelte`
+- Hotkey registration target: `src/routes/+layout.svelte`
+- Backend (NO changes needed for Phase 2a): `src-tauri/src/services/session_service.rs`
+
+**New Learning**: When Phase 1 builds infrastructure for Phase 2 features, the architecture doc's job shifts from "what to build" to "what's already built and what wiring remains." Mapping existing code to Phase 2 requirements reduced the perceived scope significantly — Phase 2a is mostly frontend wiring.

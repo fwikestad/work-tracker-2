@@ -1,15 +1,11 @@
 use rusqlite::{Connection, params};
 use crate::models::{session::*, work_order::WorkOrder, error::AppError};
 
-// SQL fragment for calculating effective duration (accounts for overrides and pauses)
-// This constant ensures consistency across all queries that need to compute duration.
-// If the duration calculation logic changes, update only this string.
-//
-// Calculation: (duration_override OR duration_seconds) - total_paused_seconds
-// - Uses `COALESCE(duration_override, duration_seconds)` to prefer user-specified duration over auto-calculated
-// - Subtracts `total_paused_seconds` to exclude paused time from tracked duration
-// - Uses `COALESCE(..., 0)` to handle NULL values safely for older entries
-const EFFECTIVE_DURATION_SQL: &str = "COALESCE(ts.duration_override, ts.duration_seconds) - COALESCE(ts.total_paused_seconds, 0)";
+// SQL fragment for calculating effective duration.
+// duration_seconds stores gross wall-clock time (end_time − start_time, including paused
+// intervals) per decisions.md Section 618.  duration_override lets the user substitute
+// a manual value.  The COALESCE prefers the manual override when set.
+const EFFECTIVE_DURATION_SQL: &str = "COALESCE(ts.duration_override, ts.duration_seconds)";
 
 /// Fetch sessions with work order and customer details joined.
 ///

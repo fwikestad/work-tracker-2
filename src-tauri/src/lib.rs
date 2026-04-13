@@ -1,21 +1,29 @@
 use tauri::Manager;
+use tauri::Emitter;
 use std::sync::Mutex;
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 mod commands;
 pub mod db;
 pub mod models;
 pub mod services;
+mod tray;
 
 pub use db::AppState;
 
+/// Update the tray icon, tooltip, and menu to reflect the current session state.
+/// Frontend calls this after every start/stop/pause/resume/switch action.
+///
+/// - `work_order_name`: Some("...") if a session is active, None if stopped.
+/// - `is_paused`: true when the active session is paused.
 #[tauri::command]
-fn update_tray_tooltip(app: tauri::AppHandle, tooltip: String) -> Result<(), String> {
-    // The tray icon configured in tauri.conf.json uses "main" as the default ID
-    app.tray_by_id("main")
-        .ok_or_else(|| "Tray not found".to_string())?
-        .set_tooltip(Some(&tooltip))
-        .map_err(|e| e.to_string())?;
-    Ok(())
+fn update_tray_state(
+    app: tauri::AppHandle,
+    work_order_name: Option<String>,
+    is_paused: bool,
+) -> Result<(), String> {
+    tray::update_tray_state(&app, work_order_name.as_deref(), is_paused)
+        .map_err(|e| e.to_string())
 }
 
 pub fn run() {
@@ -23,6 +31,20 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.unminimize();
+                            let _ = win.set_focus();
+                        }
+                        let _ = app.emit("focus-search", ());
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             let app_dir = app.path().app_data_dir()
                 .map_err(|e| Box::new(std::io::Error::new(
@@ -33,9 +55,15 @@ pub fn run() {
             let db_path = app_dir.join("work_tracker.db");
             let conn = db::initialize(&db_path)?;
             app.manage(AppState { db: Mutex::new(conn) });
-            
-            // Tray icon is auto-created from tauri.conf.json
-            
+
+            // Register Ctrl+Shift+S → bring window to front + open search overlay
+            let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyS);
+            app.handle().global_shortcut().register(shortcut)
+                .map_err(|e| format!("Failed to register global shortcut: {}", e))?;
+
+            // Set up system tray with icon and right-click menu
+            tray::setup_tray(app)?;
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -65,7 +93,7 @@ pub fn run() {
             commands::reports::get_recent_work_orders,
             commands::reports::export_csv,
             commands::reports::get_report,
-            update_tray_tooltip,
+            update_tray_state,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

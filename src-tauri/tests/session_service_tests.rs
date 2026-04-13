@@ -1,7 +1,7 @@
-/// Phase 1 integration tests for the session service layer.
+/// Phase 1 + Phase 2 integration tests for the session service layer.
 /// Uses an in-memory SQLite database for isolation.
 use app_lib::db::{init_test_db, initialize};
-use app_lib::services::session_service;
+use app_lib::services::{session_service, summary_service};
 use rusqlite::{Connection, params};
 
 // ---------------------------------------------------------------------------
@@ -380,5 +380,324 @@ fn tc_data_02_migrations_run_cleanly() {
     assert_eq!(
         col_count, 1,
         "active_session.is_paused column must exist (migration 002)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TC-SESSION-07: pause when already paused — must return error
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_session_07_pause_when_already_paused_errors() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+    session_service::pause_session(&conn).expect("first pause failed");
+
+    // Second pause must return Err
+    let result = session_service::pause_session(&conn);
+    assert!(
+        result.is_err(),
+        "pause_session must error when already paused"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TC-SESSION-08: pause when no active session — must return error
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_session_08_pause_when_no_active_session_errors() {
+    let conn = init_test_db().expect("DB init failed");
+
+    let result = session_service::pause_session(&conn);
+    assert!(
+        result.is_err(),
+        "pause_session must error when no session is active"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TC-SESSION-09: resume when session is not paused — must return error
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_session_09_resume_when_not_paused_errors() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+    // Session is running but NOT paused — resume must fail
+    let result = session_service::resume_session(&conn);
+    assert!(
+        result.is_err(),
+        "resume_session must error when session is not paused"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TC-SESSION-10: stop a paused session — duration equals gross wall-clock time
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_session_10_stop_paused_session_uses_gross_duration() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+
+    // Back-date start by 20 seconds
+    conn.execute(
+        "UPDATE time_sessions SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-20 seconds') WHERE end_time IS NULL",
+        [],
+    )
+    .expect("back-date start");
+
+    // Pause, simulate a 10-second pause, then resume
+    session_service::pause_session(&conn).expect("pause failed");
+    conn.execute(
+        "UPDATE active_session SET paused_session_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-10 seconds') WHERE id = 1",
+        [],
+    )
+    .expect("back-date paused_session_at");
+    conn.execute(
+        "UPDATE time_sessions SET paused_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-10 seconds') WHERE end_time IS NULL",
+        [],
+    )
+    .expect("back-date paused_at");
+    session_service::resume_session(&conn).expect("resume failed");
+
+    // Stop — should record gross duration (~20 s, includes the 10-second pause)
+    let stopped = session_service::stop_current_session(&conn, None, None)
+        .expect("stop failed")
+        .expect("expected stopped session");
+
+    assert!(stopped.end_time.is_some(), "end_time must be set");
+    let dur = stopped.duration_seconds.unwrap_or(0);
+    assert!(
+        dur >= 15,
+        "gross duration must be ≥ 15 s (was {}) — paused time should be included",
+        dur
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TC-SESSION-11: multiple pause/resume cycles accumulate total_paused_seconds
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_session_11_multiple_pause_resume_cycles_accumulate() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+
+    // First cycle: 5-second pause
+    session_service::pause_session(&conn).expect("pause 1 failed");
+    conn.execute(
+        "UPDATE active_session SET paused_session_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-5 seconds') WHERE id = 1",
+        [],
+    ).expect("back-date cycle 1");
+    conn.execute(
+        "UPDATE time_sessions SET paused_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-5 seconds') WHERE end_time IS NULL",
+        [],
+    ).expect("back-date ts cycle 1");
+    session_service::resume_session(&conn).expect("resume 1 failed");
+
+    // Second cycle: 5-second pause
+    session_service::pause_session(&conn).expect("pause 2 failed");
+    conn.execute(
+        "UPDATE active_session SET paused_session_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-5 seconds') WHERE id = 1",
+        [],
+    ).expect("back-date cycle 2");
+    conn.execute(
+        "UPDATE time_sessions SET paused_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-5 seconds') WHERE end_time IS NULL",
+        [],
+    ).expect("back-date ts cycle 2");
+    session_service::resume_session(&conn).expect("resume 2 failed");
+
+    // total_paused_seconds must be ≥ 8 (two 5-second pauses, allow slight timing slack)
+    let total_paused: i64 = conn
+        .query_row(
+            "SELECT COALESCE(total_paused_seconds, 0) FROM time_sessions WHERE end_time IS NULL",
+            [],
+            |row| row.get(0),
+        )
+        .expect("query total_paused_seconds");
+
+    assert!(
+        total_paused >= 8,
+        "total_paused_seconds must accumulate across cycles (was {})",
+        total_paused
+    );
+
+    // Session must stop cleanly
+    let stopped = session_service::stop_current_session(&conn, None, None)
+        .expect("stop failed")
+        .expect("expected stopped session");
+
+    assert!(stopped.end_time.is_some(), "end_time must be set after stop");
+}
+
+// ---------------------------------------------------------------------------
+// TC-SESSION-12: switch while paused — old session stops, new session starts
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_session_12_switch_while_paused_stops_old_session() {
+    let conn = init_test_db().expect("DB init failed");
+    let (customer_id, work_order_a) = setup_customer_and_work_order(&conn);
+    let work_order_b = add_work_order(&conn, &customer_id, "WO-B2");
+
+    let session_a = session_service::switch_to_work_order(&conn, &work_order_a)
+        .expect("switch to A failed");
+
+    // Back-date start and then pause session A
+    conn.execute(
+        "UPDATE time_sessions SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-10 seconds') WHERE id = ?",
+        params![&session_a.id],
+    ).expect("back-date A");
+    session_service::pause_session(&conn).expect("pause A failed");
+
+    // Switch to B while A is paused — must auto-stop A and start B running
+    let session_b = session_service::switch_to_work_order(&conn, &work_order_b)
+        .expect("switch to B while A paused");
+
+    // Session A must now have end_time
+    let end_time_a: Option<String> = conn
+        .query_row(
+            "SELECT end_time FROM time_sessions WHERE id = ?",
+            params![&session_a.id],
+            |row| row.get(0),
+        )
+        .expect("query session A end_time");
+    assert!(end_time_a.is_some(), "session A must have end_time after switch");
+
+    // active_session now points to session B
+    let (active_sid, is_paused): (Option<String>, i64) = conn
+        .query_row(
+            "SELECT session_id, is_paused FROM active_session WHERE id = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("query active_session");
+
+    assert_eq!(
+        active_sid.as_deref(),
+        Some(session_b.id.as_str()),
+        "active_session must point to session B"
+    );
+    assert_eq!(is_paused, 0, "new session B must not be paused");
+
+    // Invariant: only one open session
+    let open_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM time_sessions WHERE end_time IS NULL",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count open sessions");
+    assert_eq!(open_count, 1, "at most 1 open session after switch");
+}
+
+// ---------------------------------------------------------------------------
+// TC-SESSION-13: daily summary includes sessions that had paused intervals
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_session_13_daily_summary_includes_paused_session_gross_duration() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+
+    // Back-date session start by 60 seconds
+    conn.execute(
+        "UPDATE time_sessions SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-60 seconds') WHERE end_time IS NULL",
+        [],
+    ).expect("back-date start");
+
+    // Pause for ~20 seconds, then resume
+    session_service::pause_session(&conn).expect("pause failed");
+    conn.execute(
+        "UPDATE active_session SET paused_session_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-20 seconds') WHERE id = 1",
+        [],
+    ).expect("back-date paused_session_at");
+    conn.execute(
+        "UPDATE time_sessions SET paused_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-20 seconds') WHERE end_time IS NULL",
+        [],
+    ).expect("back-date paused_at");
+    session_service::resume_session(&conn).expect("resume failed");
+
+    // Stop the session
+    session_service::stop_current_session(&conn, None, None)
+        .expect("stop failed")
+        .expect("expected stopped session");
+
+    // Query daily summary for today
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let summary = summary_service::get_daily_summary(&conn, &today)
+        .expect("daily summary failed");
+
+    // Session must appear and total must reflect gross duration (~60 s, including 20 s pause)
+    assert_eq!(summary.entries.len(), 1, "summary must contain one entry");
+    assert!(
+        summary.total_seconds >= 50,
+        "summary total must include paused intervals (was {} s, expected ≥ 50 s)",
+        summary.total_seconds
+    );
+    assert!(
+        summary.entries[0].total_seconds >= 50,
+        "entry total_seconds must include paused intervals (was {})",
+        summary.entries[0].total_seconds
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TC-SESSION-14: heartbeat during pause does not clear pause state
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_session_14_heartbeat_during_pause_preserves_pause_state() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+    session_service::pause_session(&conn).expect("pause failed");
+
+    // Capture heartbeat timestamp before update
+    let heartbeat_before: Option<String> = conn
+        .query_row(
+            "SELECT last_heartbeat FROM active_session WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .expect("query heartbeat before");
+
+    // Heartbeat update must not affect pause state
+    session_service::update_heartbeat(&conn).expect("update_heartbeat failed");
+
+    let (is_paused, paused_at, heartbeat_after): (i64, Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT is_paused, paused_session_at, last_heartbeat FROM active_session WHERE id = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("query active_session post-heartbeat");
+
+    assert_eq!(is_paused, 1, "is_paused must remain 1 after heartbeat");
+    assert!(
+        paused_at.is_some(),
+        "paused_session_at must remain set after heartbeat"
+    );
+    assert!(
+        heartbeat_after.is_some(),
+        "last_heartbeat must be updated"
+    );
+    // Heartbeat timestamp should have advanced (or at least be set)
+    assert_ne!(
+        heartbeat_before, heartbeat_after,
+        "last_heartbeat must change after update_heartbeat"
     );
 }

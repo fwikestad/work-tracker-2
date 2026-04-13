@@ -1883,4 +1883,294 @@ Once Phase 1 dev is complete, convert key tests to automated CI/CD:
 
 ---
 
+## Phase 2 Test Cases
+
+**Author**: Wedge (Tester)  
+**Added**: 2026-04-12  
+**Status**: Ready for Development — guides Leia (Frontend) Phase 2 implementation
+
+---
+
+### Phase 2 — Pause/Resume Integration Scenarios
+
+---
+
+#### TC-P2-001: Start session → pause → verify timer freezes in UI
+**Given:** Active session running, timer counting up  
+**When:** User clicks Pause (or presses `P`)  
+**Then:**
+- `pause_session()` command invoked
+- Timer display stops incrementing
+- Session badge changes from green (running) to amber (paused)
+- Pause button replaced by Resume button
+- elapsedSeconds frozen in frontend store  
+**Priority:** P0
+
+---
+
+#### TC-P2-002: Pause → resume → verify timer restarts from frozen value
+**Given:** Session paused at elapsed = 00:05:30 (amber badge visible)  
+**When:** User clicks Resume  
+**Then:**
+- `resume_session()` command invoked
+- Timer resumes counting UP from 00:05:30 (not reset to 0)
+- Badge returns to green (running)
+- Resume button replaced by Pause button
+- elapsedSeconds continues to increment each second  
+**Priority:** P0
+
+---
+
+#### TC-P2-003: Pause → stop → verify duration includes paused time excluded
+**Given:** Session started at T0, paused after 10 minutes, stopped 3 minutes later (total_paused_seconds = 180)  
+**When:** User clicks Stop while paused  
+**Then:**
+- `stop_session()` command invoked
+- Final duration = active_time = 10 min (pause does NOT count toward billed duration)
+- Session list shows 10 minutes, not 13
+- Daily summary updated accordingly  
+**Priority:** P0
+
+---
+
+#### TC-P2-004: Start → pause → switch work order → old session stopped, new running
+**Given:** Session A is paused  
+**When:** User selects Work Order B from SearchSwitch  
+**Then:**
+- Session A stops atomically (paused time excluded from duration)
+- New session B starts immediately
+- Session A appears in today's list as stopped (correct duration)
+- Timer shows session B running with elapsed = 0  
+**Priority:** P0
+
+---
+
+#### TC-P2-005: Crash while paused → recovery dialog shows correct frozen time
+**Given:** Session paused at elapsed = 00:08:12, app crashes  
+**When:** App restarts  
+**Then:**
+- Recovery dialog appears (not normal app flow)
+- Dialog identifies the paused orphan session
+- Elapsed time shown reflects the time up to the pause point (or to last heartbeat if that is less)
+- Dialog offers "Resume and Stop" or "Discard" options  
+**Priority:** P0
+
+---
+
+#### TC-P2-006: Pause button keyboard shortcut `P` works without mouse
+**Given:** Active session running, keyboard focus anywhere in app  
+**When:** User presses `P`  
+**Then:**
+- Session pauses (same behaviour as clicking Pause button)
+- No mouse interaction required
+- Focus remains where it was  
+**Priority:** P1
+
+---
+
+#### TC-P2-007: Resume from SessionList inline action
+**Given:** Paused session visible in SessionList  
+**When:** User clicks the inline Resume icon in the session list row  
+**Then:**
+- `resume_session()` called
+- Session list row updates (remove amber indicator)
+- Timer restarts  
+**Priority:** P1
+
+---
+
+#### TC-P2-008: Multiple pause/resume cycles in one session — duration accumulates correctly
+**Given:** New session started  
+**When:**
+1. Work 5 min → Pause
+2. Wait 2 min → Resume
+3. Work 3 min → Pause
+4. Wait 1 min → Resume
+5. Work 4 min → Stop  
+**Then:**
+- Final duration = 5 + 3 + 4 = 12 minutes (paused time excluded)
+- `total_paused_seconds` = 3 minutes (180 s)
+- Daily summary reflects 12 min  
+**Priority:** P1
+
+---
+
+#### TC-P2-009: Pause state persists across app restart
+**Given:** Session paused, app closed cleanly (not crashed)  
+**When:** App restarts  
+**Then:**
+- Session loads in paused state (amber badge)
+- Timer remains frozen at pause point
+- User can resume from exactly where they left off  
+**Priority:** P0
+
+---
+
+#### TC-P2-010: Daily summary counts active (pre-pause) time in totals
+**Given:** Session ran 20 min, paused for 5 min, still paused  
+**When:** Daily summary panel rendered  
+**Then:**
+- Summary includes the 20 active minutes for this session
+- Paused 5 minutes NOT counted
+- Live update: when user resumes and keeps working, summary grows in real-time  
+**Priority:** P0
+
+---
+
+### Phase 2 — Favorites / SearchSwitch Integration Scenarios
+
+---
+
+#### TC-P2-011: Star a work order → appears in Favorites group in SearchSwitch
+**Given:** Work order "Project X" with `is_favorite = false`  
+**When:** User clicks star icon on "Project X"  
+**Then:**
+- `toggle_favorite(workOrderId)` called
+- "Project X" reappears at the TOP of the SearchSwitch list (Favorites group)
+- Star icon appears filled/highlighted  
+**Priority:** P1
+
+---
+
+#### TC-P2-012: Un-star → item moves back to Recent/All group
+**Given:** Favorite "Project X" visible at top of SearchSwitch  
+**When:** User clicks filled star icon  
+**Then:**
+- `toggle_favorite(workOrderId)` called with false
+- "Project X" moves back to recents/all section (below any remaining favorites)
+- Star icon returns to unfilled state  
+**Priority:** P1
+
+---
+
+#### TC-P2-013: Favorites sorted by most-recently-used within group
+**Given:** Three favorites: "Proj A" (used 3 days ago), "Proj B" (used today), "Proj C" (used yesterday)  
+**When:** SearchSwitch renders without query  
+**Then:**
+- Favorites group order: Proj B → Proj C → Proj A (most recent first)
+- Non-favorites below, also ordered by recency  
+**Priority:** P1
+
+---
+
+#### TC-P2-014: Search with favorites — favorited items ranked higher in results
+**Given:** Search query "api" matches: "API Work" (not favorite), "API Design" (favorite)  
+**When:** SearchSwitch filters  
+**Then:**
+- "API Design" (favorite) appears first in results
+- "API Work" appears below  
+**Priority:** P1
+
+---
+
+#### TC-P2-015: Favorite via SessionList star icon
+**Given:** SessionList shows today's sessions  
+**When:** User clicks star icon on a SessionList row  
+**Then:**
+- Work order toggled to favorite
+- Star icon in SessionList row updates
+- SearchSwitch list immediately reflects new favorite at top (reactive update)  
+**Priority:** P2
+
+---
+
+#### TC-P2-016: Keyboard — Tab to star icon, Enter to toggle favorite
+**Given:** SearchSwitch open, focus inside list  
+**When:** User presses Tab to move focus to star button, then presses Enter  
+**Then:**
+- Favorite toggled without mouse
+- Focus remains inside list  
+**Priority:** P1
+
+---
+
+#### TC-P2-017: SearchSwitch opens with Ctrl+Shift+S global hotkey
+**Given:** App in foreground with SearchSwitch closed  
+**When:** User presses Ctrl+Shift+S  
+**Then:**
+- SearchSwitch panel opens
+- Search input focused
+- User can immediately type a query  
+**Priority:** P1  
+**Note:** Phase 1 used Ctrl+K. Confirm final hotkey with Han before implementing.
+
+---
+
+#### TC-P2-018: Global hotkey works when app is NOT focused
+**Given:** App running but another window is active (foreground)  
+**When:** User presses global hotkey  
+**Then:**
+- App is brought to foreground
+- SearchSwitch opens with search input focused  
+**Priority:** P2  
+**Note:** Requires OS-level hotkey registration via Tauri.
+
+---
+
+#### TC-P2-019: Escape dismisses SearchSwitch
+**Given:** SearchSwitch open (with or without query)  
+**When:** User presses Escape  
+**Then:**
+- SearchSwitch closes
+- Query cleared
+- No action taken (no switch, no favorite toggle)  
+**Priority:** P0
+
+---
+
+#### TC-P2-020: SearchSwitch shows correct group headers
+**Given:** User has 2 favorites and 4 recent work orders  
+**When:** SearchSwitch opens with no query  
+**Then:**
+- "Favorites" header visible above the 2 favorites
+- "Recent" (or "All") header visible above the 4 recents
+- Section headers not shown when a group is empty  
+**Priority:** P1
+
+---
+
+### Phase 2 — Timer Component Manual Test Checklist
+
+Manual QA checklist for Timer.svelte Phase 2 visual states (not yet automatable without @testing-library/svelte):
+
+| # | Condition | Expected Pause Button | Expected Resume Button | Expected Badge Color |
+|---|-----------|----------------------|------------------------|----------------------|
+| 1 | Session is running | Visible | Hidden | Green |
+| 2 | Session is paused | Hidden | Visible | Amber |
+| 3 | No active session | Hidden | Hidden | None (grey/inactive) |
+| 4 | Session stopped inline | Hidden | Hidden | None |
+
+- [ ] **TC-P2-TIMER-UI-01**: Pause button visible only when session running (not paused, not stopped)
+- [ ] **TC-P2-TIMER-UI-02**: Resume button visible only when session paused
+- [ ] **TC-P2-TIMER-UI-03**: Amber badge visible only during paused state
+- [ ] **TC-P2-TIMER-UI-04**: Green badge visible only during running state
+- [ ] **TC-P2-TIMER-UI-05**: Neither Pause nor Resume visible when stopped
+- [ ] **TC-P2-TIMER-UI-06**: Timer label shows "PAUSED" text or amber decoration when paused
+- [ ] **TC-P2-TIMER-UI-07**: Timer seconds count does NOT increment during paused state
+- [ ] **TC-P2-TIMER-UI-08**: After resume, timer seconds resume from the frozen value, not from 0
+
+---
+
+### Phase 2 — Performance Verification
+
+#### Automated (Vitest) Performance Tests
+
+Automated timing tests live in `src/lib/components/SearchSwitch.test.ts`:
+
+| Test ID | Description | Target | File |
+|---------|-------------|--------|------|
+| TC-P2-PERF-01 | Filter 1 000 work orders | < 50ms | SearchSwitch.test.ts |
+| TC-P2-PERF-02 | Sort 1 000 work orders favorites-first | < 50ms | SearchSwitch.test.ts |
+| TC-P2-PERF-03 | Filter + sort pipeline on 1 000 items | < 50ms | SearchSwitch.test.ts |
+
+#### Manual Performance Checklist
+
+- [ ] **TC-P2-PERF-04**: Timer UI tick latency — measure 10 consecutive ticks with DevTools Performance panel. **Target:** < 100ms per tick average. No single tick > 200ms.
+- [ ] **TC-P2-PERF-05**: SearchSwitch keystroke → visible results — open SearchSwitch with 50+ work orders, type a single character, measure with DevTools. **Target:** < 50ms.
+- [ ] **TC-P2-PERF-06**: Pause/resume command round-trip — click Pause, measure until badge changes color. **Target:** < 100ms (optimistic UI update should be instant; backend confirm ≤ 100ms).
+- [ ] **TC-P2-PERF-07**: Favorite toggle latency — click star icon, measure until icon changes state. **Target:** < 50ms (optimistic update + background sync).
+- [ ] **TC-P2-PERF-08**: Session switch end-to-end — from Pause+Switch click to new session timer visible. **Target:** < 3 seconds end-to-end.
+
+---
+
 *End of Test Plan*

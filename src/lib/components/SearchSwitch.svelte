@@ -13,7 +13,22 @@
   let searchTimeout: ReturnType<typeof setTimeout> | null = null;
   let searchGen = 0;
 
-  let displayItems = $derived(query.trim() ? searchResults : sessionsStore.recent);
+  // Grouped items for idle view (no query)
+  let favs = $derived(sessionsStore.allFavorites);
+  let recentGroup = $derived(sessionsStore.recent.filter((wo) => !wo.isFavorite));
+
+  // Flat sorted list for keyboard navigation
+  let displayItems = $derived(
+    query.trim()
+      ? [...searchResults].sort((a, b) => {
+          if (a.isFavorite && !b.isFavorite) return -1;
+          if (!a.isFavorite && b.isFavorite) return 1;
+          return 0;
+        })
+      : [...favs, ...recentGroup]
+  );
+
+  let hasIdleItems = $derived(favs.length > 0 || recentGroup.length > 0);
 
   async function search(q: string) {
     if (!q.trim()) {
@@ -24,7 +39,7 @@
     searching = true;
     try {
       const all = await listWorkOrders();
-      if (gen !== searchGen) return; // Stale — a newer search is running
+      if (gen !== searchGen) return;
       const lowerQuery = q.toLowerCase();
       searchResults = all.filter(
         (wo) =>
@@ -87,10 +102,6 @@
 </script>
 
 <section class="search-section">
-  <div class="search-header">
-    <h3>{query.trim() ? 'Search results' : 'Recent'}</h3>
-  </div>
-
   <input
     type="text"
     class="search-input"
@@ -100,55 +111,142 @@
     onkeydown={handleKeydown}
   />
 
-  {#if displayItems.length === 0}
-    <div class="empty">
-      {#if query.trim()}
+  {#if query.trim()}
+    <!-- Search results: flat list, favorites sorted first -->
+    {#if displayItems.length === 0}
+      <div class="empty">
         <p>No work orders found</p>
-      {:else}
-        <p>No recent work orders</p>
-        <p class="hint">Press Ctrl+N to add one</p>
-      {/if}
-    </div>
+      </div>
+    {:else}
+      <div class="results">
+        {#each displayItems as item, i}
+          {@const isActive = timer.active?.workOrderId === item.id}
+          <button
+            class="result-item"
+            class:selected={i === selectedIndex}
+            class:active={isActive}
+            onclick={() => switchTo(item.id)}
+          >
+            <div class="item-main">
+              <span
+                class="star-btn"
+                role="button"
+                tabindex="0"
+                onclick={(e) => handleToggleFavorite(e, item.id)}
+                onkeydown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleToggleFavorite(e, item.id);
+                  }
+                }}
+                title={item.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              >
+                {item.isFavorite ? '⭐' : '☆'}
+              </span>
+              <span class="item-name">{item.name}</span>
+              {#if isActive}
+                <span class="badge">Active</span>
+              {/if}
+            </div>
+            <div class="item-customer">
+              {#if item.customerColor}
+                <span class="dot" style="background: {item.customerColor}"></span>
+              {/if}
+              {item.customerName}
+            </div>
+          </button>
+        {/each}
+      </div>
+    {/if}
   {:else}
-    <div class="results">
-      {#each displayItems as item, i}
-        {@const isActive = timer.active?.workOrderId === item.id}
-        <button
-          class="result-item"
-          class:selected={i === selectedIndex}
-          class:active={isActive}
-          onclick={() => switchTo(item.id)}
-        >
-          <div class="item-main">
-            <span
-              class="star-btn"
-              role="button"
-              tabindex="0"
-              onclick={(e) => handleToggleFavorite(e, item.id)}
-              onkeydown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  handleToggleFavorite(e, item.id);
-                }
-              }}
-              title={item.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+    <!-- Idle grouped view -->
+    {#if !hasIdleItems}
+      <div class="empty">
+        <p>No work orders yet</p>
+        <p class="hint">Press Ctrl+N to add one</p>
+      </div>
+    {:else}
+      <div class="results">
+        {#if favs.length > 0}
+          <div class="group-header">⭐ Favorites</div>
+          {#each favs as item, i}
+            {@const isActive = timer.active?.workOrderId === item.id}
+            <button
+              class="result-item"
+              class:selected={selectedIndex === i}
+              class:active={isActive}
+              onclick={() => switchTo(item.id)}
             >
-              {item.isFavorite ? '⭐' : '☆'}
-            </span>
-            <span class="item-name">{item.name}</span>
-            {#if isActive}
-              <span class="badge">Active</span>
-            {/if}
-          </div>
-          <div class="item-customer">
-            {#if item.customerColor}
-              <span class="dot" style="background: {item.customerColor}"></span>
-            {/if}
-            {item.customerName}
-          </div>
-        </button>
-      {/each}
-    </div>
+              <div class="item-main">
+                <span
+                  class="star-btn"
+                  role="button"
+                  tabindex="0"
+                  onclick={(e) => handleToggleFavorite(e, item.id)}
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleToggleFavorite(e, item.id);
+                    }
+                  }}
+                  title="Remove from favorites"
+                >⭐</span>
+                <span class="item-name">{item.name}</span>
+                {#if isActive}
+                  <span class="badge">Active</span>
+                {/if}
+              </div>
+              <div class="item-customer">
+                {#if item.customerColor}
+                  <span class="dot" style="background: {item.customerColor}"></span>
+                {/if}
+                {item.customerName}
+              </div>
+            </button>
+          {/each}
+        {/if}
+
+        {#if recentGroup.length > 0}
+          <div class="group-header">🕐 Recent</div>
+          {#each recentGroup as item, j}
+            {@const isActive = timer.active?.workOrderId === item.id}
+            {@const idx = favs.length + j}
+            <button
+              class="result-item"
+              class:selected={selectedIndex === idx}
+              class:active={isActive}
+              onclick={() => switchTo(item.id)}
+            >
+              <div class="item-main">
+                <span
+                  class="star-btn"
+                  role="button"
+                  tabindex="0"
+                  onclick={(e) => handleToggleFavorite(e, item.id)}
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleToggleFavorite(e, item.id);
+                    }
+                  }}
+                  title="Add to favorites"
+                >☆</span>
+                <span class="item-name">{item.name}</span>
+                {#if isActive}
+                  <span class="badge">Active</span>
+                {/if}
+              </div>
+              <div class="item-customer">
+                {#if item.customerColor}
+                  <span class="dot" style="background: {item.customerColor}"></span>
+                {/if}
+                {item.customerName}
+              </div>
+            </button>
+          {/each}
+        {/if}
+      </div>
+    {/if}
   {/if}
 </section>
 
@@ -156,18 +254,6 @@
   .search-section {
     background: var(--surface);
     padding: 16px;
-  }
-
-  .search-header {
-    margin-bottom: 12px;
-  }
-
-  h3 {
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text-muted);
   }
 
   .search-input {
@@ -181,11 +267,21 @@
     font-size: 14px;
     margin-bottom: 12px;
     min-height: 44px;
+    box-sizing: border-box;
   }
 
   .search-input:focus {
     outline: 1px solid var(--accent);
     border-color: var(--accent);
+  }
+
+  .group-header {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    padding: 8px 4px 4px;
   }
 
   .results {
@@ -240,6 +336,7 @@
     align-items: center;
     justify-content: center;
     line-height: 1;
+    flex-shrink: 0;
   }
 
   .star-btn:hover {
