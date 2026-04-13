@@ -544,3 +544,48 @@ Completed all Phase 2 test work items (P2-TEST-UI-1, P2-TEST-INT-1, P2-PERF-1) i
 - `src/lib/__tests__/components.smoke.test.ts` — NEW: 9 component mount tests
 - `vitest.config.ts` — Added `conditions: ['browser']` to `resolve`
 
+
+---
+
+### 2026-04-13: Phase 2b Tests — Dynamic Tray Menu + Timestamp Regression
+
+**Context**: Chewie implemented Phase 2b (dynamic tray menu with favorites and recent work orders). My task: write tests for `get_tray_menu_data` function and add regression tests for the timestamp bug fix (SQLite datetime format vs RFC3339).
+
+**Work completed**:
+1. ✅ **Created `src-tauri/tests/tray_menu_tests.rs`** — 7 new tests (5 for tray menu data, 2 for timestamp parsing regression)
+2. ✅ **Made `get_tray_menu_data` public** — Changed from `fn` to `pub fn` in `src-tauri/src/tray.rs` for test access
+3. ✅ **Exposed tray module** — Changed `mod tray` to `pub mod tray` in `src-tauri/src/lib.rs`
+
+**Test results**:
+- TC-2b-01: ✅ `get_tray_menu_data` returns favorites (2 favorites, not in recent)
+- TC-2b-02: ✅ `get_tray_menu_data` returns recent work orders (based on sessions)
+- TC-2b-03: ✅ `get_tray_menu_data` excludes archived work orders
+- TC-2b-04: ✅ `get_tray_menu_data` returns empty lists for fresh DB (no panic)
+- TC-2b-05: ✅ `get_tray_menu_data` customer name is included (JOIN verified)
+- TC-ts-01: ✅ Session with SQLite-format timestamp can be parsed (backward compatibility)
+- TC-ts-02: ✅ Session with RFC3339 timestamp is parsed correctly
+
+All integration tests: **31 passing, 0 failing** (24 previous + 7 new)
+
+**Key learnings**:
+
+1. **Test DB setup pattern**: Followed existing pattern from `session_service_tests.rs` — use `init_test_db()` for in-memory SQLite, reuse helper functions (`setup_customer`, `setup_work_order`), ensure idempotent test setup.
+
+2. **Testing DB queries without mock overhead**: The `get_tray_menu_data` function does raw SQL queries with JOINs and filters. Rather than mocking the DB, I created real test data and verified the query results. This tests both the SQL logic AND the Rust mapping code. More robust than unit testing SQL strings in isolation.
+
+3. **Timestamp regression tests validate backward compatibility**: The bug fix added support for both SQLite datetime format (`YYYY-MM-DD HH:MM:SS`) and RFC3339 format (`YYYY-MM-DDTHH:MM:SSZ`). TC-ts-01 verifies old data still works; TC-ts-02 verifies new format is correctly parsed. Both use `datetime('now')` and `strftime()` to generate timestamps in the expected formats.
+
+4. **Test naming convention**: TC-2b-XX for Phase 2b tests, TC-ts-XX for timestamp tests. Descriptive function names (`tc_2b_01_get_tray_menu_data_returns_favorites`) make test output readable.
+
+5. **Assertion specificity**: Rather than just checking `len() > 0`, I verified exact IDs (`fav_ids.contains(&wo1)`), ensured exclusions (`!recent_ids.contains(&wo1)`), and validated JOIN results (`customer_name == "ACME Corp"`). Precise assertions catch more regressions.
+
+6. **No duplicate test data**: Each test creates only the data it needs. TC-2b-01 creates 2 customers and 3 work orders; TC-2b-04 creates none. Minimal data → faster tests, clearer intent.
+
+7. **Favorites and recent are mutually exclusive**: The SQL query uses `WHERE wo.is_favorite = 0` for recent items. TC-2b-01 verifies that favorites are NOT in recent, and TC-2b-02 verifies that only non-favorites appear in recent. This documents the design decision.
+
+**Files created/modified**:
+- `src-tauri/tests/tray_menu_tests.rs` — NEW: 7 comprehensive tests
+- `src-tauri/src/tray.rs` — Made `get_tray_menu_data` public
+- `src-tauri/src/lib.rs` — Made `tray` module public
+
+**Maintenance rule**: When adding new tray menu features (e.g., limiting favorites to 5, sorting by `last_used_at`), add tests to `tray_menu_tests.rs` that verify the specific query behavior (limit, order, filters).

@@ -1185,6 +1185,277 @@ let transitioning = $state(false);
 
 ---
 
+### 2026-04-13: Phase 2b Dynamic Tray Menu — Implemented
+
+**Status**: IMPLEMENTED  
+**Date**: 2026-04-13  
+**Author**: Chewie (Backend Dev)
+
+#### Overview
+
+Implemented dynamic tray right-click menu that displays favorites and recent work orders, enabling users to quickly switch projects directly from the system tray without opening the main application window.
+
+#### Implementation Decisions
+
+**1. Menu Data Query Strategy**
+
+Decision: Query database on every menu build (lazy approach, no caching)
+
+Rationale:
+- Simpler implementation for MVP
+- Menu build happens infrequently (only when tray state updates)
+- Query is fast (indexed on `is_favorite`, `archived_at`, and `last_used_at`)
+- Ensures menu is always up-to-date with current DB state
+
+**2. Lifetime Management for Tauri State**
+
+Solution: Extract database query results to owned data (`TrayMenuData`) before the `State` borrow ends. This avoids holding `State` reference while constructing menu items.
+
+**3. Menu Item ID Convention**
+
+Decision: Use `switch-{work_order_id}` format for all dynamic work order menu items
+
+Rationale:
+- Unified prefix simplifies handler logic
+- UUIDs are unique, no collision risk
+- Pattern is easy to extend
+
+**4. Error Handling for Menu Building**
+
+Decision: Gracefully degrade to empty lists if DB query fails
+
+Rationale: Tray menu must always be buildable (core UX requirement)
+
+**5. Menu Structure**
+
+Layout:
+```
+[Current work order] — disabled label
+─────────────────────────────────────
+[⭐ Favorites] — section header (only if favorites exist)
+  • Work Order (Customer)
+  • ...
+─────────────────────────────────────
+[⏱ Recent] — section header (only if recent exist)
+  • Work Order (Customer)
+  • ...
+─────────────────────────────────────
+[Pause / Resume] — existing
+[Switch Project...] — existing
+─────────────────────────────────────
+[Open Work Tracker] — existing
+[Quit] — existing
+```
+
+**6. Event Emission for Frontend Sync**
+
+Decision: Emit `"tray-action"` event with `"switch"` payload after successful tray-initiated switch
+
+Rationale: Frontend must refresh active session state after tray switch
+
+#### Technical Details
+
+**Data Structures**:
+```rust
+pub struct WorkOrderSummary {
+    pub id: String,
+    pub name: String,
+    pub customer_name: String,
+    pub is_favorite: bool,
+}
+
+pub struct TrayMenuData {
+    pub favorites: Vec<WorkOrderSummary>,
+    pub recent: Vec<WorkOrderSummary>,
+}
+```
+
+**Function Signatures**:
+```rust
+fn get_tray_menu_data(conn: &Connection) -> Result<TrayMenuData, rusqlite::Error>
+fn build_menu(app: &AppHandle, work_order: &str, is_paused: bool) -> tauri::Result<Menu<Wry>>
+fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent)
+```
+
+#### Testing
+
+All tests pass:
+- ✅ 16 session service tests
+- ✅ 7 tray menu tests (5 Phase 2b + 2 timestamp regression)
+
+Test Cases:
+- `tc_2b_01_get_tray_menu_data_returns_favorites` — Favorites query returns correct results
+- `tc_2b_02_get_tray_menu_data_returns_recent_work_orders` — Recent query returns correct results
+- `tc_2b_03_get_tray_menu_data_excludes_archived_work_orders` — Archived items excluded
+- `tc_2b_04_get_tray_menu_data_returns_empty_lists_for_fresh_db` — Graceful empty state
+- `tc_2b_05_get_tray_menu_data_customer_name_is_included` — Customer name joined correctly
+
+#### Files Modified
+
+- `src-tauri/src/tray.rs` — Added `get_tray_menu_data()`, updated `build_menu()`, updated `on_menu_event()`
+- `src-tauri/tests/tray_menu_tests.rs` — New test file with 7 tests
+- `src-tauri/src/lib.rs` — Made tray module public
+
+#### Compliance
+
+- ✅ No overlapping sessions (switch uses `switch_to_work_order()` service)
+- ✅ Atomic operations (switch is transactional)
+- ✅ Structured error handling (graceful degradation)
+- ✅ All multi-step operations transactional
+
+---
+
+### 2026-04-13: Fixed Missing Parameter in list_work_orders Command — Implemented
+
+**Date**: 2026-04-13  
+**Author**: Chewie (Backend Dev)  
+**Status**: IMPLEMENTED ✅
+
+#### Problem
+
+App was throwing "Missing WorkOrderID" runtime error when users attempted to:
+1. Start a tracking session (switch to a work order)
+2. Favorite a work order
+
+The error occurred during Tauri IPC parameter validation.
+
+#### Root Cause Analysis
+
+The `list_work_orders` Rust command has TWO parameters:
+- `customer_id: Option<String>`
+- `favorites_only: Option<bool>`
+
+But the frontend `listWorkOrders()` API wrapper was only passing ONE parameter: `customer_id`
+
+**Why this caused the error**: In Tauri 2, ALL parameters defined in a Rust `#[tauri::command]` function must be present in the JavaScript `invoke()` call, even if they are `Option<T>` types. Optional parameters cannot be omitted - they must be explicitly passed as `undefined` or `null`.
+
+#### The Fix
+
+**File**: `src/lib/api/workOrders.ts`
+
+**Before**:
+```typescript
+export const listWorkOrders = (customerId?: string) =>
+  invoke<WorkOrder[]>('list_work_orders', { customer_id: customerId });
+```
+
+**After**:
+```typescript
+export const listWorkOrders = (customerId?: string, favoritesOnly?: boolean) =>
+  invoke<WorkOrder[]>('list_work_orders', { customer_id: customerId, favorites_only: favoritesOnly });
+```
+
+#### Verification
+
+- ✅ `cd C:\git\work-tracker-2\src-tauri && cargo build` — Compiles successfully
+- ✅ `cd C:\git\work-tracker-2 && npm run build` — Compiles successfully
+- ✅ All Tauri command parameters now match between frontend and backend
+
+#### Impact
+
+- Users can now successfully start tracking sessions
+- Users can now successfully favorite/unfavorite work orders
+- No runtime errors during Tauri IPC invocation
+
+#### Key Learning
+
+**When adding optional parameters to Tauri 2 commands**:
+1. Update the Rust command signature with `param: Option<T>`
+2. Update the frontend API wrapper function signature with `param?: T`
+3. Update the frontend invoke call to include ALL parameters: `invoke('cmd', { param1, param2, ... })`
+4. Remember: Tauri 2 enforces strict parameter presence — missing parameters cause **runtime errors**, not compile-time errors
+
+**Best Practice**: Always audit all frontend API wrappers when modifying Rust command signatures to ensure parameter lists stay in sync.
+
+---
+
+### 2026-04-13: Test Design Decision: Phase 2b Tray Menu Tests — Implemented
+
+**Author**: Wedge  
+**Date**: 2026-04-13  
+**Status**: ✅ IMPLEMENTED
+
+#### Context
+
+Phase 2b adds dynamic tray menu functionality with:
+- Favorites list (up to 5 work orders marked `is_favorite=1`)
+- Recent items list (up to 10 work orders with sessions, excluding favorites)
+- Exclusion of archived work orders from both lists
+
+#### Design Decisions
+
+**1. Test via Real Database Queries (Not Mocks)**
+
+Decision: Use in-memory SQLite with real test data instead of mocking the DB.
+
+Rationale:
+- The `get_tray_menu_data` function performs complex SQL with JOINs, WHERE clauses, and ORDER BY
+- Mocking would only test the Rust mapping layer, not the SQL correctness
+- Real DB tests validate both the SQL logic AND the Rust code
+- Pattern already established in `session_service_tests.rs` — maintain consistency
+
+**2. Test Favorites and Recent as Mutually Exclusive Sets**
+
+Decision: TC-2b-01 verifies favorites are NOT in recent; TC-2b-02 verifies recent items are NOT favorites.
+
+Rationale:
+- The SQL query uses `WHERE wo.is_favorite = 0` for recent items — this is a design constraint
+- If a work order is in both lists, it's a bug (duplicates in the tray menu)
+
+**3. Test Empty DB Without Panic**
+
+Decision: TC-2b-04 calls `get_tray_menu_data` on a fresh DB and asserts both lists are empty.
+
+Rationale:
+- Empty state is common (new user, fresh install, all work orders archived)
+- A panic or SQL error on empty result sets would be a critical UX failure
+
+**4. Validate JOIN Correctness by Checking `customer_name`**
+
+Decision: TC-2b-05 creates customer "ACME Corp", work order "Design Sprint", and asserts both names appear in the result.
+
+Rationale:
+- The SQL does `JOIN customers c ON wo.customer_id = c.id` — this JOIN could silently fail
+- Verifying `customer_name` field proves the JOIN worked and the mapping is correct
+
+**5. Timestamp Regression Tests Use SQLite Functions Directly**
+
+Decision: TC-ts-01 uses `datetime('now', '-1 hour')` and `datetime('now')` to generate SQLite-format timestamps. TC-ts-02 uses `strftime('%Y-%m-%dT%H:%M:%SZ', 'now')`.
+
+Rationale:
+- The bug was: old data used `datetime('now')` (space separator), new code generates RFC3339 (T separator)
+- Regression test must verify BOTH formats parse correctly
+
+**6. Made `get_tray_menu_data` Public for Testing**
+
+Decision: Changed `fn get_tray_menu_data` to `pub fn get_tray_menu_data` in `tray.rs` and made `mod tray` public in `lib.rs`.
+
+Rationale:
+- Function was private (internal to tray module) — tests couldn't call it
+- Making the function public doesn't expose it to the frontend (it's in the `tray` module, not in `commands`)
+
+#### Test Coverage Matrix
+
+| Test Case | What It Validates | Why It Matters |
+|-----------|------------------|----------------|
+| TC-2b-01 | Favorites returned, not in recent | Ensures favorites-first UX (no duplicates) |
+| TC-2b-02 | Recent items returned (based on sessions) | Verifies `recent_work_orders` table is queried correctly |
+| TC-2b-03 | Archived work orders excluded | Prevents "deleted" items from appearing in tray menu |
+| TC-2b-04 | Empty DB doesn't panic | Catches SQL errors that only appear on empty tables |
+| TC-2b-05 | Customer name included via JOIN | Verifies JOIN correctness and Rust mapping |
+| TC-ts-01 | SQLite datetime format parsed | Backward compatibility for old data |
+| TC-ts-02 | RFC3339 format parsed | Forward compatibility for new data |
+
+#### Key Learnings
+
+1. **Real DB tests > mocked DB tests for query-heavy code** — SQL bugs are caught at test time, not production time.
+2. **Negative assertions document design constraints** — `!recent_ids.contains(&favorite)` makes exclusivity rule explicit.
+3. **Empty state tests catch edge cases** — "no data" is a common state, not a rare edge case.
+4. **JOIN correctness requires end-to-end validation** — checking `customer_name` proves the JOIN worked.
+5. **Timestamp format tests validate backward compatibility** — old data must continue to parse after migrations.
+
+---
+
 ### Decision 3: SessionList running/paused detection without backend changes
 
 **From**: Leia (Frontend Dev)  

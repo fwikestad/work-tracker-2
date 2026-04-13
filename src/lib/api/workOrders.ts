@@ -4,8 +4,8 @@ import type { WorkOrder, CreateWorkOrderParams, UpdateWorkOrderParams } from '..
 export const createWorkOrder = (params: CreateWorkOrderParams) =>
   invoke<WorkOrder>('create_work_order', { params });
 
-export const listWorkOrders = (customerId?: string) =>
-  invoke<WorkOrder[]>('list_work_orders', { customer_id: customerId });
+export const listWorkOrders = (customerId?: string, favoritesOnly?: boolean) =>
+  invoke<WorkOrder[]>('list_work_orders', { customer_id: customerId, favorites_only: favoritesOnly });
 
 export const updateWorkOrder = (id: string, params: UpdateWorkOrderParams) =>
   invoke<WorkOrder>('update_work_order', { id, params });

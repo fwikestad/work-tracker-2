@@ -489,3 +489,79 @@ Completed all Phase 2 backend work items (P2-TAURI-1, P2-TEST-BACKEND-1, duratio
 - ✅ No data migration needed — backward compatible
 
 **Key Learning**: When using SQLite with Rust/chrono, always use `strftime('%Y-%m-%dT%H:%M:%SZ', 'now')` instead of `datetime('now')` for RFC3339 compatibility. If migrating from old format, implement fallback parsing to handle both formats gracefully.
+
+### 2026-04-11: Phase 2b Dynamic Tray Menu Implementation
+
+**What was built**: Dynamic right-click tray menu that displays favorites and recent work orders for quick project switching without opening the main app.
+
+**Implementation**:
+1. **get_tray_menu_data() function** — Queries DB for favorites (up to 5) and recent work orders (up to 10, excluding favorites)
+   - SQL: JOINs work_orders + customers for display names
+   - Filters: Excludes archived items, uses is_favorite flag and ecent_work_orders.last_used_at ordering
+   - Returns owned TrayMenuData struct to avoid lifetime issues with Tauri State
+
+2. **build_menu() enhancement** — Dynamically constructs tray menu based on DB state
+   - Conditional sections: Only shows "⭐ Favorites" and "⏱ Recent" if items exist
+   - Menu item IDs: Uses switch-{work_order_id} pattern for unified handler logic
+   - Graceful degradation: Falls back to empty lists if DB query fails
+
+3. **on_menu_event() handler** — Handles tray-initiated project switching
+   - Pattern matching: vent_id.starts_with("switch-") → extract work_order_id
+   - Calls session_service::switch_to_work_order() (atomic, transactional)
+   - Emits "tray-action" event to frontend for UI sync
+
+**Key Decisions**:
+1. **No caching**: Query DB on every menu build (simple, always up-to-date, fast enough for MVP)
+2. **Lifetime handling**: Extract TrayMenuData before State borrow ends to avoid complex lifetime errors
+3. **Error handling**: Gracefully degrade to empty lists on DB errors (tray menu must always be buildable)
+4. **Event emission**: Reuse existing "tray-action" event pattern for frontend sync
+
+**Tauri Lifetime Challenge**: 
+- Tauri's State<AppState> has a complex lifetime that conflicts with nested menu construction
+- Solution: Use Option chain to extract owned data before State borrow ends:
+  `ust
+  let menu_data = {
+      let state = app.state::<AppState>();
+      state.db.lock().ok().and_then(|conn| get_tray_menu_data(&conn).ok())
+  };
+  `
+
+**Test Results**: All tests pass ✅
+- 16 session service tests (unchanged)
+- 7 tray menu tests (5 new Phase 2b tests added)
+
+**Files Modified**:
+- src-tauri/src/tray.rs — Added data structures, query logic, menu builder, event handler
+
+**Impact**:
+- ✅ Users can switch projects directly from tray menu (no window open required)
+- ✅ Favorites always at top (most important)
+- ✅ Recent work orders below (time-ordered)
+- ✅ Seamless integration with existing session switching logic
+- ✅ Atomic operations maintained (no data integrity issues)
+
+**Key Learning**: When working with Tauri's State<T>, always extract owned data before the State borrow ends if you need to use that data in a context with different lifetimes (like menu construction). Use Option::and_then() chains to handle errors gracefully without holding locks longer than necessary.
+
+
+### 2026-04-11: Fixed "Missing WorkOrderID" Parameter Error
+
+**Problem**: App threw "Missing WorkOrderID" error when trying to start tracking sessions or favorite work orders.
+
+**Root Cause**: list_work_orders command in Rust has TWO parameters (customer_id: Option<String> and favorites_only: Option<bool>), but the frontend listWorkOrders() API wrapper was only passing ONE parameter (customer_id).
+
+**Why this matters**: In Tauri 2, ALL parameters defined in a Rust command must be present in the JavaScript invoke call, even if they are Option<T> types. You cannot omit optional parameters - you must explicitly pass undefined or null for parameters you do not want to set.
+
+**The Fix**:
+- Updated src/lib/api/workOrders.ts:
+  - OLD: listWorkOrders(customerId?: string) with invoke('list_work_orders', { customer_id: customerId })
+  - NEW: listWorkOrders(customerId?: string, favoritesOnly?: boolean) with invoke('list_work_orders', { customer_id: customerId, favorites_only: favoritesOnly })
+
+**What I checked**:
+1. start_session command: Frontend correctly passes { work_order_id }, Rust expects work_order_id: String - NO ISSUE
+2. toggle_favorite command: Frontend correctly passes { work_order_id }, Rust expects work_order_id: String - NO ISSUE
+3. list_work_orders command: Frontend was missing favorites_only parameter - FIXED
+
+**Verification**: Both cargo build and npm run build succeed after fix.
+
+**Key Learning**: When adding optional parameters to Tauri commands, ALWAYS update both the Rust signature AND the frontend API wrapper. Tauri 2 enforces strict parameter presence - missing parameters cause runtime errors, not compile-time errors.
+
