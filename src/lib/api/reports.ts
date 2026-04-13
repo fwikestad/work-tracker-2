@@ -7,8 +7,10 @@ export const getDailySummary = (date: string) =>
 export const getRecentWorkOrders = (limit?: number) =>
   invoke<WorkOrder[]>('get_recent_work_orders', { limit });
 
-export const exportCsv = (startDate: string, endDate: string) =>
-  invoke<string>('export_csv', { startDate, endDate });
+export type ExportFormat = 'standard' | 'servicenow';
+
+export const exportCsv = (startDate: string, endDate: string, exportFormat: ExportFormat = 'standard') =>
+  invoke<string>('export_csv', { startDate, endDate, exportFormat });
 
 export const getReport = (startDate: string, endDate: string) =>
   invoke<ReportData>('get_report', { startDate, endDate });
