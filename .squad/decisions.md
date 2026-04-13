@@ -852,6 +852,304 @@ timer.setActive({
 
 ---
 
+## Phase 2 Architecture & Implementation (2026-04-12)
+
+### Decision 1: Phase 2a / 2b Split — Confirmed
+
+**From**: Han (Lead)  
+**Status**: APPROVED
+
+**Decision**: Global hotkey is Phase 2a (ship with MVP). System tray is Phase 2b (ships separately, does not block 2a).
+
+**Rationale**: Hotkey is 2-3 days of frontend work with a first-party Tauri plugin. Tray requires dynamic Rust menu rebuilding, platform testing, and Chewie's bandwidth. Decoupling them lets us ship pause/resume + favorites + hotkey without waiting for tray.
+
+---
+
+### Decision 2: Plugin Choice: `tauri-plugin-global-shortcut`
+
+**From**: Han (Lead)  
+**Status**: APPROVED
+
+**Decision**: Use Tauri's first-party `@tauri-apps/plugin-global-shortcut` for P2-HOTKEY-1.
+
+**Rationale**: First-party, maintained by Tauri team, no additional review needed. Supports `CmdOrCtrl+Shift+S` cross-platform syntax. Alternative (manual OS-level registration) is more work for no benefit.
+
+**Impact**: Adds one Cargo dependency + one npm dependency. No other architectural changes.
+
+---
+
+### Decision 3: Race Condition Mitigation: UI Transitioning Guard
+
+**From**: Han (Lead)  
+**Status**: APPROVED
+
+**Decision**: Add `transitioning` boolean flag to timer store. Disable pause/resume buttons during IPC round-trip.
+
+**Rationale**: Simplest fix that prevents the pause-resume race condition entirely. Backend stays strict (errors on invalid transitions). Optimistic UI updates deferred — not needed if buttons are disabled.
+
+**Pattern**:
+```typescript
+let transitioning = $state(false);
+// Wrap async operations: transitioning = true → await IPC → refresh → transitioning = false
+// Buttons: disabled={timer.transitioning || stopping}
+```
+
+---
+
+### Decision 4: SearchSwitch Grouping: Frontend-Only
+
+**From**: Han (Lead)  
+**Status**: APPROVED
+
+**Decision**: Grouping (favorites → recent → all) is done entirely in the frontend. No backend API changes.
+
+**Rationale**: `WorkOrder` already has `isFavorite` field. `getRecentWorkOrders` already returns items sorted by recency. Filtering into groups is a pure function. Adding a backend endpoint for grouped results would be over-engineering.
+
+---
+
+### Decision 5: Tray Tooltip Reactivity
+
+**From**: Han (Lead)  
+**Status**: APPROVED
+
+**Decision**: Make tray tooltip update on pause/resume, not just on session start/stop.
+
+**Current gap**: `updateTrayTooltip()` is called in `setActive()` but not after `pause()`/`resume()`. The tooltip stays as "⏱ Work Tracker — ..." even when paused.
+
+**Fix**: Call `updateTrayTooltip()` at the end of `pause()` and `resume()` in the timer store. Show ⏸ prefix when paused, ⏱ when running.
+
+---
+
+### Decision 6: Backend Pause Validation: Keep Strict
+
+**From**: Han (Lead)  
+**Status**: APPROVED
+
+**Decision**: Keep `pause_session` and `resume_session` returning errors on invalid state ("already paused", "not paused"). Do NOT make idempotent in Phase 2a.
+
+**Rationale**: Strict validation catches bugs. With the UI transitioning guard, users can't trigger invalid transitions. Reconsider idempotency in Phase 2b if tray menu creates new edge cases.
+
+---
+
+## Phase 2 Frontend (2026-04-12)
+
+### Decision 1: SearchSwitch grouped idle display
+
+**From**: Leia (Frontend Dev)  
+**Status**: APPROVED
+
+**Decision**: When no query, show two sections: ⭐ Favorites and 🕐 Recent (not favorited). All other items hidden from idle view and only surfaced through search.
+
+**Rationale**: Reduces visual noise. The consultant's daily workflow accesses only a handful of work orders. Full list is available via search (Ctrl+K or type).
+
+**Implementation**: `favs = sessionsStore.allFavorites`, `recentGroup = sessionsStore.recent.filter(!isFavorite)`. Flat `displayItems` derived for keyboard nav; grouped template for visual rendering. Keyboard selection index offsets: favorites 0..n-1, recent n..n+m-1.
+
+---
+
+### Decision 2: sessionsStore allFavorites via full listWorkOrders
+
+**From**: Leia (Frontend Dev)  
+**Status**: APPROVED
+
+**Decision**: `refreshRecent()` now also calls `listWorkOrders()` to populate `allWorkOrders`, from which `allFavorites` is derived.
+
+**Rationale**: `getRecentWorkOrders(10)` only returns 10 items. Favorites that haven't been used recently would be invisible in the grouped view. `listWorkOrders()` returns all non-archived work orders with `isFavorite` flag.
+
+**Tradeoff**: One extra API call on every `refreshRecent()`. Acceptable for a personal tracker with &lt; 100 work orders.
+
+---
+
+### Decision 3: SessionList running/paused detection without backend changes
+
+**From**: Leia (Frontend Dev)  
+**Status**: APPROVED
+
+**Decision**: Detect active session state by comparing `session.id === timer.active?.sessionId` and reading `timer.isPaused`. No new field on `Session` type.
+
+**Rationale**: `Session` type (historical entries) doesn't need live state. The `timer` store already has this information. Avoids Rust schema changes.
+
+**Visual**: Running = green state dot + highlighted border. Paused = amber dot + amber "Paused" badge + inline Resume button (44px).
+
+---
+
+### Decision 4: Global shortcut Ctrl+Shift+S
+
+**From**: Leia (Frontend Dev)  
+**Status**: APPROVED
+
+**Decision**: Register via `tauri-plugin-global-shortcut` in Rust. Rust handler: show window + unminimize + focus, then emit `focus-search` event. Frontend listens via `@tauri-apps/api/event listen()`.
+
+**Rationale**: OS-level global shortcuts must be registered in native code (Rust). Splitting responsibilities keeps frontend logic decoupled from native window management.
+
+**Shortcut chosen**: Ctrl+Shift+S — avoids conflict with common shortcuts (Ctrl+S = save, Ctrl+Shift+P = palette). Can be changed if conflict arises on user's machine.
+
+---
+
+### Decision 5: P/R keyboard shortcuts (in-app only)
+
+**From**: Leia (Frontend Dev)  
+**Status**: APPROVED
+
+**Decision**: 'P' = pause, 'R' = resume, no modifier key. Guard: only fires when not inside a form field (`!e.target.closest('input, textarea, select')`).
+
+**Rationale**: Single-key shortcuts reduce friction for common pause/resume. Guard prevents firing while typing notes.
+
+---
+
+## Phase 2 Backend (2026-04-12)
+
+### Decision 1: System Tray — Programmatic Setup Over Config
+
+**From**: Chewie (Backend Dev)  
+**Status**: APPROVED
+
+**Context**: `tauri.conf.json` had a `trayIcon` config block creating a basic tray. Phase 2 requires a dynamic right-click menu, state-based icon color, and single-click toggle.
+
+**Decision**: Removed `trayIcon` from `tauri.conf.json`. System tray is now set up entirely via `TrayIconBuilder::with_id("main")` in `src-tauri/src/tray.rs` called from `setup()`.
+
+**Rationale**: The programmatic approach allows:
+- Menu items created at startup (Pause/Resume, Switch Project, Open, Quit)
+- Dynamic icon/tooltip/menu updates via `update_tray_state` IPC command
+- Event handlers for both left-click (toggle pause) and right-click menu
+
+**Impact**: Frontend must call `update_tray_state(workOrderName, isPaused)` after every session state change to keep tray in sync. Old `update_tray_tooltip` command is replaced by `update_tray_state(work_order_name: Option<String>, is_paused: bool)`.
+
+---
+
+### Decision 2: Tray Icons — RGBA Pixel Data, Not PNG Files
+
+**From**: Chewie (Backend Dev)  
+**Status**: APPROVED
+
+**Context**: Tauri 2's `tauri::image::Image` does not have a `from_bytes()` method that accepts PNG-encoded bytes — it accepts raw RGBA pixel data via `Image::new_owned(rgba, width, height)`.
+
+**Decision**: Tray state icons (green/amber/grey circles) are generated at runtime using a `make_circle_icon(r, g, b)` function that builds 32×32 RGBA pixels. PNG files in `src-tauri/icons/tray/` are kept as design assets but are not used at runtime.
+
+**Colors**:
+- Running: `#16a34a` (green, 22, 163, 74)
+- Paused: `#f59e0b` (amber, 245, 158, 11)
+- Stopped: `#6b7280` (grey, 107, 114, 128)
+
+---
+
+### Decision 3: Duration Calculation Bug Fix — Store Gross Duration
+
+**From**: Chewie (Backend Dev)  
+**Status**: APPROVED
+
+**Context**: `stop_active_session()` was storing `duration_seconds = (end_time - start_time) - total_paused_seconds` (net duration), while `EFFECTIVE_DURATION_SQL` in summary queries was ALSO subtracting `total_paused_seconds`. This caused double-subtraction, severely undercounting session duration in reports.
+
+**Root cause**: `EFFECTIVE_DURATION_SQL` was designed assuming `duration_seconds` = gross, but the service stored net.
+
+**Decision**: Per decisions.md Section 618 ("Include paused intervals in total tracked time"), fixed to:
+1. `stop_active_session()` now stores `duration_seconds = end_time - start_time` (gross, includes paused time)
+2. `EFFECTIVE_DURATION_SQL` is now `COALESCE(ts.duration_override, ts.duration_seconds)` — no subtraction needed
+
+**Impact**: Sessions tracked before this fix may have incorrect (too short) duration values. Any new sessions from this fix onward will show gross duration in summaries. The `total_paused_seconds` column is still populated and available for future "active time only" reporting mode.
+
+---
+
+### Decision 4: Tray Borrow Pattern — Named Intermediate Variable
+
+**From**: Chewie (Backend Dev)  
+**Status**: APPROVED
+
+**Context**: Rust's borrow checker rejects patterns where `app.state::<AppState>()` and `MutexGuard` are live in the same scope as `app.emit()` calls, because `State<'_>` holds a reference to `app` internals.
+
+**Pattern adopted** (required in event handlers that need both DB access and `app.emit`):
+```rust
+let did_something = {
+    let state = app.state::<AppState>();
+    let result = match state.db.lock() {
+        Ok(conn) => { /* use conn, return bool */ }
+        Err(_) => false,
+    };
+    result  // named variable ensures match temporaries drop before state
+}; // state and conn dropped here
+
+if did_something {
+    let _ = app.emit("event", payload); // safe: state already dropped
+}
+```
+
+For `if let` without a return value, use a trailing semicolon: `if let Ok(conn) = state.db.lock() { ... };`
+
+---
+
+## Phase 2 Test Coverage (2026-04-12)
+
+### Decision 1: SearchSwitch Tests — Pure Function Extraction Pattern
+
+**From**: Wedge (Tester)  
+**Status**: APPROVED
+
+**Problem**: SearchSwitch.svelte's filter/sort logic is inline in the component, not exported. Full component testing requires @testing-library/svelte (not yet set up).
+
+**Decision**: Replicate the filter logic as a pure function in the test file (`filterWorkOrders`). Write tests against the pure function. When/if the component extracts this to a shared utility, the tests move naturally.
+
+**Rationale**: Provides immediate, runnable coverage. The 15 tests catch regression in filter logic even before @testing-library/svelte is set up.
+
+**Consequence**: Tests must stay in sync with the actual filter logic in SearchSwitch.svelte. If Leia changes the filter algorithm, the pure function in the test file must be updated.
+
+---
+
+### Decision 2: Favorites-First Sort — Spec Tests, Not Implementation Tests
+
+**From**: Wedge (Tester)  
+**Status**: APPROVED
+
+**Problem**: SearchSwitch doesn't yet implement favorites-first sorting. The task requires tests for this behaviour.
+
+**Decision**: Write `sortFavoritesFirst()` as a pure spec function in the test file. Tests document the *desired* behaviour. Once Leia implements the sorting in SearchSwitch, the same logic can be lifted to a utility or the tests updated to call the real implementation.
+
+**Consequence for Leia**: Must implement favorites-first sorting in SearchSwitch when `query.trim()` is empty (no search). The sort should preserve recency order within each group. See TC-P2-FAV-01 through TC-P2-FAV-05 for acceptance criteria.
+
+---
+
+### Decision 3: Timer Phase 2 Tests — Remain Skipped (Same Blocker)
+
+**From**: Wedge (Tester)  
+**Status**: APPROVED
+
+**Problem**: `$effect` at module level in `timer.svelte.ts` prevents direct import in Vitest. This was documented in Phase 1 and assigned to Leia.
+
+**Decision**: Write the Phase 2 timer spec tests (TC-P2-TIMER-01 through TC-P2-TIMER-05) with full test bodies commented out. They serve as executable specifications. Continue to skip with `describe.skip` / `it.skip`.
+
+**Consequence for Leia**: Phase 2 timer tests will be enabled once the `$effect` context issue is resolved. Options:
+1. Extract tick logic to a pure function testable without Svelte context
+2. Set up @testing-library/svelte to provide a component context
+3. Wrap the timer store in a class/factory that can be instantiated without runes
+
+---
+
+### Decision 4: `clear()` Method — Not Currently on Timer Store
+
+**From**: Wedge (Tester)  
+**Status**: APPROVED
+
+**Problem**: Task required `clear() resets all state including isPaused`. The `timer` object in `timer.svelte.ts` has no `clear()` method — `setActive(null)` is the equivalent.
+
+**Decision**: TC-P2-TIMER-05 tests `setActive(null)` as the clear equivalent, with a comment noting that Leia should decide whether to add a dedicated `clear()` method.
+
+**Consequence for Leia**: Decide whether `setActive(null)` is the public API for clearing state, or whether a dedicated `clear()` method should be added for clarity.
+
+---
+
+### Decision 5: Performance Tests — Use `performance.now()` in Vitest
+
+**From**: Wedge (Tester)  
+**Status**: APPROVED
+
+**Problem**: Task required automated timing tests where feasible.
+
+**Decision**: Use `performance.now()` in Vitest jsdom environment for pure-function timing tests. This works reliably in jsdom. Added 3 performance tests (TC-P2-PERF-01, 02, 03) with 50ms assertions.
+
+**Observed performance**: Filter + sort pipeline on 1,000 items runs in 0.1–0.5ms in practice. The 50ms assertion is conservative enough to avoid flakiness on slow CI machines.
+
+**Consequence**: Backend pause/resume round-trip timing (TC-P2-PERF-06) and end-to-end session switch timing (TC-P2-PERF-08) are manual-only — cannot be meaningfully measured without a live Tauri backend.
+
+---
+
 #### Decision: Manual Version Bumping (Phase 1)
 
 **Workflow**:

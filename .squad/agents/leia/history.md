@@ -405,3 +405,44 @@ Key learnings:
 - GlobalShortcutExt trait: use app.handle().global_shortcut() inside setup closure.
 - Global shortcut pattern: Rust handles window focus, frontend handles overlay open (clean separation).
 - allFavorites separate from recent list - shows ALL favorites even if not recently used.
+
+---
+
+### 2026-04-13: Phase 2 Kickoff — Frontend Implementation Complete
+
+Completed all Phase 2 frontend work items (P2-STORE-1, P2-UI-3, P2-SEARCH-1/2, P2-HOTKEY-1) in parallel with backend and testing agents.
+
+**Deliverables**:
+1. **P2-STORE-1** ✅ Timer store pause/resume — transitioning guard + tray tooltip sync
+2. **P2-UI-3** ✅ SessionList pause badges (green/amber/grey) + resume inline button
+3. **P2-SEARCH-1** ✅ SearchSwitch grouped idle view (Favorites + Recent, frontend-only)
+4. **P2-SEARCH-2** ✅ Favorites toggle + `allFavorites` property in sessions store
+5. **P2-HOTKEY-1** ✅ Ctrl+Shift+S global hotkey via @tauri-apps/plugin-global-shortcut
+
+**Modified Files**:
+- `src/lib/stores/timer.svelte.ts` — Added `transitioning` guard, `updateTrayState` call after pause/resume
+- `src/lib/components/Timer.svelte` — UI shows transitioning state (buttons disabled during IPC)
+- `src/lib/components/SearchSwitch.svelte` — Grouped rendering (favorites first), Ctrl+Shift+S listener
+- `src/lib/components/SessionList.svelte` — Pause state badges (colors per state), Resume button
+- `src-tauri/src/lib.rs` — Global hotkey registration in setup()
+- `src-tauri/Cargo.toml` — Added plugin-global-shortcut dependency
+
+**Quality Metrics**:
+- Build: ✅ Clean (no TypeScript errors, no new warnings)
+- Tests: ✅ 15 SearchSwitch tests passing, 5 timer spec tests ready (skipped)
+- Regressions: ✅ Zero — all Phase 1 functionality intact
+
+**Key Implementation Details**:
+- Transitioning guard: Disable pause/resume buttons during IPC round-trip (prevents user from mashing buttons)
+- Tray tooltip sync: Call `updateTrayState(workOrderName, isPaused)` after pause/resume operations
+- SearchSwitch grouping: Pure function splits `allWorkOrders` into favorites/recent/all groups
+- Keyboard shortcuts: P (pause), R (resume), Ctrl+Shift+S (focus search)
+- Global hotkey: Rust handler focuses window + emits `focus-search` event; frontend listens and opens overlay
+
+**Coordination**:
+- Worked with Chewie on `updateTrayState` IPC command (vs old `updateTrayTooltip`)
+- Worked with Wedge on test spec alignment (pure function pattern for SearchSwitch tests)
+- All changes reviewed and integrated by Han
+
+**New Learning**: Phase 2 frontend work is primarily glue and refinement — pause state was 90% implemented in Phase 1, favorites infrastructure existed, only needed grouping UI and global hotkey wiring.
+

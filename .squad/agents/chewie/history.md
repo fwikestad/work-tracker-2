@@ -333,3 +333,48 @@ All P0 + P1 backend fixes implemented and verified. Build passes, all tests pass
 - `src-tauri/src/services/summary_service.rs` — fixed `EFFECTIVE_DURATION_SQL`
 - `src-tauri/tests/session_service_tests.rs` — added TC-SESSION-07 through TC-SESSION-14
 - `src-tauri/icons/tray/` — active.png, paused.png, stopped.png (design assets)
+
+---
+
+### 2026-04-13: Phase 2 Kickoff — Backend Implementation Complete
+
+Completed all Phase 2 backend work items (P2-TAURI-1, P2-TEST-BACKEND-1, duration bug fix) in parallel with frontend and testing agents.
+
+**Deliverables**:
+1. **P2-TAURI-1** ✅ System tray programmatic setup with dynamic menu and state-based icons
+2. **P2-TEST-BACKEND-1** ✅ 8 new backend integration tests (pause/resume state transitions)
+3. **Bug Fix** ✅ Duration calculation fixed (store gross duration, no double-subtraction)
+
+**Created/Modified Files**:
+- `src-tauri/src/tray.rs` — NEW: Tray setup, menu builders, event handlers, icon generation
+- `src-tauri/src/lib.rs` — Tray module + `update_tray_state` command
+- `src-tauri/tests/session_service_tests.rs` — 8 new tests (TC-SESSION-07 through TC-SESSION-14)
+- `src-tauri/src/services/session_service.rs` — Fixed `stop_active_session` to store gross duration
+- `src-tauri/src/services/summary_service.rs` — Fixed `EFFECTIVE_DURATION_SQL` (removed double-subtraction)
+
+**Quality Metrics**:
+- Build: ✅ Clean (no errors, no new warnings)
+- Tests: ✅ 24 backend tests passing (16 Phase 1 + 8 Phase 2)
+- Duration calculations: ✅ Fixed — sessions now show correct total time in summaries
+- Regressions: ✅ Zero — all Phase 1 tests still pass
+
+**Key Implementation Details**:
+- Tray programmatic setup: Removed `trayIcon` from tauri.conf.json, now built via `TrayIconBuilder` in `setup_tray()`
+- Tray icons: RGBA pixel data generated at runtime (32×32 circles), not PNG files (Tauri 2 limitation)
+- Icon colors: Green (#16a34a running), Amber (#f59e0b paused), Grey (#6b7280 stopped)
+- IPC command: `update_tray_state(work_order_name: Option<String>, is_paused: bool)` replaces old `update_tray_tooltip`
+- Borrow pattern: Named intermediate variable to scope database access separately from `app.emit()` calls (Rust borrow checker fix)
+
+**Duration Bug Fix Details**:
+- **Root cause**: Stored duration = (end_time - start_time) - total_paused_seconds, but `EFFECTIVE_DURATION_SQL` also subtracted paused_seconds → double subtraction
+- **Fix**: Store duration = end_time - start_time (gross), remove subtraction from SQL
+- **Aligns with decision**: "Include paused intervals in total tracked time" (per team decision)
+- **Impact**: Reports now show correct session durations
+
+**Coordination**:
+- Worked with Leia on `updateTrayState()` frontend calls (called after pause/resume)
+- Worked with Wedge on test case design (state transition validation)
+- All changes reviewed and integrated by Han
+
+**New Learning**: Tauri 2 requires programmatic icon setup using RGBA pixel data (no PNG file loading). Tray event handling requires careful attention to Rust borrow checker — use named intermediate variables to scope database access separately from emit calls.
+

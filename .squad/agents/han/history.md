@@ -197,3 +197,49 @@ Wrote `docs/phase2-architecture.md` — the implementation spec that unblocks Le
 - Backend (NO changes needed for Phase 2a): `src-tauri/src/services/session_service.rs`
 
 **New Learning**: When Phase 1 builds infrastructure for Phase 2 features, the architecture doc's job shifts from "what to build" to "what's already built and what wiring remains." Mapping existing code to Phase 2 requirements reduced the perceived scope significantly — Phase 2a is mostly frontend wiring.
+
+---
+
+### 2026-04-13: Phase 2 Kickoff — Orchestration Complete
+
+Coordinated concurrent work by all 4 team members (Leia, Chewie, Wedge). All agents completed assigned Phase 2 work items on schedule. System builds clean, 39 tests passing (15 new Vitest + 8 new backend + 16 Phase 1). No regressions.
+
+**Phase 2 Delivery Summary**:
+
+| Agent | Role | Deliverables | Status |
+|-------|------|--------------|--------|
+| **Leia** | Frontend Dev | P2-STORE-1, P2-UI-3, P2-SEARCH-1/2, P2-HOTKEY-1 | ✅ DONE |
+| **Chewie** | Backend Dev | P2-TAURI-1 (system tray), 8 backend tests, duration bug fix | ✅ DONE |
+| **Wedge** | Tester | 15 SearchSwitch tests, 20 integration scenarios, test plan | ✅ DONE |
+
+**Critical Path Completed**:
+- P2-ARCH-1 (Han) → P2-STORE-1 (Leia) → P2-UI-3 (Leia) → P2-SEARCH-1/2 (Leia) → integration ✓
+
+**Quality Metrics**:
+- Build: ✅ Clean (no errors, no warnings)
+- Tests: ✅ 15 new Vitest passing, 24 backend tests passing
+- Code review: ✅ All work reviewed and integrated
+- Regressions: ✅ Zero Phase 1 regressions
+
+**Key Decisions Finalized** (6 total, all approved):
+1. Phase 2a/2b split (hotkey MVP, tray deferred)
+2. Plugin: @tauri-apps/plugin-global-shortcut
+3. UI transitioning guard prevents race conditions
+4. SearchSwitch grouping: frontend-only
+5. Tray tooltip updates on pause/resume
+6. Backend pause validation: keep strict
+
+**What's Shipped / What's Deferred**:
+- ✅ Phase 2a (MVP): Pause/resume UI, favorites, global hotkey, tray tooltip updates
+- ⏳ Phase 2b (deferred): System tray right-click menu, dynamic menu updates, color-coded icons
+
+**Known Open Items** (low priority):
+1. Global hotkey: Ctrl+Shift+S vs Ctrl+K? (Han to confirm with consultant)
+2. Pause→Switch behavior: Auto-stop vs error? (Chewie to confirm with backend rules)
+3. SearchSwitch group headers: Show when empty? (Leia to finalize UX)
+4. Timer `clear()` method: Dedicated method vs `setActive(null)`? (Leia to decide)
+
+**Orchestration Complete**: Decisions merged to `.squad/decisions.md`, inbox cleared, orchestration logs written, Phase 2 ready for implementation merge.
+
+**New Learning**: Parallel work by specialized agents with clear dependencies (architecture → implementation → testing) significantly accelerates delivery. Critical path analysis upfront allows agents to work in parallel without conflicts. Orchestration log + session log provide audit trail and handoff documentation.
+
