@@ -173,14 +173,14 @@ Contributions welcome! Before starting:
 
 ## Roadmap
 
-**Phase 1 (Current)** — Core time tracking for single consultant  
+**Phase 1** — Core time tracking for single consultant  
 ✅ Timer, customers/projects, daily summary, reports, exports, crash recovery
 
 **Phase 2** — Multi-customer workflows & favorites  
-📋 Pinned favorites, system tray quick-switch, color-coded customers, paused sessions
+✅ Pinned favorites, system tray quick-switch, color-coded customers, paused sessions
 
-**Phase 3** — Advanced reporting  
-📋 Background running, report generation, archive management
+**Phase 3 (Current)** — Advanced reporting & background running  
+✅ Background running, report generation, archive management, date-range filtering, activity-based summaries
 
 **Phase 4+** — Team & integrations  
 📋 Multi-user per computer, third-party integrations, local backups, notifications

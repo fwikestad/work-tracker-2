@@ -231,3 +231,40 @@ All refactoring patterns documented immediately after implementation. Architectu
 **Key principle**: Document patterns *immediately* after refactoring, while context is fresh. Before/after examples show what changed and why. Rust doc comments become IDE tooltips.
 
 **New learnings**: Patterns emerge from refactoring and should be codified in architecture.md. This becomes team norm for future code. Prevents developers from reverting to old anti-patterns (e.g., .unwrap() on Mutex locks).
+
+---
+
+## Phase 3 Documentation Update (2026-04-13 - Complete)
+
+**Task**: Update all documentation to reflect Phase 3 complete status.
+
+**Deliverables**: 2 files updated, all phase references now current
+
+**Changes Made**:
+
+1. **README.md Roadmap section**
+   - Changed "Phase 1 (Current)" to "Phase 1" with ✅ indicator
+   - Changed "Phase 2" and "Phase 3" from "📋 Planned" to ✅ "Implemented"
+   - Updated Phase 3 description to include actual features: "Advanced reporting & background running", "Report generation, archive management, date-range filtering, activity-based summaries"
+   - Changed "Phase 3 (Current)" to "Phase 3 (Current)" with ✅ indicator
+   - Kept Phase 4+ as "📋 Planned"
+
+2. **docs/phase2-plan.md header**
+   - Added "Status: ✅ **COMPLETED** (Phase 3 now current)" at top
+   - Added note: "This document describes Phase 2 work, which has been implemented and shipped. See [features.md](features.md) for current feature status and [docs/architecture.md](architecture.md) for system overview."
+   - Changed "## Goal" to "## Goal (Completed)" for clarity that this is historical
+
+3. **Verification of other docs** (no changes needed)
+   - **docs/features.md**: Already correctly shows Phase 1, 2, 3 as ✅ Implemented; Phase 4+ as 📋 Planned
+   - **docs/architecture.md**: Line 6 already states "Status: Implemented (Phase 1, 2, 3 shipped)" ✅
+
+**Quality checks**:
+- ✅ README roadmap now accurately reflects Phase 3 current status
+- ✅ Phase 2 plan clearly marked as historical/completed
+- ✅ All three phase-status documents now consistent (README, features.md, architecture.md)
+- ✅ Features.md remains the authoritative feature catalog with detailed status per feature
+- ✅ No broken links; all cross-references verified
+
+**Impact**: New readers will see that Phase 3 is complete. Roadmap clearly shows what's shipped vs. planned. Phase 2 planning document appropriately contextualized as historical.
+
+**Key Principle**: Documentation stays current with implementation. When phases ship, immediately update roadmaps and status sections so new readers understand what's available today.

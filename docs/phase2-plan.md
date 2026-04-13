@@ -1,6 +1,12 @@
 # Phase 2 Implementation Plan: Multi-Customer Workflows
 
-## Goal
+**Status**: ✅ **COMPLETED** (Phase 3 now current)
+
+This document describes Phase 2 work, which has been implemented and shipped. See [features.md](features.md) for current feature status and [docs/architecture.md](architecture.md) for system overview.
+
+---
+
+## Goal (Completed)
 
 Smooth context switching across customers and projects with advanced quick-access patterns, visual organization, and paused session state support.
 
