@@ -1,5 +1,49 @@
 # Work Tracker 2 — Decisions Log
 
+## CI Enforcement — Definition of Done for All Coding Agents
+
+**Date**: 2026-04-13  
+**Authored by**: Fredrik Kristiansen Wikestad (via Copilot Coordinator)  
+**Priority**: High — ensures CI consistency and prevents lint-failure loop
+
+---
+
+### Decision
+
+All coding agents (Chewie, Leia, and any future dev agents) must run all four CI checks locally and confirm they pass **before committing any code**. This is now a formal Definition of Done for all coding work.
+
+### CI Checks Required (in order)
+
+```bash
+cd src-tauri && cargo clippy -- -D warnings   # Zero warnings or errors
+cd src-tauri && cargo test                     # All tests pass
+npm test -- --run                              # All frontend tests pass
+npm run build                                  # Build succeeds
+```
+
+### Rationale
+
+- CI enforces `-D warnings` on Clippy, which treats all lint warnings as hard errors
+- Code that compiles locally can silently fail CI if it triggers a warning
+- Baking this into agent charters prevents the push-fail-fix-revert loop
+- Applies to **all code changes**, no exceptions for "quick fixes" — size does not matter
+- Shift-left testing: catch issues at the source, not in CI
+
+### Implementation
+
+- Added `## Definition of Done` section to `.squad/agents/chewie/charter.md`
+- Added `## Definition of Done` section to `.squad/agents/leia/charter.md`
+- Applied retrospectively to commit b09f4f6 (tray.rs pattern cleanup)
+
+### Scope
+
+- Who: All agents performing code changes
+- What: All four CI checks must pass
+- When: Before every commit
+- Where: Local development environment before git push
+
+---
+
 ## Rust Build Status — PASS ✅
 
 **Date**: 2026-04-11  

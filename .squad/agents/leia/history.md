@@ -6,21 +6,27 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 
 ## Learnings
 
-- Fredrik's aesthetic preference: near-black (#0d0d0d), monochrome, single-accent (teal for running state only). No blue, no gradients, no shadows outside of native OS elements.
-- One-screen philosophy confirmed: single column ≤480px, three sections (timer / recent / log). No sidebar. Feels like a utility, not a dashboard.
-- Shortcut hints shown once at bottom — never repeated on buttons.
-- Tray/taskbar quick-switch is a Phase 2 feature but needs early mockup for design review.
-- Svelte 5 runes provide excellent reactive state management without boilerplate — `$state`, `$derived`, `$effect` replace legacy stores completely
-- Component architecture: presentational components with props, stores for global state, inline editing patterns preferred over modals
-- Keyboard-first: all interactive elements reachable via Tab, Enter to confirm, Escape to cancel, arrow keys for navigation
-- **Svelte 5 `bind:this` refs require `$state()`**: In runes mode, any variable used with `bind:this` must be declared as `let ref = $state<HTMLElement | undefined>(undefined)`. Plain `let ref: HTMLElement` triggers a `non_reactive_update` warning because Svelte 5 cannot track the assignment. This applies to all DOM ref variables — input refs, container refs, etc.
-- **A11y for interactive divs**: Divs with `onclick` need `role="button"`, `tabindex="0"`, and `onkeydown={(e) => e.key === 'Enter' && handler(e)}` to satisfy `a11y_click_events_have_key_events` + `a11y_no_static_element_interactions`. Prefer converting to `<button>` when there are no nested buttons; use div+role when nesting constraints apply (e.g., a delete button inside the clickable row).
-- **Tauri parameter naming convention**: When Tauri command parameters are NOT wrapped in a serde struct, the parameter names in Rust (snake_case) must match EXACTLY what JavaScript sends. For direct parameters like `include_archived: Option<bool>`, JavaScript must send `{ include_archived: value }` not `{ includeArchived: value }`. The `#[serde(rename_all = "camelCase")]` attribute only works on structs, not on loose function parameters. Always use snake_case for non-struct parameters or wrap them in a struct with serde rename.
-- **Svelte 5 reactive effects for timer tick**: Use `$effect(() => { if (condition) startTick(); else stopTick(); })` for interval management that needs to react to state changes. This is cleaner than manual start/stop in event handlers and ensures tick intervals restart automatically when state like `isPaused` changes.
-- **Stale async result pattern**: For debounced searches or async operations that can overlap, use a generation counter (`let gen = ++counter`) to ignore stale results. This prevents race conditions where older requests complete after newer ones.
-- **Consolidated edit state**: When managing multi-field edit forms, prefer a single `{ id, field1, field2 } | null` state object over multiple independent state variables. Easier to reset, pass around, and validate.
+### 2026-04-13: Charter Updated — CI Enforcement Definition of Done
 
-## 2026-04-12: Bug Fix: QuickAdd Type Safety
+**What changed**: Charter now includes a formal `## Definition of Done` section requiring all four CI checks to pass before any code is committed.
+
+**CI Checks Required**:
+1. `cd src-tauri && cargo clippy -- -D warnings` — zero warnings or errors
+2. `cd src-tauri && cargo test` — all tests pass
+3. `npm test -- --run` — all frontend tests pass
+4. `npm run build` — build succeeds with no errors
+
+**Why this matters**:
+- CI enforces `-D warnings` on Clippy; code that compiles locally can fail CI silently if it triggers a warning
+- Applying these checks locally before commit prevents the push-fail-fix loop
+- This is now a standard expectation for ALL code changes, no exceptions for size
+
+**Impact on workflow**:
+- Before committing: run all four checks and confirm they pass
+- If any fails: fix the issue locally before pushing
+- These are the same checks CI runs — a local failure predicts a CI failure
+
+### 2026-04-12: Bug Fix: QuickAdd Type Safety
 
 **Issue Identified**: Han's code review flagged QuickAdd.svelte manually constructing `ActiveSession` object missing required `isPaused: false` field.
 

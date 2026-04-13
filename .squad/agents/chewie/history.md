@@ -6,6 +6,28 @@ Backend Dev for work-tracker-2 — native desktop time tracker for consultant Fr
 
 ## Learnings
 
+### 2026-04-13: Charter Updated — CI Enforcement Definition of Done
+
+**What changed**: Charter now includes a formal `## Definition of Done` section requiring all four CI checks to pass before any code is committed.
+
+**CI Checks Required**:
+1. `cd src-tauri && cargo clippy -- -D warnings` — zero warnings or errors
+2. `cd src-tauri && cargo test` — all tests pass
+3. `npm test -- --run` — all frontend tests pass
+4. `npm run build` — build succeeds with no errors
+
+**Why this matters**:
+- CI enforces `-D warnings` on Clippy; code that compiles locally can fail CI silently if it triggers a warning
+- Applying these checks locally before commit prevents the push-fail-fix loop
+- This is now a standard expectation for ALL code changes, no exceptions for size
+
+**Impact on workflow**:
+- Before committing: run all four checks and confirm they pass
+- If any fails: fix the issue locally before pushing
+- These are the same checks CI runs — a local failure predicts a CI failure
+
+---
+
 ### 2026-04-11: Phase 1 Backend Scaffold Complete
 
 **What was built**: Complete Tauri 2 + Rust backend scaffold from scratch
