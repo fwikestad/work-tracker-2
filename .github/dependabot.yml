@@ -28,3 +28,11 @@ updates:
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
+    ignore:
+      # vite and vite-plugin-svelte must be upgraded together as a coordinated
+      # major bump (vite-plugin-svelte@7 requires vite@8). Ignore major bumps
+      # until we plan the full vite 6→8 upgrade sprint.
+      - dependency-name: "@sveltejs/vite-plugin-svelte"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
