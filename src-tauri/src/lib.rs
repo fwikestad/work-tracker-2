@@ -94,8 +94,6 @@ pub fn run() {
             commands::reports::get_recent_work_orders,
             commands::reports::export_csv,
             commands::reports::get_report,
-            commands::settings::get_setting,
-            commands::settings::set_setting,
             update_tray_state,
         ])
         .on_window_event(|window, event| {

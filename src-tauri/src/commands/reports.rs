@@ -18,9 +18,6 @@ pub fn get_recent_work_orders(state: State<AppState>, limit: Option<i64>) -> Res
 /// `export_format` selects the output schema:
 /// - `"standard"` (default) — existing Date/Customer/Work Order/... columns, unchanged
 /// - `"servicenow"` — ServiceNow Import Set columns: opened_at, closed_at, duration_hours, ...
-///
-/// The `round_to_half_hour` setting is read from the database; when enabled, session duration
-/// is calculated from the floor of start_time to the nearest 30-minute boundary.
 #[tauri::command]
 pub fn export_csv(
     state: State<AppState>,
@@ -29,10 +26,9 @@ pub fn export_csv(
     export_format: Option<String>,
 ) -> Result<String, AppError> {
     let conn = get_conn(&state)?;
-    let round = summary_service::get_round_to_half_hour(&conn)?;
     match export_format.as_deref() {
-        Some("servicenow") => summary_service::export_servicenow_csv(&conn, &start_date, &end_date, round),
-        _ => summary_service::export_csv(&conn, &start_date, &end_date, round),
+        Some("servicenow") => summary_service::export_servicenow_csv(&conn, &start_date, &end_date),
+        _ => summary_service::export_csv(&conn, &start_date, &end_date),
     }
 }
 
