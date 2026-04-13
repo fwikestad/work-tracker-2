@@ -375,3 +375,25 @@ _Populated as Lando works on the project._
 
 **Files Updated**:
 - `.squad/orchestration-log/2026-04-13T09-10-01Z-lando-docs-overhaul.md` — Detailed orchestration log entry
+
+## Session: macOS Universal Build Fix (2026-04-13)
+
+**Task**: Fix the Mac build failure in release.yml and push v0.1.1 tag
+
+**Root Cause**: macOS-latest GitHub Actions runners are ARM64-only (aarch64-apple-darwin). Building a universal-apple-darwin binary requires both aarch64-apple-darwin AND x86_64-apple-darwin Rust targets. Only aarch64 is installed by default — x86_64 is missing.
+
+**Fix Applied**: Added step to release.yml between "Setup Rust stable" and "Setup Node.js 22.x":
+``yaml
+- name: Add x86_64 Rust target (macOS Universal)
+  if: matrix.platform == 'macos-latest'
+  run: rustup target add x86_64-apple-darwin
+``
+
+**Actions Completed**:
+1. ✅ Modified .github/workflows/release.yml with new step
+2. ✅ Committed with message: "fix: add x86_64-apple-darwin target for macOS universal build"
+3. ✅ Pushed commit to main
+4. ✅ Created and pushed tag v0.1.1
+5. ✅ Verified tag was pushed: git tag -l v0.1.1 returned v0.1.1
+
+**Next Build**: Tag v0.1.1 will trigger release.yml with the fix in place.
