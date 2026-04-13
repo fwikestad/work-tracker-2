@@ -712,6 +712,66 @@ export const listCustomers = (includeArchived = false) =>
 // After:
 export const listWorkOrders = (customerId?: string) =>
   invoke<WorkOrder[]>('list_work_orders', { customer_id: customerId });
+```
+
+---
+
+## macOS Universal Build Fix
+
+**Date**: 2026-04-13  
+**Authored by**: Lando (DevOps)  
+**Status**: Implemented  
+**Related**: `.github/workflows/release.yml`, tag v0.1.1
+
+### Problem
+
+The `release.yml` CI workflow was failing on macOS builds with:
+```
+Target x86_64-apple-darwin is not installed
+```
+
+GitHub Actions' `macos-latest` runner is ARM64-only (aarch64-apple-darwin). Building a universal-apple-darwin binary requires **both**:
+- `aarch64-apple-darwin` (available by default)
+- `x86_64-apple-darwin` (missing, must be added explicitly)
+
+### Solution
+
+Added a platform-specific step to `release.yml` to install the missing Rust target **before** the npm install step:
+
+```yaml
+- name: Add x86_64 Rust target (macOS Universal)
+  if: matrix.platform == 'macos-latest'
+  run: rustup target add x86_64-apple-darwin
+```
+
+**Placement**: Between "Setup Rust stable" and "Setup Node.js 22.x" steps (lines 47-49 in release.yml)
+
+**Condition**: `if: matrix.platform == 'macos-latest'` to scope to macOS jobs only
+
+### Why This Works
+
+- `rustup target add` adds the architecture to the current Rust toolchain
+- Step runs **before** npm install (platform-independent) to avoid missing headers
+- Conditional scope means Windows/Linux jobs skip this step (they don't need x86_64-apple-darwin)
+- Total overhead: ~10-15 seconds per macOS build run
+
+### Pattern for Future Rust Multi-Target Builds
+
+When building Rust binaries targeting multiple architectures on GitHub Actions:
+1. Always check GitHub Actions runner capabilities (macOS-latest = ARM64-only)
+2. For universal binaries, explicitly add all required targets via `rustup target add`
+3. Add targets **after** setup-rust-toolchain, **before** cargo build
+4. Use `if: matrix.platform == 'runner-name'` for platform-specific steps
+
+### Files Modified
+
+- `.github/workflows/release.yml` — Added rustup target step
+
+### Test & Commit
+
+- **Commit**: 04815e4 (macOS universal build fix)
+- **Tag**: v0.1.1 pushed to trigger release workflow
+- **Result**: ✅ macOS build now succeeds with universal binary (both architectures included)
 
 export const toggleFavorite = (workOrderId: string) =>
   invoke<WorkOrder>('toggle_favorite', { work_order_id: workOrderId });
