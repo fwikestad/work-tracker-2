@@ -44,6 +44,10 @@ jobs:
         with:
           toolchain: stable
       
+      - name: Add x86_64 Rust target (macOS Universal)
+        if: matrix.platform == 'macos-latest'
+        run: rustup target add x86_64-apple-darwin
+      
       - name: Setup Node.js 22.x
         uses: actions/setup-node@v4
         with:
