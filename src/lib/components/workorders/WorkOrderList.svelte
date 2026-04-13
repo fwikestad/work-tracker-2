@@ -4,6 +4,7 @@
     createWorkOrder,
     updateWorkOrder,
     archiveWorkOrder,
+    unarchiveWorkOrder,
     toggleFavorite
   } from '$lib/api/workOrders';
   import { listCustomers } from '$lib/api/customers';
@@ -96,6 +97,16 @@
       await sessionsStore.refreshRecent();
     } catch (e: any) {
       alert(e?.message ?? 'Failed to archive');
+    }
+  }
+
+  async function handleUnarchive(woId: string) {
+    try {
+      await unarchiveWorkOrder(woId);
+      await loadData();
+      await sessionsStore.refreshRecent();
+    } catch (e: any) {
+      alert(e?.message ?? 'Failed to unarchive');
     }
   }
 
@@ -233,7 +244,11 @@
               </div>
               <span class="badge badge-{wo.status}">{wo.status}</span>
             </button>
-            <button class="btn-archive" onclick={() => handleArchive(wo.id)}>Archive</button>
+            {#if wo.archivedAt}
+              <button class="btn-unarchive" onclick={() => handleUnarchive(wo.id)}>Unarchive</button>
+            {:else}
+              <button class="btn-archive" onclick={() => handleArchive(wo.id)}>Archive</button>
+            {/if}
           </div>
         {/if}
       {/each}
@@ -484,6 +499,22 @@
   .btn-archive:hover {
     border-color: var(--danger);
     color: var(--danger);
+  }
+
+  .btn-unarchive {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px 12px;
+    font-family: inherit;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .btn-unarchive:hover {
+    border-color: var(--accent);
+    color: var(--accent);
   }
 
   .actions {

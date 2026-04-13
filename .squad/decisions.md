@@ -2748,3 +2748,284 @@ Fredrik requested two fixes before release:
 - **UX**: Tray menu now fully functional (quick-switch from OS taskbar)
 - **Brand**: Professional clock icon replaces generic Tauri placeholder
 - **Maintainability**: Icon pipeline reproducible and version-controlled
+
+---
+
+### 2026-04-11: Archive Filtering Enhancement — Fixed
+
+**From**: Chewie (Backend Dev)
+**Status**: IMPLEMENTED
+
+# Archive Filtering Enhancement
+
+**Date**: 2026-04-11  
+**Author**: Chewie (Backend Dev)  
+**Status**: Implemented  
+
+## Context
+
+The application supports archiving customers and work orders, but filtering logic had three gaps:
+1. list_work_orders always excluded archived items (no way to view them)
+2. No unarchive operation for customers (asymmetric API)
+3. Recent work orders showed items from archived customers
+
+## Decision
+
+Implemented three fixes to provide complete archive control:
+
+### 1. Added include_archived parameter to list_work_orders
+
+**Rationale**: Frontend needs ability to show archived work orders (e.g., for historical review or unarchiving).
+
+**Implementation**: 
+- Added `include_archived: Option<bool>` parameter (defaults to false)
+- Replaced match-on-tuple approach with dynamic WHERE clause building
+- Cleaner code: eliminated 4 duplicate query variations down to 1 dynamic query
+
+**Impact**: 
+- Frontend can now fetch archived work orders when needed
+- Backward compatible (defaults to existing behavior: exclude archived)
+- Consistent with list_customers pattern
+
+### 2. Added unarchive_customer command
+
+**Rationale**: Archiving should be reversible. Existing archive_customer had no inverse.
+
+**Implementation**:
+- Sets archived_at = NULL, updates updated_at
+- Returns 404 if customer not found
+- Registered in Tauri invoke_handler
+
+**Impact**:
+- API now symmetric: archive/unarchive for customers
+- Frontend can implement unarchive UI flow
+- Same pattern should be extended to work_orders (future work)
+
+### 3. Filter archived customers from recent work orders
+
+**Rationale**: Recent work orders list should exclude work orders belonging to archived customers.
+
+**Implementation**:
+- Added `AND c.archived_at IS NULL` to get_recent_work_orders query
+- Filters at both levels: work_order AND customer
+
+**Impact**:
+- Recent list now correctly excludes archived context
+- Prevents confusing UX (showing work order for archived customer)
+- Matches user expectation: archived = fully hidden from active workflows
+
+## Technical Notes
+
+- Dynamic SQL building via format!() is safe here (all conditions are boolean flags, not user input)
+- All changes tested: cargo build + cargo test both pass
+- No breaking changes (only additions + refinements)
+
+## Future Considerations
+
+1. **Symmetric work_order operations**: Consider adding unarchive_work_order
+2. **Cascade behavior**: Should archiving a customer auto-archive its work orders? (Currently: no)
+3. **Soft delete vs archive**: Current pattern uses archived_at timestamp. Consider if we need separate "deleted" state.
+4. **Performance**: Recent work orders query now joins customer table. Monitor performance with large datasets.
+
+## Team Impact
+
+- **Frontend (Ollie)**: Can now implement:
+  - "Show archived" toggle in work orders list
+  - Unarchive customer button in customer management
+  - Recent list automatically clean (no action needed)
+  
+- **Testing**: Existing tests pass. Consider adding:
+  - Test for include_archived parameter
+  - Test for unarchive_customer
+  - Test that recent list excludes archived customers
+
+---
+
+### 2026-04-13: Archive Functionality Frontend Completion — Fixed
+
+**From**: Leia (Frontend Dev)
+**Status**: IMPLEMENTED
+
+# Decision: Archive Functionality Frontend Completion
+
+**Date:** 2026-04-13  
+**Decider:** Leia (Frontend Dev)  
+**Status:** Implemented  
+**Requested by:** Fredrik Kristiansen Wikestad
+
+---
+
+## Context
+
+Archive functionality was partially implemented across the stack but had four frontend gaps that prevented full user workflows:
+
+1. Work orders couldn't be filtered to show archived items
+2. Customers could be archived but not unarchived
+3. Component refs in `+page.svelte` triggered Svelte 5 reactivity warnings
+4. A11y warnings for interactive divs without keyboard support
+
+---
+
+## Decision
+
+Implemented four targeted frontend fixes to complete archive functionality:
+
+### 1. `includeArchived` Parameter for Work Orders
+
+**Change:** Extended `listWorkOrders()` API to accept optional `includeArchived` parameter.
+
+**Implementation:**
+```typescript
+// src/lib/api/workOrders.ts
+export const listWorkOrders = (
+  customerId?: string, 
+  favoritesOnly?: boolean, 
+  includeArchived?: boolean
+) =>
+  invoke<WorkOrder[]>('list_work_orders', { 
+    customerId, 
+    favoritesOnly, 
+    includeArchived 
+  });
+```
+
+**UI Integration:**
+- `WorkOrderList.svelte` now passes `showArchived` checkbox state to API
+- Existing `$effect` already reactive to `showArchived` changes
+- Added `sessionsStore.refreshRecent()` to archive handler for cache consistency
+
+**Rationale:** Users need to review and unarchive work orders. Backend already supported filtering; frontend just needed to wire the parameter through.
+
+---
+
+### 2. Unarchive Customer Functionality
+
+**Change:** Added `unarchiveCustomer()` API wrapper and UI toggle.
+
+**Implementation:**
+```typescript
+// src/lib/api/customers.ts
+export const unarchiveCustomer = (id: string) =>
+  invoke<void>('unarchive_customer', { id });
+
+// CustomerList.svelte
+{#if customer.archivedAt}
+  <button class="btn-unarchive" onclick={() => handleUnarchive(customer.id)}>
+    Unarchive
+  </button>
+{:else}
+  <button class="btn-archive" onclick={() => handleArchive(customer.id)}>
+    Archive
+  </button>
+{/if}
+```
+
+**CSS Styling:**
+- Archive button: danger color on hover (red)
+- Unarchive button: accent color on hover (teal)
+- Visual distinction reinforces reversibility
+
+**Rationale:** Archive without unarchive is a data trap. Users make mistakes; reversibility is critical.
+
+---
+
+### 3. Svelte 5 Component Ref Reactivity
+
+**Change:** Converted plain component refs to `$state` variables.
+
+**Before:**
+```typescript
+let summaryRef: DailySummary;
+let searchSwitchRef: SearchSwitch;
+```
+
+**After:**
+```typescript
+let summaryRef = $state<DailySummary | null>(null);
+let searchSwitchRef = $state<SearchSwitch | null>(null);
+```
+
+**Rationale:** Svelte 5 runes mode requires `$state` for `bind:this` to track reactive assignments. Plain variables trigger `non_reactive_update` warnings and may cause stale refs.
+
+**Learning:** This is a Svelte 5 idiom — always declare refs with `$state` when using `bind:this`.
+
+---
+
+### 4. Accessibility: Interactive Divs → Buttons
+
+**Change:** Converted `<div onclick>` to `<button type="button">` in edit triggers.
+
+**Files Updated:**
+- `WorkOrderList.svelte` line 205
+- `CustomerList.svelte` line 168
+
+**CSS Reset:**
+```css
+.item-info {
+  /* ...existing styles... */
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+```
+
+**Rationale:**
+- Semantic HTML: buttons are for interactive actions
+- Keyboard accessibility: native focus, Enter key support
+- Screen reader compatibility: buttons announce correctly
+- Satisfies Svelte a11y warnings: `a11y_click_events_have_key_events`, `a11y_no_static_element_interactions`
+
+**Alternative Considered:** Add `role="button"`, `tabindex="0"`, `onkeydown` to divs. Rejected because native buttons are simpler and more robust.
+
+---
+
+## Consequences
+
+### Positive
+
+✅ **Full archive workflows**: Users can archive/unarchive both customers and work orders  
+✅ **Work order visibility**: "Show archived" checkbox now functional  
+✅ **No reactivity warnings**: Component refs correctly tracked by Svelte 5  
+✅ **A11y compliance**: Interactive elements keyboard-accessible and semantically correct  
+✅ **Cache consistency**: Recent list refreshes after archive operations
+
+### Neutral
+
+⚪ **Button appearance unchanged**: CSS reset maintains existing visual design  
+⚪ **Type safety**: All refs nullable (`| null`) to match `bind:this` behavior
+
+### Risks Mitigated
+
+🔒 **Data trap prevented**: Unarchive restores accidentally archived customers  
+🔒 **Stale recent list**: Refresh after archive keeps UI in sync with backend
+
+---
+
+## Verification
+
+**Tests:** All 55 tests pass (5 test files)  
+**Build:** TypeScript compilation succeeds, no new warnings  
+**A11y:** Specific warnings for these elements resolved  
+
+---
+
+## Related
+
+- **Backend Dependency**: Chewie implemented `unarchive_customer` command in parallel
+- **Naming Convention**: `.squad/skills/tauri-invoke-naming/SKILL.md` — all invoke params camelCase
+- **Prior Work**: Archive for work orders already existed; this completes the customer side
+- **A11y Pattern**: Established pattern for converting interactive divs to buttons
+
+---
+
+## References
+
+- Svelte 5 Runes: https://svelte-5-preview.vercel.app/docs/runes
+- WCAG 2.1 Keyboard Accessible: https://www.w3.org/WAI/WCAG21/Understanding/keyboard
+- Tauri invoke naming: `.squad/skills/tauri-invoke-naming/SKILL.md`
+
+

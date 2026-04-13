@@ -76,6 +76,7 @@ pub fn run() {
             commands::work_orders::list_work_orders,
             commands::work_orders::update_work_order,
             commands::work_orders::archive_work_order,
+            commands::work_orders::unarchive_work_order,
             commands::work_orders::toggle_favorite,
             commands::sessions::start_session,
             commands::sessions::stop_session,

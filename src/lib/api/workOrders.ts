@@ -13,5 +13,8 @@ export const updateWorkOrder = (id: string, params: UpdateWorkOrderParams) =>
 export const archiveWorkOrder = (id: string) =>
   invoke<void>('archive_work_order', { id });
 
+export const unarchiveWorkOrder = (id: string) =>
+  invoke<void>('unarchive_work_order', { id });
+
 export const toggleFavorite = (workOrderId: string) =>
   invoke<WorkOrder>('toggle_favorite', { workOrderId });

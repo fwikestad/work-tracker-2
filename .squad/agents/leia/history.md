@@ -817,3 +817,7 @@ color: inherit;
 - **Conditional UI patterns**: `{#if archivedAt}...{:else}...{/if}` for archive/unarchive toggle
 - **camelCase invoke params**: `includeArchived` in TypeScript → `include_archived` in Rust (Tauri auto-conversion)
 
+
+## 2026-04-12: Added Unarchive for Work Orders
+
+Implemented `unarchiveWorkOrder` in `src/lib/api/workOrders.ts` (mirroring `archiveWorkOrder`). Updated `WorkOrderList.svelte` to import and use `unarchiveWorkOrder`, added `handleUnarchive` function, and conditionally render Archive/Unarchive buttons based on `wo.archivedAt` (null = show Archive, non-null = show Unarchive). Added `.btn-unarchive` styles matching customer component (teal accent on hover). All 55 tests passing.

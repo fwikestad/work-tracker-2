@@ -198,6 +198,16 @@ pub fn archive_work_order(state: State<AppState>, id: String) -> Result<(), AppE
 }
 
 #[tauri::command]
+pub fn unarchive_work_order(state: State<AppState>, id: String) -> Result<(), AppError> {
+    let conn = get_conn(&state)?;
+    conn.execute(
+        "UPDATE work_orders SET archived_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?",
+        params![id],
+    ).map_err(AppError::Database)?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn toggle_favorite(state: State<AppState>, work_order_id: String) -> Result<WorkOrder, AppError> {
     let conn = get_conn(&state)?;
     let now = Utc::now().to_rfc3339();

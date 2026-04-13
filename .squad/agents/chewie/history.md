@@ -734,3 +734,5 @@ win.destroy() forcefully destroys the window without triggering CloseRequested (
 - Dynamic SQL building (format!) is safe here because all conditions are boolean flags, not user input
 - Maintains consistent pattern: include_archived parameter across both list_customers and list_work_orders
 - Recent work orders now correctly exclude archived entities at both levels (work_order + customer)
+
+✅ Added unarchive_work_order command in work_orders.rs (line 200) and registered it in lib.rs (line 79) alongside archive_work_order. Cargo build and test both passed successfully.
