@@ -3481,3 +3481,50 @@ Fredrik to confirm whether target ServiceNow instance has Time Tracking module l
 ---
 
 # End of Session History & Edit Entry Feature Decisions
+
+---
+
+### 2026-04-13: Always-On-Top Widget (Phase 1)
+
+**Status**: DELIVERY READY
+
+#### Decision by Han (Lead)
+
+**File**: .squad/decisions/inbox/han-widget-scope.md
+
+Scoped always-on-top widget feature: single window toggle via 	oggle_widget_mode Tauri command + Ctrl+Alt+W global shortcut. No separate widget window (Phase 1). Widget displays customer, work order, elapsed time, state badge (Running/Paused/Stopped) in 320×150 px compact overlay. Effort: ~5 hours. Recommendations confirmed; awaiting Fredrik approval.
+
+#### Decision by Chewie (Backend)
+
+**File**: .squad/decisions/inbox/chewie-widget-backend.md
+
+Implemented WindowState struct and 	oggle_widget_mode command:
+- Stores window size/position on widget mode entry
+- Resizes to 320×150 px, sets alwaysOnTop = true
+- Restores on exit
+- Ctrl+Alt+W global shortcut emits 	oggle-widget-mode event to frontend
+- All CI green; command ready for Leia frontend integration
+
+#### Decision by Leia (Frontend)
+
+**File**: .squad/decisions/inbox/leia-widget-frontend.md
+
+Implemented frontend widget mode:
+- WidgetOverlay.svelte (compact 320×150 component)
+- widget.svelte.ts store (isWidgetMode, setWidgetMode, toggleWidgetMode)
+- pi/window.ts Tauri wrapper (toggleWidgetMode invoke)
+- +page.svelte integration (toggle button 📌, conditional render, Ctrl+Alt+W listener)
+- All CI green; ready for E2E testing
+
+#### Decision by Wedge (Tester)
+
+**File**: .squad/decisions/inbox/wedge-widget-tests.md
+
+Widget test suite: 22 tests written
+- **Passing**: 16 tests (store state, display helpers, formatting, truncation)
+- **Skipped**: 6 integration tests (pending @testing-library/svelte + native Tauri runtime)
+- CI: 83 passed, 17 skipped, 0 failing
+- Activation: Remove skip guards once store wired (now done by Leia)
+
+---
+

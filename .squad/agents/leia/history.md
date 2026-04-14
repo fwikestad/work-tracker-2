@@ -6,7 +6,7 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 
 ## Learnings
 
-### 2026-04-15: Always-On-Top Widget Mode Frontend
+### 2026-04-14: Always-On-Top Widget Mode Frontend — Complete
 
 **Context**: Fredrik wanted a compact always-on-top window (320×150 px) showing the active timer so he can see it while working in other apps.
 
@@ -14,7 +14,7 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 
 **Files added**:
 - `src/lib/api/window.ts` — `toggleWidgetMode(enable: boolean): Promise<boolean>` — thin invoke wrapper following the same pattern as `sessions.ts`
-- `src/lib/stores/widget.svelte.ts` — `widgetStore` with `isWidgetMode` `$state` boolean + `setWidgetMode(value)`; keeps widget state out of the timer store for clean separation
+- `src/lib/stores/widget.svelte.ts` — `widgetStore` with `isWidgetMode` `$state` boolean + `setWidgetMode(value)` + `toggleWidgetMode()`; keeps widget state out of the timer store for clean separation
 - `src/lib/components/WidgetOverlay.svelte` — compact overlay fitting 320×150; shows state badge (🟢/🟡/⊘), large elapsed time (`formatDuration`), work order name (truncated), customer name+dot, exit button; reads directly from `timer` store
 
 **Files modified**:
@@ -26,6 +26,8 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
   - 📌 toggle button in nav with `aria-pressed`, `min-height: 44px`, `.widget-active` class when on
   - Added "Ctrl+Alt+W Widget" to shortcuts footer hint
 - `src/lib/__tests__/components.smoke.test.ts` — added mocks for `widget.svelte` and `api/window`; added 4 smoke tests for `WidgetOverlay`
+
+**CI Status**: ✓ All checks pass. No regressions. Ready for E2E verification.
 
 **Key patterns**:
 - Widget store is a separate module (`widget.svelte.ts`) — not merged into timer store — so Wedge can mock it independently

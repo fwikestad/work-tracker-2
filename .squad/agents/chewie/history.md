@@ -6,6 +6,25 @@ Backend Dev for work-tracker-2 — native desktop time tracker for consultant Fr
 
 ## Learnings
 
+### 2026-04-14: Always-On-Top Widget Backend — Complete
+
+**Task**: Implement backend support for toggling main window to always-on-top mode with resize.
+
+**Implementation**:
+- **File**: `src-tauri/src/commands/window.rs` + `src-tauri/src/lib.rs`
+- **Command**: `toggle_widget_mode(enable: boolean)` → `Promise<boolean>`
+  - `enable=true`: Save current size/position, resize to 320×150 px, set `alwaysOnTop = true`
+  - `enable=false`: Clear `alwaysOnTop`, restore saved size/position (or skip if never saved)
+- **State Struct**: `WindowState { is_widget_mode: bool, previous_size: Option<(u32, u32)>, previous_position: Option<(i32, i32)> }`
+- **Global Shortcut**: Ctrl+Alt+W registered in setup; emits `toggle-widget-mode` event to frontend
+- **Event**: Backend emits `toggle-widget-mode` (no payload); frontend queries state and calls command as needed
+
+**Integration Pattern**: Frontend listens to `toggle-widget-mode` event, reads current store state, calls `toggle_widget_mode(!isWidgetMode)` to get new state, updates store.
+
+**CI Status**: ✓ All checks pass. No regressions. Ready for Leia frontend integration.
+
+---
+
 ### 2026-04-13: Charter Updated — CI Enforcement Definition of Done
 
 **What changed**: Charter now includes a formal `## Definition of Done` section requiring all four CI checks to pass before any code is committed.
@@ -814,5 +833,44 @@ pm run build ✅
 **What Leia needs for UI**: A format selector in the export dialog. Call invoke('export_csv', { startDate, endDate, exportFormat: 'servicenow' }) for ServiceNow format; omit xportFormat for standard.
 
 **Decision doc**: .squad/decisions/inbox/chewie-servicenow-csv-format.md
+
+---
+
+### 2026-05-12: Always-On-Top Widget Mode Backend
+
+**Task**: Implement `toggle_widget_mode` Tauri command and `Ctrl+Alt+W` global shortcut.
+
+**What was built**:
+- `src-tauri/src/commands/window.rs` — NEW: `toggle_widget_mode` command
+- `src-tauri/src/commands/mod.rs` — added `pub mod window`
+- `src-tauri/src/lib.rs` — added `WindowState` struct, managed state, second shortcut registration, updated shortcut handler
+
+**WindowState struct** (managed as `Mutex<WindowState>` in Tauri state):
+- `is_widget_mode: bool` — current mode flag
+- `previous_size: Option<(u32, u32)>` — stores width/height before shrinking
+- `previous_position: Option<(i32, i32)>` — stores x/y before shrinking
+
+**toggle_widget_mode command**:
+- `enable=true`: Stores `outer_size()` and `outer_position()`, resizes to 320x150 (PhysicalSize), calls `set_always_on_top(true)`.
+- `enable=false`: Clears `always_on_top(false)`, restores stored size/position via `.take()`.
+- Returns `Ok(enable)` (the new state).
+
+**Ctrl+Alt+W shortcut**:
+- Registered in `setup()` alongside the existing `Ctrl+Shift+S` shortcut.
+- Uses `Modifiers::CONTROL | Modifiers::ALT` with `Code::KeyW`.
+- Updated the single `with_handler` closure to `match shortcut.key` (KeyS vs KeyW).
+- Ctrl+Alt+W emits `toggle-widget-mode` event — frontend receives and calls `toggle_widget_mode`.
+
+**Tauri window API notes**:
+- `window.outer_size()` returns `PhysicalSize<u32>` (u32 fields)
+- `window.outer_position()` returns `PhysicalPosition<i32>` (i32 fields)
+- `window.set_always_on_top(bool)` — global always-on-top across all apps
+- All methods return `Result` — use `.map_err(|e| e.to_string())`
+
+**Clippy gotcha**: `use tauri::Manager;` is NOT needed in window.rs (the `window` param is `tauri::Window`, not `AppHandle`). Clippy flags it as unused import under `-D warnings`.
+
+**Shortcut handler pattern for multiple shortcuts**: `match shortcut.key` — no need to re-check modifiers in the handler since they were enforced at registration.
+
+**CI results**: All 4 checks passed (clippy clean, 35 cargo tests, 83 frontend tests, build clean).
 
 ---
