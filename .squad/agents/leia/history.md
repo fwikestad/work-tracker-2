@@ -6,7 +6,38 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 
 ## Learnings
 
-### 2026-04-15: Session History Week View
+### 2026-04-15: Always-On-Top Widget Mode Frontend
+
+**Context**: Fredrik wanted a compact always-on-top window (320×150 px) showing the active timer so he can see it while working in other apps.
+
+**Approach**: Toggle `alwaysOnTop` on the main Tauri window via a `toggle_widget_mode` command (implemented by Chewie). Frontend shows `WidgetOverlay` full-screen when widget mode is active, otherwise shows the normal layout.
+
+**Files added**:
+- `src/lib/api/window.ts` — `toggleWidgetMode(enable: boolean): Promise<boolean>` — thin invoke wrapper following the same pattern as `sessions.ts`
+- `src/lib/stores/widget.svelte.ts` — `widgetStore` with `isWidgetMode` `$state` boolean + `setWidgetMode(value)`; keeps widget state out of the timer store for clean separation
+- `src/lib/components/WidgetOverlay.svelte` — compact overlay fitting 320×150; shows state badge (🟢/🟡/⊘), large elapsed time (`formatDuration`), work order name (truncated), customer name+dot, exit button; reads directly from `timer` store
+
+**Files modified**:
+- `src/routes/+page.svelte`:
+  - Import `widgetStore`, `toggleWidgetMode`, `WidgetOverlay`
+  - `handleWidgetToggle()` — calls `toggleWidgetMode(!isWidgetMode)`, updates store; guarded by `togglingWidget` flag to prevent double-click
+  - `listen('toggle-widget-mode', ...)` in `onMount` — handles Ctrl+Alt+W from Rust backend; event payload is `boolean` (the new state)
+  - Conditional render: `{#if widgetStore.isWidgetMode}` → `<WidgetOverlay />` else → normal `<div class="app">` layout
+  - 📌 toggle button in nav with `aria-pressed`, `min-height: 44px`, `.widget-active` class when on
+  - Added "Ctrl+Alt+W Widget" to shortcuts footer hint
+- `src/lib/__tests__/components.smoke.test.ts` — added mocks for `widget.svelte` and `api/window`; added 4 smoke tests for `WidgetOverlay`
+
+**Key patterns**:
+- Widget store is a separate module (`widget.svelte.ts`) — not merged into timer store — so Wedge can mock it independently
+- The `toggle-widget-mode` event listener updates store only (no invoke) because the backend already handled the window resize
+- `handleWidgetToggle()` calls invoke first, then updates store on success — avoids flicker if Tauri command fails
+- `WidgetOverlay` uses `$derived` for the state badge object; no `$effect` needed
+
+**CI**: ✅ 67 tests passing | ✅ npm run build green | ✅ cargo clippy passing | ✅ cargo test passing
+
+---
+
+
 
 **Context**: Fredrik accidentally left a timer running overnight and got a 16-hour entry. The app only showed today — he needed to navigate to past days and edit entries there.
 
