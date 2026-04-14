@@ -6,6 +6,24 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 
 ## Learnings
 
+### 2026-05-xx: Widget Context-Switch Dropdown — Complete
+
+**Context**: Fredrik wanted to switch work orders directly from the widget without opening the main window.
+
+**Approach**: Made the work-order/customer display a `<button>` with a ▾ chevron. On click, a compact dropdown overlays the widget from the bottom using `position: fixed; bottom: 0; left: 0; right: 0`. The dropdown shows up to 6 recent work orders from `sessionsStore.recent`, highlighting the active one with an accent tint.
+
+**Dropdown positioning**: Used `position: fixed` anchored to the viewport bottom. This works because `.widget` has `overflow: hidden` (which clips absolutely-positioned children) but does NOT clip fixed-positioned elements. The dropdown covers the timer display area; the header (status + exit button) remains visible above it.
+
+**Outside-click detection pattern**: Identical to `SearchableSelect.svelte` — `$effect` registers a `mousedown` listener on `document` when the dropdown is open, checks `containerRef.contains(e.target)`, and unregisters on cleanup. Using `mousedown` (not `click`) ensures the dismiss fires before any downstream click handlers.
+
+**Context-switch API**: `startSession(workOrderId)` from `$lib/api/sessions` is the sole call needed — the backend atomically stops the current session and starts the new one. After calling it, `timer.refresh()` re-fetches `ActiveSession` to update the displayed timer, and `sessionsStore.refreshRecent()` keeps the recent list current.
+
+**Keyboard support**: `svelte:window onkeydown` handler — ArrowUp/Down adjust `highlightIndex`, Enter calls `switchTo`, Escape closes. Same approach as `SearchableSelect`.
+
+**CI**: ✅ 83 frontend tests | ✅ npm run build | ✅ cargo clippy | ✅ cargo test (35 backend tests)
+
+---
+
 ### 2026-04-14: Always-On-Top Widget Mode Frontend — Complete
 
 **Context**: Fredrik wanted a compact always-on-top window (320×150 px) showing the active timer so he can see it while working in other apps.
