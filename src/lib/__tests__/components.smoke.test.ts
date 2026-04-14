@@ -41,7 +41,12 @@ vi.mock('$lib/stores/sessions.svelte', () => ({
     todays: [],
     recent: [],
     allFavorites: [],
+    weekOffset: 0,
+    weekSessions: [],
+    selectedWeekLabel: 'Apr 14 – Apr 20, 2026',
+    setWeekOffset: vi.fn().mockResolvedValue(undefined),
     refreshToday: vi.fn().mockResolvedValue(undefined),
+    refreshWeek: vi.fn().mockResolvedValue(undefined),
     refreshRecent: vi.fn().mockResolvedValue(undefined),
     refreshAll: vi.fn().mockResolvedValue(undefined),
   },
@@ -143,13 +148,14 @@ describe('SessionList component — mount smoke tests', () => {
     expect(() => render(SessionList)).not.toThrow();
   });
 
-  it('renders heading', () => {
+  it('renders week navigation', () => {
     render(SessionList);
-    expect(screen.getByText("Today's sessions")).toBeTruthy();
+    expect(screen.getByLabelText('Previous week')).toBeTruthy();
+    expect(screen.getByLabelText('Next week')).toBeTruthy();
   });
 
-  it('renders empty state when no sessions today', () => {
+  it('renders empty state when no sessions this week', () => {
     render(SessionList);
-    expect(screen.getByText('No sessions today')).toBeTruthy();
+    expect(screen.getByText('No sessions this week')).toBeTruthy();
   });
 });
