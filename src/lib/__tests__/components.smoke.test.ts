@@ -85,6 +85,17 @@ vi.mock('$lib/api/reports', () => ({
   getRecentWorkOrders: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock('$lib/stores/widget.svelte', () => ({
+  widgetStore: {
+    isWidgetMode: false,
+    setWidgetMode: vi.fn(),
+  },
+}));
+
+vi.mock('$lib/api/window', () => ({
+  toggleWidgetMode: vi.fn().mockResolvedValue(false),
+}));
+
 // Stub browser APIs that components may call on error paths
 vi.stubGlobal('alert', vi.fn());
 
@@ -92,6 +103,7 @@ vi.stubGlobal('alert', vi.fn());
 import Timer from '$lib/components/Timer.svelte';
 import SearchSwitch from '$lib/components/SearchSwitch.svelte';
 import SessionList from '$lib/components/SessionList.svelte';
+import WidgetOverlay from '$lib/components/WidgetOverlay.svelte';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -157,5 +169,30 @@ describe('SessionList component — mount smoke tests', () => {
   it('renders empty state when no sessions this week', () => {
     render(SessionList);
     expect(screen.getByText('No sessions this week')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WidgetOverlay component
+// ---------------------------------------------------------------------------
+
+describe('WidgetOverlay component — mount smoke tests', () => {
+  it('mounts without throwing', () => {
+    expect(() => render(WidgetOverlay)).not.toThrow();
+  });
+
+  it('renders "Not tracking" state when no active session', () => {
+    render(WidgetOverlay);
+    expect(screen.getByText('Not tracking')).toBeTruthy();
+  });
+
+  it('renders Stopped badge when not tracking', () => {
+    render(WidgetOverlay);
+    expect(screen.getByText(/Stopped/i)).toBeTruthy();
+  });
+
+  it('renders exit button', () => {
+    render(WidgetOverlay);
+    expect(screen.getByTitle(/Exit widget mode/i)).toBeTruthy();
   });
 });

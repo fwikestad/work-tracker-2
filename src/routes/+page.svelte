@@ -4,14 +4,30 @@
   import DailySummary from '$lib/components/DailySummary.svelte';
   import SessionList from '$lib/components/SessionList.svelte';
   import ReportView from '$lib/components/ReportView.svelte';
+  import WidgetOverlay from '$lib/components/WidgetOverlay.svelte';
   import { onMount, tick } from 'svelte';
   import { timer } from '$lib/stores/timer.svelte';
   import { sessionsStore } from '$lib/stores/sessions.svelte';
+  import { widgetStore } from '$lib/stores/widget.svelte';
+  import { toggleWidgetMode } from '$lib/api/window';
   import { listen } from '@tauri-apps/api/event';
 
   let activeView = $state<'track' | 'reports'>('track');
   let summaryRef = $state<DailySummary | null>(null);
   let searchSwitchRef = $state<SearchSwitch | null>(null);
+  let togglingWidget = $state(false);
+
+  async function handleWidgetToggle() {
+    if (togglingWidget) return;
+    togglingWidget = true;
+    try {
+      const next = !widgetStore.isWidgetMode;
+      await toggleWidgetMode(next);
+      widgetStore.setWidgetMode(next);
+    } finally {
+      togglingWidget = false;
+    }
+  }
 
   onMount(() => {
     summaryRef?.refresh();
@@ -33,11 +49,18 @@
       await timer.refresh();
       await sessionsStore.refreshAll();
     });
+
+    // Global shortcut Ctrl+Alt+W from Rust toggles widget mode
+    const unlistenWidget = listen('toggle-widget-mode', async (event) => {
+      const enable = event.payload as boolean;
+      widgetStore.setWidgetMode(enable);
+    });
     
     return () => {
       unlistenReports.then(fn => fn());
       unlistenSwitch.then(fn => fn());
       unlistenTrayAction.then(fn => fn());
+      unlistenWidget.then(fn => fn());
     };
   });
 
@@ -49,6 +72,9 @@
   });
 </script>
 
+{#if widgetStore.isWidgetMode}
+  <WidgetOverlay />
+{:else}
 <div class="app">
   <nav class="nav">
     <button
@@ -66,6 +92,17 @@
       Reports
     </button>
     <a href="/manage" class="nav-btn nav-link">Manage</a>
+    <button
+      class="nav-btn widget-toggle"
+      class:widget-active={widgetStore.isWidgetMode}
+      onclick={handleWidgetToggle}
+      disabled={togglingWidget}
+      title="Stay on top (Ctrl+Alt+W)"
+      aria-label="Toggle always-on-top widget mode"
+      aria-pressed={widgetStore.isWidgetMode}
+    >
+      📌
+    </button>
   </nav>
 
   <div class="main-view">
@@ -87,9 +124,11 @@
       <span>P Pause</span>
       <span>R Resume</span>
       <span>Esc Cancel</span>
+      <span>Ctrl+Alt+W Widget</span>
     </footer>
   {/if}
 </div>
+{/if}
 
 <style>
   .app {
@@ -136,6 +175,26 @@
 
   .nav-link {
     margin-left: auto;
+  }
+
+  .widget-toggle {
+    font-size: 16px;
+    padding: 0 10px;
+    opacity: 0.45;
+    transition: opacity 0.15s;
+  }
+
+  .widget-toggle:hover:not(:disabled) {
+    opacity: 1;
+  }
+
+  .widget-toggle.widget-active {
+    opacity: 1;
+    border-bottom-color: var(--accent);
+  }
+
+  .widget-toggle:disabled {
+    cursor: not-allowed;
   }
 
   .main-view {
