@@ -3082,3 +3082,402 @@ All critical items completed:
 - Comprehensive documentation done (Lando)
 - Code review approved (Han)
 - Tests passing (Wedge)
+
+---
+
+# Session History & Edit Entry Feature — Phase 2 Decisions
+
+## 2026-04-14: Copilot Directive — Edit Past Entries UX
+
+**By**: Fredrik Kristiansen Wikestad (via Copilot)  
+**Date**: 2026-04-14T06:13:56Z  
+**Context**: User needed to navigate to past days to correct an accidental 16-hour overnight session.
+
+**Decision**: 
+- Use **week view** (Mon–Sun grouped by day) instead of day-by-day navigator
+- **Block future date navigation** — cannot view weeks past today
+- **Default to current week**, today's day highlighted/selected on open
+
+**Rationale**: Week view reduces clicks for reviewing a full week and gives context for editing clustered entries.
+
+---
+
+## 2026-04-14: Session History Week View (Leia - Frontend)
+
+**Status**: ✅ IMPLEMENTED
+
+### Changes
+
+**Store (`sessions.svelte.ts`)**:
+- Added `weekOffset` (`$state<number>`) and `weekSessions` (`$state<WeekDay[]>`) module-level state
+- `WeekDay` interface: `{ date: string; label: string; isToday: boolean; sessions: Session[] }`
+- `getMondayOfWeek(offset)` helper with Sunday edge-case handling: `day === 0 ? -6 : 1 - day`
+- `refreshWeek(offset?)` loads Mon–Sun from backend, groups sessions by ISO date
+- `setWeekOffset(n)` caps at 0 (no future navigation)
+- `selectedWeekLabel` getter formats "Apr 7 – Apr 13, 2026" (en-dash U+2013)
+- Backward compat: `todays` getter synced from `weekSessions` when `weekOffset === 0`
+
+**Component (`SessionList.svelte`)**:
+- `.week-nav` header bar: ◀ | week-label | ▶
+- ▶ button disabled when `weekOffset === 0`
+- Body iterates `weekSessions`; only days with ≥1 session render (no empty-day clutter)
+- `.day-header` gets `.today` class when `day.isToday === true` → accent color highlight
+- Calls `refreshWeek()` after save/delete
+
+**Tests**:
+- `smoke.test.ts`: Added weekOffset, weekSessions, selectedWeekLabel, setWeekOffset, refreshWeek to API shape
+- `components.smoke.test.ts`: Updated mock and assertions for new UI
+
+### Key Decisions
+
+1. **Collapse empty days** — Keep current-week view clean (only today typically has entries)
+2. **Preserve `todays` getter** — Backward compatible with existing `$effect` in `+page.svelte`
+3. **Monday-based weeks** — ISO standard; Sunday edge-cased explicitly
+4. **Block future weeks** — `setWeekOffset` enforces `Math.min(0, n)`
+
+### CI Status
+
+✅ 63 tests passing | ✅ npm run build green | ✅ cargo clippy passing
+
+---
+
+## 2026-04-15: Week View Test Suite (Wedge - Tester)
+
+**Status**: ✅ IMPLEMENTED  
+**File**: `src/lib/stores/sessions.test.ts`
+
+### Test Breakdown
+
+**Pure Math Tests (8 passing)**:
+- `TC-WK-MATH-01–08`: Date calculations, boundary cases (Monday, Sunday), cross-month weeks
+- Helper functions: `getWeekStart`, `weekRangeForOffset`, `formatWeekLabel`
+- All pass immediately — serve as implementation spec for Leia
+
+**Store Integration Tests (11 skipped, ready to activate)**:
+- `TC-WK-STORE-01–04`: State transitions, future-capping
+- `TC-WK-GROUP-01–05`: Session grouping, list API calls
+- `TC-WK-LABEL-01–02`: Label generation
+- Tests written with bodies intact; wrapped in `it.skip()` (not `it.todo()`) so they serve as runnable documentation
+
+### Spec Error Caught & Corrected
+
+**Original spec dates (wrong)**:
+- April 15, 2026 = Wed (✓ correct)
+- Week-0 Monday = April 14 (❌)
+- Week-0 Sunday = April 20 (❌)
+
+**Corrected (verified)**:
+- Monday = April 13 ✓ (verified: `new Date(2026, 3, 15).getDay() === 3`)
+- Sunday = April 19 ✓
+
+Spec dates were from 2025 calendar with 2026 appended. Wedge used correct 2026 dates throughout.
+
+### Key Patterns Established
+
+1. **TDD: `it.skip()` over `it.todo()`** — Preserves test body as spec documentation; flip `.skip` to activate
+2. **Timezone Safety** — Use `new Date(year, month-1, day, 12)` (local) not UTC strings; use `getFullYear()/getMonth()/getDate()` not `toISOString()`
+3. **Sunday Edge Case** — `day === 0 ? -6 : 1 - day` for days back to Monday
+
+### Activation Checklist
+
+Remove `.skip` from 11 tests when:
+- ✓ `sessionsStore.weekOffset` exists
+- ✓ `sessionsStore.setWeekOffset(n)` exists
+- ✓ `sessionsStore.refreshWeek(offset)` exists
+- ✓ `sessionsStore.weekSessions` exists
+- ✓ `sessionsStore.selectedWeekLabel` exists
+
+### CI Status
+
+✅ Full suite: 63 passing, 11 skipped, 0 failing
+
+---
+
+## 2026-04-14: Pre-Public Security Review (Ackbar - Security Expert)
+
+**Status**: ✅ APPROVED FOR PUBLIC RELEASE  
+**Date**: 2026-04-13
+
+### Executive Summary
+
+**Overall Risk: LOW** ✅  
+Repository is safe to make public. No credentials, secrets, or sensitive local paths found.
+
+### Clear Items (✅ All Passed)
+
+1. **Credentials & Secrets** — No API keys, tokens, passwords; .env properly gitignored
+2. **Local Machine Info** — No absolute paths, usernames, machine names, or network addresses
+3. **PII** — Developer name appears only in expected places (Cargo.toml authors, decision logs, team.md)
+4. **Internal Info** — No client names, private URLs, or internal endpoints
+5. **.gitignore Coverage** — Proper exclusions: .env, node_modules, build, target, *.db, orchestration-log, log, decisions/inbox, sessions
+6. **.squad/ Directory** — Tracked files contain no sensitive data; sensitive dirs properly gitignored
+
+### Non-Blocking Recommendations (🟡)
+
+1. **CSP Disabled** — `csp: null` in tauri.conf.json; CVSS 4.3 (Medium); document before production release
+2. **withGlobalTauri: true** — Exposes Tauri APIs; CVSS 3.1 (Low); fix when CSP enabled
+
+### Known & Acceptable (🟢)
+
+1. **npm audit** — 3 Low severity (cookie in @sveltejs/kit); no impact to desktop app
+2. **cargo audit** — 0 vulnerabilities, ~20 warnings (GTK3 unmaintained transitive); monitor for replacements
+3. **Cargo.toml authors** — Fredrik name is standard Rust metadata; appropriate for public projects
+
+### Checklist Before Going Public
+
+- [ ] Verify comfort with name in Cargo.toml (standard practice)
+- [ ] Consider adding LICENSE file (currently placeholder)
+- [ ] Optional: Enable CSP before first release build
+
+**Verdict**: ✅ SAFE TO MAKE PUBLIC
+
+---
+
+## 2026-04-14: Round-to-Started-Half-Hour Setting (Chewie - Backend, Leia - Frontend)
+
+**Status**: ✅ IMPLEMENTED
+
+### Context
+
+Fredrik requested a company-policy setting: time registrations should be scoped to the **started half-hour** of the day (e.g., 9:17 → 9:00, 9:47 → 9:30, 14:58 → 14:30). Raw `start_time` in database is never modified; rounding is export/presentation-only.
+
+### Backend Implementation (Chewie)
+
+**Settings Storage** (`settings` table, migration 003):
+```sql
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY NOT NULL,
+    value TEXT NOT NULL
+);
+INSERT OR IGNORE INTO settings (key, value) VALUES ('round_to_half_hour', 'false');
+```
+
+**Why key/value over typed row**:
+- Extensible for future settings (`default_activity_type`, `export_date_format`)
+- Simple; no new Tauri plugins required
+- Single source of truth (survives app reinstall if DB backed up)
+- Queryable in SQL joins
+
+**IPC Commands** (`commands/settings.rs`):
+```rust
+get_setting(key: String) -> Result<Option<String>, AppError>
+set_setting(key: String, value: String) -> Result<(), AppError>
+```
+
+**Rounding Implementation** (`services/summary_service.rs`):
+- `floor_to_half_hour(dt)` — integer division on minutes: `(minutes / 30) * 30`
+- `get_round_to_half_hour(conn)` — reads setting; defaults to `false` if not found
+- `compute_export_duration()` — precedence: `duration_override` → rounded calculation → stored `duration_seconds`
+
+**Applied to**:
+- `export_csv()` — standard CSV export (Duration minutes)
+- `export_servicenow_csv()` — ServiceNow Import Set (duration_hours)
+
+**NOT affected**:
+- `opened_at` / `start_time` columns remain raw stored value
+- `get_daily_summary` and `get_report` aggregated queries show actual tracked time
+- Stored `duration_seconds` or `start_time` never modified
+- Sessions with `duration_override` always win (manual edits unaffected by policy)
+
+### Frontend Implementation (Leia)
+
+**Settings Tab** (`SettingsView.svelte`):
+- New dedicated tab in main navigation (Track / Reports / **Settings** / Manage)
+- `.settings-group` card layout with `.group-title`
+
+**Toggle Pattern** (established pattern for future settings):
+- Control: `<button role="switch" aria-checked={...}>` — native button semantics (Tab + Space keyboard)
+- Touch target: `min-height: 44px` on button; visual track smaller and centred via flexbox
+- Label: "Round to started half-hour"
+- Description: "Time exports use the nearest started 30-minute mark (e.g. 9:17 → 9:00)"
+- Default: off
+
+**Tauri Interface**:
+```typescript
+// Load on mount
+const value = await invoke<string>('get_setting', { key: 'round_to_half_hour' });
+roundToHalfHour = value === 'true';
+
+// Persist on toggle
+await invoke('set_setting', { key: 'round_to_half_hour', value: next ? 'true' : 'false' });
+```
+
+**Error Handling**:
+- `onMount` load failure: logged, UI silently defaults to `false` (valid before backend command exists)
+- Toggle save failure: error surfaced inline below setting row (never swallowed)
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src-tauri/migrations/003_settings.sql` | NEW: settings table |
+| `src-tauri/src/db/mod.rs` | Added migration v3 |
+| `src-tauri/src/commands/settings.rs` | NEW: get_setting / set_setting |
+| `src-tauri/src/commands/mod.rs` | Added mod settings |
+| `src-tauri/src/services/summary_service.rs` | Rounding utilities |
+| `src-tauri/src/commands/reports.rs` | Reads setting, passes to service |
+| `src-tauri/src/lib.rs` | Registered commands |
+| `src-tauri/tests/summary_service_tests.rs` | 4 new rounding tests |
+| `src/lib/components/SettingsView.svelte` | NEW: Settings tab |
+| `src/lib/api/settings.ts` | API wrapper (Chewie) |
+| `src/lib/components/SettingsView.svelte` | Settings UI (Leia) |
+| `src/lib/components/+page.svelte` | Settings tab + import |
+
+### Precedence Rule
+
+**Manual override always wins**. If `duration_override` is set, that value is used regardless of `round_to_half_hour` setting. Rationale: explicit user choice should not be silently overridden by policy.
+
+### CI Status
+
+✅ All tests passing | ✅ npm run build green | ✅ cargo clippy passing
+
+---
+
+## 2026-04-14: ServiceNow Import Set CSV Export (Chewie - Backend, Leia - Frontend)
+
+**Status**: ✅ IMPLEMENTED
+
+### Context
+
+Phase 4a (CSV-first approach per Han's ServiceNow feasibility analysis). Extend existing CSV export with ServiceNow-compatible format option.
+
+### Backend Implementation (Chewie)
+
+**Extended `export_csv` command** (`commands/reports.rs`):
+- Added optional `export_format` parameter (`"standard"` | `"servicenow"`)
+- Default: `"standard"` — existing behavior unchanged
+
+**New function** (`services/summary_service.rs`):
+- `export_servicenow_csv()` — mirrors standard export but uses ServiceNow column mapping
+
+### ServiceNow Column Mapping
+
+| CSV Column | Source | Notes |
+|---|---|---|
+| `opened_at` | `time_sessions.start_time` | Formatted `YYYY-MM-DD HH:MM:SS` |
+| `closed_at` | `time_sessions.end_time` | Formatted `YYYY-MM-DD HH:MM:SS` |
+| `duration_hours` | `COALESCE(duration_override, duration_seconds)` | Decimal hours, 2 decimals |
+| `short_description` | `work_orders.name` + `notes` | Format: "Work Order - Notes" |
+| `assignment_group` | `customers.name` | Direct mapping |
+| `work_notes` | `time_sessions.notes` | Empty if no notes |
+| `work_order` | `work_orders.code` → fallback `name` | Code if set, else name |
+| `activity_type` | `time_sessions.activity_type` | Direct mapping |
+
+### Design Decisions
+
+1. **Additive only** — Standard CSV format untouched; new format is separate code path
+2. **Optional parameter, not new command** — `export_csv` accepts `export_format` param; keeps API minimal
+3. **`work_order` field: code-first** — Uses `work_orders.code` for SN task lookup; falls back to name if not set
+4. **`duration_hours` precision** — `(seconds / 3600.0 * 100.0).round() / 100.0` — exactly 2 decimals
+5. **`short_description` composition** — `"Work Order Name - Notes"` if notes present; else just name
+
+### Frontend Implementation (Leia)
+
+**Export Format Selector** (`ReportView.svelte`):
+- Inline toggle buttons: "Standard CSV" | "ServiceNow Import Set"
+- Same pattern as existing date-range selector (radio-button-style toggle)
+- `aria-pressed` for accessibility, `min-height: 44px` for touch targets
+- Default: `'standard'`
+- Reusing existing pattern keeps UI consistent
+
+**API Update** (`src/lib/api/reports.ts`):
+- Added `ExportFormat` type
+- Updated `exportCsv()` to accept optional `exportFormat` param
+- Passes as `exportFormat` key → Tauri auto-converts to snake_case on Rust side
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src-tauri/src/services/summary_service.rs` | NEW: export_servicenow_csv, mapping logic |
+| `src-tauri/src/commands/reports.rs` | Added export_format param |
+| `src/lib/api/reports.ts` | Added ExportFormat type, updated exportCsv() |
+| `src/lib/components/ReportView.svelte` | Format selector UI |
+
+### Pre-requisite for Phase 4b
+
+Fredrik to confirm whether target ServiceNow instance has Time Tracking module licensed (`ts_time_card`/`ts_time_sheet`). This determines target table for Phase 4b direct API push. Phase 4b parked until Phase 4a adoption validated.
+
+### CI Status
+
+✅ 55 frontend tests passing | ✅ npm run build green | ✅ cargo clippy passing
+
+---
+
+## 2026-01-29: ServiceNow Export — Feasibility Analysis & Recommendation (Han - Lead)
+
+**Status**: ✅ APPROVED FOR PHASE 4a
+
+### Verdict
+
+**Feasible. Recommend two-phase approach:**
+1. **Phase 4a (CSV-first)** — ServiceNow Import Set format (low effort, high value)
+2. **Phase 4b (Direct API)** — REST API push (after Phase 4a validates demand)
+
+### Key Data Mapped
+
+| WT2 Field | ServiceNow Table | Notes |
+|---|---|---|
+| `time_sessions.start_time` | `ts_time_card.start_time` | ISO 8601 session start |
+| `time_sessions.end_time` | `ts_time_card.end_time` | ISO 8601 session end |
+| `time_sessions.duration_seconds` | `ts_time_card.time_in_seconds` | Calculated or manual override |
+| `work_orders.name` | `ts_time_card.task` | Via sys_id lookup or custom table |
+| `customers.name` | Company / account on task | Via relationship |
+| `time_sessions.activity_type` | `ts_time_card.type` or custom | Activity classification |
+| `time_sessions.notes` | `ts_time_card.comments` | Free text notes |
+
+### Phase 4a (CSV-First)
+
+**Approach**: Extend existing `export_csv` with ServiceNow Import Set format option.
+
+**Specifics**:
+- Add "Format" toggle in export UI: Standard CSV | ServiceNow Import Set
+- Output: `date`, `customer_name`, `work_order_name`, `work_order_code`, `start_datetime`, `end_datetime`, `duration_hours`, `activity_type`, `notes`
+- `duration_hours` = `COALESCE(duration_override, duration_seconds) / 3600.0` (2 decimals)
+- User manually uploads via ServiceNow's CSV Import Set
+
+**Why this first**:
+- Zero network dependency — stays local-first
+- Works for any ServiceNow instance regardless of module licensing
+- Delivers real value immediately; consultants can submit timesheets today
+- Validates user demand before investing in API automation
+
+**Estimate**: ~1.5 days (Chewie backend + Leia UI toggle)
+
+### Phase 4b (Direct REST API)
+
+**Approach**: Add optional ServiceNow REST integration behind feature flag (disabled by default).
+
+**Architecture**:
+- Settings → Integrations → ServiceNow
+- Supports Basic Auth (dev/non-prod) and OAuth 2.0 client credentials (prod)
+- Push endpoint: ServiceNow Import Sets API — safer than direct Table API (admin owns transform)
+- Credentials stored in OS keychain, never in SQLite
+- Non-blocking: push failure shows warning but doesn't affect local tracking
+
+**Estimate**: 4–7 days (depending on auth complexity)
+
+### Risks & Mitigations
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| Time Tracking module not licensed | High | Use custom table or task work notes; document both |
+| ServiceNow field names vary per instance | High | Target Import Sets API; admin owns transform |
+| OAuth 2.0 complexity | Medium | Start with Basic Auth; OAuth as optional upgrade |
+| Network dependency breaks local-first | Medium | Strict opt-in; all core flows unaffected; graceful error handling |
+| Credential storage security | High | OS keychain mandatory; no plaintext storage |
+| SN sys_id resolution | Medium | Use `work_order.code` as external reference for task matching |
+
+### Implementation Status
+
+✅ Phase 4a: CSV format implemented (Chewie, Leia)  
+⏸️ Phase 4b: Parked — awaiting Phase 4a adoption validation
+
+### Decision
+
+- ✅ Approved for Phase 4a (CSV Export) — schedule next sprint
+- 🔒 Phase 4b parked — revisit after Phase 4a ships and adoption validated
+
+---
+
+# End of Session History & Edit Entry Feature Decisions

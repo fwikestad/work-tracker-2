@@ -39,6 +39,34 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 - `todays` getter preserved for backward compat with `$effect` in `+page.svelte`; synced from `weekSessions` when on week 0
 - Week starts Monday (ISO standard); Sunday handled explicitly in diff calculation
 
+**CI**: ✅ 63 tests passing | ✅ npm run build green | ✅ cargo clippy passing
+
+---
+
+### 2026-04-14: Round-to-Half-Hour Setting UI + ServiceNow Export Format Selector
+
+**Round-to-Half-Hour** (`SettingsView.svelte`):
+- Added dedicated Settings tab to main nav (Track / Reports / Settings / Manage)
+- Pattern established: `.settings-group` card with `.group-title` header
+- Toggle switches use `<button role="switch" aria-checked={...}>` — native Tab + Space keyboard handling
+- Touch target: `min-height: 44px` on button; visual track smaller and centred via flexbox
+- Label: "Round to started half-hour"
+- Tauri: `get_setting('round_to_half_hour')` on mount, `set_setting()` on toggle
+- Error handling: load failure logged + silently defaults to false; save failure surfaced inline
+
+**ServiceNow Export Format** (`ReportView.svelte`):
+- Added format selector alongside export button (inline, same row)
+- Toggle pattern: "Standard CSV" | "ServiceNow Import Set"
+- Same pattern as existing date-range selector (radio-button-style)
+- Default: `'standard'` (zero behavior change for existing users)
+- Updated `exportCsv()` API to accept optional `exportFormat` param (Tauri auto-converts to snake_case)
+
+**Coordinated with**: Chewie (backend rounding + ServiceNow export logic implemented in parallel)
+
+**CI**: ✅ All tests passing | ✅ npm run build green | ✅ cargo clippy passing
+
+---
+
 ### 2026-04-14: Settings UI — Toggle Pattern
 
 **Context**: Added "Round to started half-hour" toggle as the first setting in a new Settings tab.

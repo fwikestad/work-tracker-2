@@ -21,7 +21,7 @@ The spec dates were likely generated from a 2025 calendar (where April 14 IS a M
 
 **Pattern: Separate Pure Math Tests from Store Integration Tests**
 
-The store isn't implemented yet, so I split tests into:
+The store isn't implemented yet, so split tests into:
 1. **Pure math block** (`describe('week date math — pure calculations')`) — defines helper functions inline (`getWeekStart`, `weekRangeForOffset`, `formatWeekLabel`), runs them directly. These 8 tests PASS NOW and serve as the spec for Leia's implementation.
 2. **Store integration blocks** — full test bodies written but wrapped in `it.skip()` (not `it.todo()`). Using skip over todo preserves the test body as runnable spec documentation. Remove `.skip` when implementation lands.
 
@@ -37,6 +37,11 @@ Date math tests are sensitive to timezone. Key pattern: use `new Date(year, mont
 Also use `getFullYear()/getMonth()/getDate()` for date string output instead of `toISOString().split('T')[0]` — the latter converts to UTC first and can shift the date by ±1 day in non-UTC timezones.
 
 **Results**: `sessions.test.ts`: 19 tests (8 passing, 11 skipped). Full suite: 63 passed, 11 skipped, 0 failing.
+
+**Activation Checklist** (for when Leia's implementation lands):
+- Remove `.skip` from 11 integration tests when `sessionsStore.weekOffset`, `setWeekOffset()`, `refreshWeek()`, `weekSessions`, `selectedWeekLabel` all exist
+
+---
 
 ### 2026-04-13: UI Smoke Tests + Timer Store Tests Unlocked
 

@@ -55,6 +55,20 @@ Comprehensive code review of Phase 1 implementation. Verified all recent bug fix
 
 ---
 
+### 2026-04-14: Edit Entry Feature Scoping
+
+Scoped the edit-entry feature following Fredrik's request to correct past time entries (16-hour overnight session). Delivered comprehensive decision document with UX approach, validation rules, API design, and implementation strategy.
+
+**Key Decisions**:
+- Week view approved for navigating to past sessions (coordinated with Leia & Wedge)
+- Edit UX: Inline editing with validation, revert/undo support
+- Backend atomicity: Multi-step updates via transactions
+- Validation: Overlap detection, duration > 0, end_time > start_time
+
+**Integration**: Work coordinated with Leia (week view UI/store), Wedge (concurrent edit tests), Chewie (session update endpoints).
+
+---
+
 ### 2026-04-12: Phase 2 Scope Definition
 
 Defined Phase 2 (Multi-Customer Workflows) implementation scope and architecture decisions.
