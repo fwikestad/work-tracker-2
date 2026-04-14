@@ -6,6 +6,38 @@ Tester for work-tracker-2 — native desktop time tracker for consultant Fredrik
 
 ## Learnings
 
+### 2026-04-15: Week View Tests Written (TDD, Parallel with Leia)
+
+**Context**: Leia is implementing a week view for session history. Task was to write tests for the new `sessionsStore` week logic before the implementation lands.
+
+**Spec Error Caught — Dates Off By One**
+
+The task spec listed "Monday=2026-04-14" and "Sunday=2026-04-13" as example dates. These are wrong. In 2026:
+- April 15 = **Wednesday** ✓ (spec correct here)
+- Monday of that week = **April 13** (spec said April 14 — off by one)
+- April 13 = Monday, April 14 = Tuesday (verified: Jan 1 2026 = Thursday, (104+4) mod 7 = 3 = Wednesday for Apr 15)
+
+The spec dates were likely generated from a 2025 calendar (where April 14 IS a Monday) but had 2026 appended to the year labels.
+
+**Pattern: Separate Pure Math Tests from Store Integration Tests**
+
+The store isn't implemented yet, so I split tests into:
+1. **Pure math block** (`describe('week date math — pure calculations')`) — defines helper functions inline (`getWeekStart`, `weekRangeForOffset`, `formatWeekLabel`), runs them directly. These 8 tests PASS NOW and serve as the spec for Leia's implementation.
+2. **Store integration blocks** — full test bodies written but wrapped in `it.skip()` (not `it.todo()`). Using skip over todo preserves the test body as runnable spec documentation. Remove `.skip` when implementation lands.
+
+**TDD Utility: `it.skip()` vs `it.todo()` for Pre-Implementation Tests**
+
+- `it.todo('name')` — no body, just a marker. Useful for listing what needs to be written.
+- `it.skip('name', body)` — body preserved, not executed. Better for TDD: the body IS the spec, and Leia can see exactly what assertions are expected. Flip `.skip` → nothing to activate.
+
+**Timezone Safety Pattern**
+
+Date math tests are sensitive to timezone. Key pattern: use `new Date(year, month-1, day, 12)` (local-time constructor, noon) instead of `new Date('YYYY-MM-DDT12:00:00Z')` (UTC). Local constructor guarantees `getDay()` returns the intended weekday regardless of test runner timezone.
+
+Also use `getFullYear()/getMonth()/getDate()` for date string output instead of `toISOString().split('T')[0]` — the latter converts to UTC first and can shift the date by ±1 day in non-UTC timezones.
+
+**Results**: `sessions.test.ts`: 19 tests (8 passing, 11 skipped). Full suite: 63 passed, 11 skipped, 0 failing.
+
 ### 2026-04-13: UI Smoke Tests + Timer Store Tests Unlocked
 
 **Context**: Module-level `$effect()` in `timer.svelte.ts` caused app startup to crash (the black-window bug). Fix was simple (move `$effect` inside component), but no regression guard existed. Wedge built smoke testing pattern to catch this class of bugs before they ship.

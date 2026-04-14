@@ -6,6 +6,39 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 
 ## Learnings
 
+### 2026-04-15: Session History Week View
+
+**Context**: Fredrik accidentally left a timer running overnight and got a 16-hour entry. The app only showed today — he needed to navigate to past days and edit entries there.
+
+**Approach**: Week view (Mon–Sun) with ◀ ▶ navigation; default current week, block future navigation, today's day header highlighted in accent color.
+
+**Store changes (`sessions.svelte.ts`)**:
+- Added `weekOffset` (`$state<number>`) and `weekSessions` (`$state<WeekDay[]>`) module-level rune state
+- `WeekDay` interface exported from store: `{ date: string; label: string; isToday: boolean; sessions: Session[] }`
+- `getMondayOfWeek(offset)` helper: handles Sunday edge case (`day === 0 ? -6 : 1 - day`)
+- `refreshWeek(offset?)` loads Mon–Sun from backend, groups sessions by ISO date, builds `WeekDay[]`
+- When `weekOffset === 0`, `refreshWeek` also updates `todaysSessions` to keep `$effect` in `+page.svelte` reactive
+- `refreshAll()` calls `refreshWeek()` + `refreshRecent()` in parallel; also calls `refreshToday()` separately when `weekOffset !== 0`
+- `setWeekOffset(n)` caps at 0 (no future navigation), calls `refreshWeek()`
+- `selectedWeekLabel` getter computes "Apr 7 – Apr 13, 2026" format from current `weekOffset`
+
+**Component changes (`SessionList.svelte`)**:
+- Header replaced with `.week-nav` flex bar: ◀ | week-label | ▶
+- ▶ button disabled when `weekOffset === 0`; `aria-label` on both nav arrows for keyboard accessibility
+- Body iterates `weekSessions`; only renders day groups with sessions (no empty-day clutter)
+- `.day-header` gets `.today` class when `day.isToday === true` → accent color highlight
+- `$derived` `hasAnySessions` replaces the old `sessionsStore.todays.length === 0` check
+- After save/delete: `sessionsStore.refreshWeek()` (no arg = current offset)
+
+**Test updates**:
+- `smoke.test.ts`: Added `weekOffset`, `weekSessions`, `selectedWeekLabel`, `setWeekOffset`, `refreshWeek` to API shape assertions
+- `components.smoke.test.ts`: Updated `sessionsStore` mock with new properties; changed heading test to check `aria-label="Previous week"` nav button; changed empty-state text to "No sessions this week"
+
+**Key design decisions**:
+- Collapse empty days (only show days with sessions) — cleaner than showing 7 rows with "—" for typical current-week view
+- `todays` getter preserved for backward compat with `$effect` in `+page.svelte`; synced from `weekSessions` when on week 0
+- Week starts Monday (ISO standard); Sunday handled explicitly in diff calculation
+
 ### 2026-04-14: Settings UI — Toggle Pattern
 
 **Context**: Added "Round to started half-hour" toggle as the first setting in a new Settings tab.
