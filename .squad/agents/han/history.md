@@ -6,6 +6,32 @@ Lead for work-tracker-2 — native desktop time tracker for consultant Fredrik K
 
 ## Learnings
 
+### 2026-04-14: Always-On-Top Widget — Phase 1 Delivery Ready
+
+**Feature**: Small floating widget showing current work (customer + work order + elapsed time), toggleable on/off.
+
+**Scoping & Recommendation**: Toggle `alwaysOnTop` flag on main window (Phase 1) rather than creating separate widget window. Simple, reusable, can evolve to true second window in Phase 2. Effort ~5 hrs (Tauri command + shortcut + component + integration).
+
+**Key Findings**:
+1. **Tauri window config**: Single main window (420×700), `alwaysOnTop` not set. Multi-window support fully available in Tauri 2.
+2. **Multi-window infrastructure**: Zero existing usage. `windows` array in config has only `["main"]`; capabilities default also limits to `["main"]`.
+3. **Tray**: Already fully operational, shows work order name + status via color icon (green/amber/grey). Menu has favorites, recent, pause/resume.
+4. **Timer & session state**: Frontend stores expose `active`, `elapsed`, `isPaused`, `isTracking`. Real-time elapsed via 1-second tick. Heartbeat every 30s.
+5. **IPC pattern**: Frontend `invoke()` calls Tauri commands; backend emits events. No event subscription needed for widget — just query `get_active_session` on mount and subscribe to timer store.
+6. **Routing**: No widget route; SvelteKit SSR disabled globally. Could add `/widget` or use overlay.
+7. **Permissions**: Current capabilities scoped to `["main"]` window only. Multi-window would need capabilities update.
+
+**Toggle mechanic**: Keyboard shortcut Ctrl+Alt+W (like Ctrl+Shift+S pattern) + optional UI button.
+
+**Team Delivery Status (2026-04-14)**:
+- **Chewie (Backend)**: `toggle_widget_mode` command + `WindowState` struct + Ctrl+Alt+W global shortcut — ✓ CI green
+- **Leia (Frontend)**: `WidgetOverlay.svelte` + `widget.svelte.ts` store + `api/window.ts` + +page.svelte integration — ✓ CI green
+- **Wedge (Testing)**: 22 tests (16 passing, 6 skipped) — ✓ 83 passed, 0 failing
+
+**Next**: Merge decision inbox, archive old decisions, commit all changes, E2E verification with Fredrik.
+
+---
+
 ### 2026-04-12: Phase 2 Planning Complete
 
 Phase 2 scope breakdown finalized with 15 work items, critical path analysis, and architecture decisions. Key decisions:
@@ -52,6 +78,20 @@ Comprehensive code review of Phase 1 implementation. Verified all recent bug fix
 **New Learning**: Type safety best practices for manual object construction — even when runtime guards exist, complete the object literal for better IDE support and future maintainability.
 
 **Team Coordination**: Coordinated with Leia on QuickAdd fix (completed same day). Flagged Wedge for test plan validation before ship.
+
+---
+
+### 2026-04-14: Edit Entry Feature Scoping
+
+Scoped the edit-entry feature following Fredrik's request to correct past time entries (16-hour overnight session). Delivered comprehensive decision document with UX approach, validation rules, API design, and implementation strategy.
+
+**Key Decisions**:
+- Week view approved for navigating to past sessions (coordinated with Leia & Wedge)
+- Edit UX: Inline editing with validation, revert/undo support
+- Backend atomicity: Multi-step updates via transactions
+- Validation: Overlap detection, duration > 0, end_time > start_time
+
+**Integration**: Work coordinated with Leia (week view UI/store), Wedge (concurrent edit tests), Chewie (session update endpoints).
 
 ---
 

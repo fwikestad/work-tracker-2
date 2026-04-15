@@ -63,6 +63,20 @@ No installation required for portable versions (AppImage).
 - See breakdown by project within each customer
 - Real-time updates as you track
 
+### Week Summary
+
+- View all work from the current week (Monday–Sunday) in a single list
+- Navigate to previous/next weeks using the arrow controls
+- Inline edit entries: click any row to adjust duration, notes, or activity type
+- Access via the **Week Summary** tab in the navigation bar
+
+### Widget Mode
+
+- **Always-on-top mini window** — Shrinks the app to a compact overlay that floats above all other windows
+- **Track while working** — Keep the tracker visible while you use other apps (browser, email, IDE)
+- **Quick-switch from widget** — Click the work order name in the widget to switch projects without opening the full app
+- **Enable/disable** — Click the widget icon (⊞) in the top toolbar, or press `Ctrl+W` / `Cmd+W`
+
 ### Reports & Export
 - Filter by date range (today, this week, this month, custom)
 - Export to CSV for spreadsheets, billing tools, or personal archive
@@ -83,10 +97,15 @@ No installation required for portable versions (AppImage).
 | <kbd>Ctrl+N</kbd> / <kbd>Cmd+N</kbd> | Quick-add: create and start tracking |
 | <kbd>Ctrl+K</kbd> / <kbd>Cmd+K</kbd> | Search and switch projects |
 | <kbd>Ctrl+S</kbd> / <kbd>Cmd+S</kbd> | Stop current session |
-| <kbd>Ctrl+P</kbd> / <kbd>Cmd+P</kbd> | Pause/resume current session |
+| <kbd>P</kbd> | Pause current session (when not in a form field) |
+| <kbd>R</kbd> | Resume paused session (when not in a form field) |
+| <kbd>Ctrl+Shift+S</kbd> / <kbd>Cmd+Shift+S</kbd> | Bring window to front (global, works from any app) |
+| <kbd>Ctrl+W</kbd> / <kbd>Cmd+W</kbd> | Toggle widget mode (compact floating window) |
 | <kbd>Esc</kbd> | Close overlays |
 | <kbd>↑↓</kbd> | Navigate search results |
 | <kbd>Enter</kbd> | Confirm selection |
+
+**Note**: Single-key shortcuts (P, R) only work when focus is not in a text field.
 
 ---
 
@@ -113,7 +132,11 @@ You can:
 A: No. Work Tracker 2 is desktop-only. Your data never leaves your computer. No cloud accounts, no servers, no analytics.
 
 **Q: What if the app crashes?**  
-A: You won't lose time entries. The app uses write-ahead logging (WAL mode) to ensure every time entry is saved to disk immediately. On restart, the app will recover gracefully.
+A: You won't lose time entries. The app uses write-ahead logging (WAL mode) to flush every entry to disk immediately. On restart, if it finds an open session from before the crash ("orphan session"), it shows a recovery dialog:
+- **Close now** — Closes the session at the current time and keeps the entry
+- **Discard** — Removes the incomplete session (use this if the timestamps aren't meaningful)
+
+The recovery dialog appears before normal app use, so you always have a chance to recover or clean up.
 
 **Q: Can I use this with a team?**  
 A: Currently, Work Tracker 2 is single-user per computer. Phase 2+ may add multi-user features. For now, each team member runs their own copy.

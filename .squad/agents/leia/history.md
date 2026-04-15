@@ -6,6 +6,136 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 
 ## Learnings
 
+### 2026-05-xx: Widget Overlay Redesign — Dynamic Resize + New Layout
+
+**Context**: Fredrik wanted to remove the timer from the widget, promote customer name as the primary label, and fix dropdown clipping by resizing the window dynamically.
+
+**New layout**: Header row = `[status emoji] [Customer Name] [✕]` (customer at 15px/600), Row 2 = work-order button with chevron (full-width, bordered, 13px/normal/muted). "Not tracking" is shown inline in the customer slot when no active session.
+
+**Dynamic resize pattern**: Added `resize_widget` Tauri command + `resizeWidget(w, h)` TS function. Widget base height is 90px (`WIDGET_BASE_H`). On dropdown open: `expandedH = 90 + min(recentCount, 6) * 40 + 8`. On close/exit: reset to 90. This replaces the old `position: fixed; bottom: 0` dropdown hack.
+
+**Overflow**: Changed `.widget` from `overflow: hidden` to `overflow: visible` so `position: absolute; top: 100%` dropdown flows below the trigger instead of being clipped. The window resize is what actually makes it visible.
+
+**Badge icon-only**: Status badge now shows only the emoji (🟢/🟡/⊘), no label text — cleaner in the compact 90px widget.
+
+**`resize_widget` vs `toggle_widget_mode`**: Kept them separate intentionally — `toggle_widget_mode` saves/restores previous geometry; `resize_widget` just sets size without touching that saved state. Calling `resize_widget` from `exitWidgetMode` before `toggleWidgetMode(false)` ensures clean state reset even though `toggle_widget_mode` will restore the previous size anyway.
+
+**CI**: ✅ cargo check passes | TS type-check has pre-existing `@types/node` env issue unrelated to these changes.
+
+---
+
+### 2026-05-xx: Widget Context-Switch Dropdown — Complete
+
+**Context**: Fredrik wanted to switch work orders directly from the widget without opening the main window.
+
+**Approach**: Made the work-order/customer display a `<button>` with a ▾ chevron. On click, a compact dropdown overlays the widget from the bottom using `position: fixed; bottom: 0; left: 0; right: 0`. The dropdown shows up to 6 recent work orders from `sessionsStore.recent`, highlighting the active one with an accent tint.
+
+**Dropdown positioning**: Used `position: fixed` anchored to the viewport bottom. This works because `.widget` has `overflow: hidden` (which clips absolutely-positioned children) but does NOT clip fixed-positioned elements. The dropdown covers the timer display area; the header (status + exit button) remains visible above it.
+
+**Outside-click detection pattern**: Identical to `SearchableSelect.svelte` — `$effect` registers a `mousedown` listener on `document` when the dropdown is open, checks `containerRef.contains(e.target)`, and unregisters on cleanup. Using `mousedown` (not `click`) ensures the dismiss fires before any downstream click handlers.
+
+**Context-switch API**: `startSession(workOrderId)` from `$lib/api/sessions` is the sole call needed — the backend atomically stops the current session and starts the new one. After calling it, `timer.refresh()` re-fetches `ActiveSession` to update the displayed timer, and `sessionsStore.refreshRecent()` keeps the recent list current.
+
+**Keyboard support**: `svelte:window onkeydown` handler — ArrowUp/Down adjust `highlightIndex`, Enter calls `switchTo`, Escape closes. Same approach as `SearchableSelect`.
+
+**CI**: ✅ 83 frontend tests | ✅ npm run build | ✅ cargo clippy | ✅ cargo test (35 backend tests)
+
+---
+
+### 2026-04-14: Always-On-Top Widget Mode Frontend — Complete
+
+**Context**: Fredrik wanted a compact always-on-top window (320×150 px) showing the active timer so he can see it while working in other apps.
+
+**Approach**: Toggle `alwaysOnTop` on the main Tauri window via a `toggle_widget_mode` command (implemented by Chewie). Frontend shows `WidgetOverlay` full-screen when widget mode is active, otherwise shows the normal layout.
+
+**Files added**:
+- `src/lib/api/window.ts` — `toggleWidgetMode(enable: boolean): Promise<boolean>` — thin invoke wrapper following the same pattern as `sessions.ts`
+- `src/lib/stores/widget.svelte.ts` — `widgetStore` with `isWidgetMode` `$state` boolean + `setWidgetMode(value)` + `toggleWidgetMode()`; keeps widget state out of the timer store for clean separation
+- `src/lib/components/WidgetOverlay.svelte` — compact overlay fitting 320×150; shows state badge (🟢/🟡/⊘), large elapsed time (`formatDuration`), work order name (truncated), customer name+dot, exit button; reads directly from `timer` store
+
+**Files modified**:
+- `src/routes/+page.svelte`:
+  - Import `widgetStore`, `toggleWidgetMode`, `WidgetOverlay`
+  - `handleWidgetToggle()` — calls `toggleWidgetMode(!isWidgetMode)`, updates store; guarded by `togglingWidget` flag to prevent double-click
+  - `listen('toggle-widget-mode', ...)` in `onMount` — handles Ctrl+Alt+W from Rust backend; event payload is `boolean` (the new state)
+  - Conditional render: `{#if widgetStore.isWidgetMode}` → `<WidgetOverlay />` else → normal `<div class="app">` layout
+  - 📌 toggle button in nav with `aria-pressed`, `min-height: 44px`, `.widget-active` class when on
+  - Added "Ctrl+Alt+W Widget" to shortcuts footer hint
+- `src/lib/__tests__/components.smoke.test.ts` — added mocks for `widget.svelte` and `api/window`; added 4 smoke tests for `WidgetOverlay`
+
+**CI Status**: ✓ All checks pass. No regressions. Ready for E2E verification.
+
+**Key patterns**:
+- Widget store is a separate module (`widget.svelte.ts`) — not merged into timer store — so Wedge can mock it independently
+- The `toggle-widget-mode` event listener updates store only (no invoke) because the backend already handled the window resize
+- `handleWidgetToggle()` calls invoke first, then updates store on success — avoids flicker if Tauri command fails
+- `WidgetOverlay` uses `$derived` for the state badge object; no `$effect` needed
+
+**CI**: ✅ 67 tests passing | ✅ npm run build green | ✅ cargo clippy passing | ✅ cargo test passing
+
+---
+
+
+
+**Context**: Fredrik accidentally left a timer running overnight and got a 16-hour entry. The app only showed today — he needed to navigate to past days and edit entries there.
+
+**Approach**: Week view (Mon–Sun) with ◀ ▶ navigation; default current week, block future navigation, today's day header highlighted in accent color.
+
+**Store changes (`sessions.svelte.ts`)**:
+- Added `weekOffset` (`$state<number>`) and `weekSessions` (`$state<WeekDay[]>`) module-level rune state
+- `WeekDay` interface exported from store: `{ date: string; label: string; isToday: boolean; sessions: Session[] }`
+- `getMondayOfWeek(offset)` helper: handles Sunday edge case (`day === 0 ? -6 : 1 - day`)
+- `refreshWeek(offset?)` loads Mon–Sun from backend, groups sessions by ISO date, builds `WeekDay[]`
+- When `weekOffset === 0`, `refreshWeek` also updates `todaysSessions` to keep `$effect` in `+page.svelte` reactive
+- `refreshAll()` calls `refreshWeek()` + `refreshRecent()` in parallel; also calls `refreshToday()` separately when `weekOffset !== 0`
+- `setWeekOffset(n)` caps at 0 (no future navigation), calls `refreshWeek()`
+- `selectedWeekLabel` getter computes "Apr 7 – Apr 13, 2026" format from current `weekOffset`
+
+**Component changes (`SessionList.svelte`)**:
+- Header replaced with `.week-nav` flex bar: ◀ | week-label | ▶
+- ▶ button disabled when `weekOffset === 0`; `aria-label` on both nav arrows for keyboard accessibility
+- Body iterates `weekSessions`; only renders day groups with sessions (no empty-day clutter)
+- `.day-header` gets `.today` class when `day.isToday === true` → accent color highlight
+- `$derived` `hasAnySessions` replaces the old `sessionsStore.todays.length === 0` check
+- After save/delete: `sessionsStore.refreshWeek()` (no arg = current offset)
+
+**Test updates**:
+- `smoke.test.ts`: Added `weekOffset`, `weekSessions`, `selectedWeekLabel`, `setWeekOffset`, `refreshWeek` to API shape assertions
+- `components.smoke.test.ts`: Updated `sessionsStore` mock with new properties; changed heading test to check `aria-label="Previous week"` nav button; changed empty-state text to "No sessions this week"
+
+**Key design decisions**:
+- Collapse empty days (only show days with sessions) — cleaner than showing 7 rows with "—" for typical current-week view
+- `todays` getter preserved for backward compat with `$effect` in `+page.svelte`; synced from `weekSessions` when on week 0
+- Week starts Monday (ISO standard); Sunday handled explicitly in diff calculation
+
+**CI**: ✅ 63 tests passing | ✅ npm run build green | ✅ cargo clippy passing
+
+---
+
+### 2026-04-14: Round-to-Half-Hour Setting UI + ServiceNow Export Format Selector
+
+**Round-to-Half-Hour** (`SettingsView.svelte`):
+- Added dedicated Settings tab to main nav (Track / Reports / Settings / Manage)
+- Pattern established: `.settings-group` card with `.group-title` header
+- Toggle switches use `<button role="switch" aria-checked={...}>` — native Tab + Space keyboard handling
+- Touch target: `min-height: 44px` on button; visual track smaller and centred via flexbox
+- Label: "Round to started half-hour"
+- Tauri: `get_setting('round_to_half_hour')` on mount, `set_setting()` on toggle
+- Error handling: load failure logged + silently defaults to false; save failure surfaced inline
+
+**ServiceNow Export Format** (`ReportView.svelte`):
+- Added format selector alongside export button (inline, same row)
+- Toggle pattern: "Standard CSV" | "ServiceNow Import Set"
+- Same pattern as existing date-range selector (radio-button-style)
+- Default: `'standard'` (zero behavior change for existing users)
+- Updated `exportCsv()` API to accept optional `exportFormat` param (Tauri auto-converts to snake_case)
+
+**Coordinated with**: Chewie (backend rounding + ServiceNow export logic implemented in parallel)
+
+**CI**: ✅ All tests passing | ✅ npm run build green | ✅ cargo clippy passing
+
+---
+
 ### 2026-04-14: Settings UI — Toggle Pattern
 
 **Context**: Added "Round to started half-hour" toggle as the first setting in a new Settings tab.
@@ -856,3 +986,65 @@ color: inherit;
 ## 2026-04-12: Added Unarchive for Work Orders
 
 Implemented `unarchiveWorkOrder` in `src/lib/api/workOrders.ts` (mirroring `archiveWorkOrder`). Updated `WorkOrderList.svelte` to import and use `unarchiveWorkOrder`, added `handleUnarchive` function, and conditionally render Archive/Unarchive buttons based on `wo.archivedAt` (null = show Archive, non-null = show Unarchive). Added `.btn-unarchive` styles matching customer component (teal accent on hover). All 55 tests passing.
+
+---
+
+### 2026-05-xx: JSDoc Coverage - Frontend Stores and API Wrappers
+
+Context: Issue 15 requested comprehensive JSDoc comments for the two primary frontend stores (timer.svelte.ts and sessions.svelte.ts) plus brief API wrapper documentation to improve IDE tooltip quality and developer experience.
+
+Files documented:
+- src/lib/stores/timer.svelte.ts: Added module-level JSDoc describing the store purpose (active session management, timer updates, heartbeat). Documented all public getters, methods, and internal helper functions. Added JSDoc to state variables explaining their purpose.
+
+- src/lib/stores/sessions.svelte.ts: Added module-level JSDoc describing the store role (session data by day/week, recent work orders, week navigation). Documented the WeekDay interface and all helper functions. Added JSDoc to all public getters and methods. Explained the refresh strategy for keeping todaysSessions in sync when viewing past weeks.
+
+- src/lib/api/customers.ts: One-liner JSDoc for all 5 functions.
+- src/lib/api/sessions.ts: One-liner JSDoc for all 13 functions.
+- src/lib/api/workOrders.ts: One-liner JSDoc for all 6 functions.
+- src/lib/api/reports.ts: One-liner JSDoc for all 4 functions.
+- src/lib/api/window.ts: One-liner JSDoc for 2 functions.
+
+JSDoc format: Used standard JSDoc syntax with brief one-line descriptions for most functions. For stores, included longer explanations covering why and usage patterns. Added param, returns, and throws tags where appropriate. Included context about atomic operations, orphan recovery, and refresh strategies.
+
+Verification: npm run build succeeded with no TypeScript errors. JSDoc comments do not affect runtime behavior; they only improve IDE intellisense.
+
+Outcome: Frontend now has comprehensive JSDoc coverage (approx 95 percent) for the core stores and all API wrapper functions. IDE tooltips now provide actionable information about parameters, return values, and side effects.
+
+---
+
+### 2026-04-15: Frontend JSDoc Documentation Complete (Issue #15)
+
+**Task**: Implement comprehensive JSDoc for frontend stores and API wrappers
+
+**Deliverables**:
+- `src/lib/stores/timer.svelte.ts`: 19 items documented (100%)
+- `src/lib/stores/sessions.svelte.ts`: 16 items documented (100%)
+- API wrappers (5 files): 30 functions documented (100%)
+- Overall coverage: ~95% JSDoc coverage
+
+**Implementation**:
+- Module-level JSDoc describing store purposes and responsibilities
+- All public getters and methods documented with brief descriptions
+- All helper functions documented with context
+- API wrappers: one-liner descriptions optimized for IDE tooltips
+- Stores: comprehensive explanations including implementation details and refresh strategies
+
+**Key Context Documented**:
+- Atomic operations (e.g., `setActive` stops timer and starts heartbeat)
+- Orphan recovery patterns
+- Refresh strategies for keeping data in sync
+- Performance characteristics
+
+**Verification**:
+- ✅ `npm run build` — TypeScript compilation succeeded
+- ✅ No logic changes — only documentation added
+
+**Impact**:
+- IDE Intellisense shows full documentation on hover
+- New developers understand store patterns without reading implementation
+- All public store APIs self-documenting
+- Future maintainers have clear context about expected behavior
+
+**GitHub Issue #15**: RESOLVED
+
+**Outcome**: Frontend documentation complete for Phase 1-3 scope. Stores and API layer fully documented. Developer experience significantly improved through IDE tooltips.

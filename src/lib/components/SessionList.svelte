@@ -40,7 +40,7 @@
         activityType: editState.activityType || undefined,
         durationOverride: editState.duration && !isNaN(durationMins) ? durationMins * 60 : undefined
       });
-      await sessionsStore.refreshToday();
+      await sessionsStore.refreshWeek();
       editState = null;
     } catch (e: any) {
       alert(e?.message ?? 'Failed to save');
@@ -53,7 +53,7 @@
     if (!confirm('Delete this session?')) return;
     try {
       await deleteSession(sessionId);
-      await sessionsStore.refreshToday();
+      await sessionsStore.refreshWeek();
     } catch (e: any) {
       alert(e?.message ?? 'Failed to delete');
     }
@@ -62,120 +62,138 @@
   async function handleResume() {
     await timer.resume();
   }
+
+  const hasAnySessions = $derived(sessionsStore.weekSessions.some(d => d.sessions.length > 0));
 </script>
 
 <section class="sessions-section">
-  <div class="header">
-    <h3>Today's sessions</h3>
+  <div class="week-nav">
+    <button
+      class="nav-arrow"
+      onclick={() => sessionsStore.setWeekOffset(sessionsStore.weekOffset - 1)}
+      aria-label="Previous week"
+    >◀</button>
+    <span class="week-label">{sessionsStore.selectedWeekLabel}</span>
+    <button
+      class="nav-arrow"
+      onclick={() => sessionsStore.setWeekOffset(sessionsStore.weekOffset + 1)}
+      disabled={sessionsStore.weekOffset === 0}
+      aria-label="Next week"
+    >▶</button>
   </div>
 
-  {#if sessionsStore.todays.length === 0}
+  {#if !hasAnySessions}
     <div class="empty">
-      <p>No sessions today</p>
+      <p>No sessions this week</p>
       <p class="hint">Start tracking with Ctrl+K</p>
     </div>
   {:else}
     <div class="sessions-list">
-      {#each sessionsStore.todays as session}
-        {#if editState?.id === session.id}
-          <div class="session editing" style="border-left-color: {session.customerColor ?? 'var(--border)'}">
-            <div class="edit-form">
-              <label>
-                <span>Duration (minutes)</span>
-                <input type="number" bind:value={editState.duration} placeholder="Auto" />
-              </label>
-              <label>
-                <span>Activity type</span>
-                <select bind:value={editState.activityType}>
-                  <option value="">—</option>
-                  <option value="meeting">Meeting</option>
-                  <option value="development">Development</option>
-                  <option value="design">Design</option>
-                  <option value="review">Review</option>
-                  <option value="admin">Admin</option>
-                  <option value="other">Other</option>
-                </select>
-              </label>
-              <label>
-                <span>Notes</span>
-                <textarea bind:value={editState.notes} rows="3" placeholder="What did you work on?"></textarea>
-              </label>
-              <div class="actions">
-                <button class="btn-sm btn-primary" onclick={() => saveEdit(session.id)} disabled={saving}>
-                  {saving ? 'Saving...' : 'Save'}
-                </button>
-                <button class="btn-sm btn-secondary" onclick={cancelEdit} disabled={saving}>
-                  Cancel
-                </button>
+      {#each sessionsStore.weekSessions as day}
+        {#if day.sessions.length > 0}
+          <div class="day-header" class:today={day.isToday}>{day.label}</div>
+          {#each day.sessions as session}
+            {#if editState?.id === session.id}
+              <div class="session editing" style="border-left-color: {session.customerColor ?? 'var(--border)'}">
+                <div class="edit-form">
+                  <label>
+                    <span>Duration (minutes)</span>
+                    <input type="number" bind:value={editState.duration} placeholder="Auto" />
+                  </label>
+                  <label>
+                    <span>Activity type</span>
+                    <select bind:value={editState.activityType}>
+                      <option value="">—</option>
+                      <option value="meeting">Meeting</option>
+                      <option value="development">Development</option>
+                      <option value="design">Design</option>
+                      <option value="review">Review</option>
+                      <option value="admin">Admin</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Notes</span>
+                    <textarea bind:value={editState.notes} rows="3" placeholder="What did you work on?"></textarea>
+                  </label>
+                  <div class="actions">
+                    <button class="btn-sm btn-primary" onclick={() => saveEdit(session.id)} disabled={saving}>
+                      {saving ? 'Saving...' : 'Save'}
+                    </button>
+                    <button class="btn-sm btn-secondary" onclick={cancelEdit} disabled={saving}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        {:else}
-          <div
-            class="session"
-            class:running={isRunning(session)}
-            class:paused-session={isPaused(session)}
-            role="button"
-            tabindex="0"
-            onclick={() => startEdit(session)}
-            onkeydown={(e) => e.key === 'Enter' && startEdit(session)}
-            style="border-left-color: {session.customerColor ?? 'var(--border)'}"
-          >
-            <div class="session-header">
-              <div class="session-main">
-                {#if isRunning(session)}
-                  <span class="state-dot running" title="Running">●</span>
-                {:else if isPaused(session)}
-                  <span class="state-dot paused" title="Paused">●</span>
-                {/if}
-                <span class="session-name">{session.workOrderName}</span>
-                {#if isPaused(session)}
-                  <span class="activity-badge paused-label">Paused</span>
-                {:else if session.activityType}
-                  <span class="activity-badge">{session.activityType}</span>
-                {/if}
-              </div>
-              <span class="session-duration">{formatHuman(session.effectiveDuration ?? 0)}</span>
-              <button
-                class="btn-delete"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  handleDelete(session.id);
-                }}
+            {:else}
+              <div
+                class="session"
+                class:running={isRunning(session)}
+                class:paused-session={isPaused(session)}
+                role="button"
+                tabindex="0"
+                onclick={() => startEdit(session)}
+                onkeydown={(e) => e.key === 'Enter' && startEdit(session)}
+                style="border-left-color: {session.customerColor ?? 'var(--border)'}"
               >
-                ×
-              </button>
-            </div>
-            <div class="session-meta">
-              {#if session.customerColor}
-                <span class="dot" style="background: {session.customerColor}"></span>
-              {/if}
-              <span>{session.customerName}</span>
-              <span class="sep">•</span>
-              <span>
-                {formatTime(session.startTime)}
-                {#if session.endTime}
-                  – {formatTime(session.endTime)}
+                <div class="session-header">
+                  <div class="session-main">
+                    {#if isRunning(session)}
+                      <span class="state-dot running" title="Running">●</span>
+                    {:else if isPaused(session)}
+                      <span class="state-dot paused" title="Paused">●</span>
+                    {/if}
+                    <span class="session-name">{session.workOrderName}</span>
+                    {#if isPaused(session)}
+                      <span class="activity-badge paused-label">Paused</span>
+                    {:else if session.activityType}
+                      <span class="activity-badge">{session.activityType}</span>
+                    {/if}
+                  </div>
+                  <span class="session-duration">{formatHuman(session.effectiveDuration ?? 0)}</span>
+                  <button
+                    class="btn-delete"
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(session.id);
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div class="session-meta">
+                  {#if session.customerColor}
+                    <span class="dot" style="background: {session.customerColor}"></span>
+                  {/if}
+                  <span>{session.customerName}</span>
+                  <span class="sep">•</span>
+                  <span>
+                    {formatTime(session.startTime)}
+                    {#if session.endTime}
+                      – {formatTime(session.endTime)}
+                    {/if}
+                  </span>
+                </div>
+                {#if session.notes}
+                  <div class="session-notes">{session.notes}</div>
                 {/if}
-              </span>
-            </div>
-            {#if session.notes}
-              <div class="session-notes">{session.notes}</div>
-            {/if}
-            {#if isPaused(session)}
-              <div class="inline-actions">
-                <button
-                  class="btn-sm btn-resume"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    handleResume();
-                  }}
-                >
-                  ▶ Resume
-                </button>
+                {#if isPaused(session)}
+                  <div class="inline-actions">
+                    <button
+                      class="btn-sm btn-resume"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        handleResume();
+                      }}
+                    >
+                      ▶ Resume
+                    </button>
+                  </div>
+                {/if}
               </div>
             {/if}
-          </div>
+          {/each}
         {/if}
       {/each}
     </div>
@@ -188,16 +206,66 @@
     padding: 16px;
   }
 
-  .header {
+  .week-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin-bottom: 12px;
+    gap: 8px;
   }
 
-  h3 {
+  .week-label {
     font-size: 12px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-muted);
+    flex: 1;
+    text-align: center;
+  }
+
+  .nav-arrow {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    min-width: 28px;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: color 0.1s, border-color 0.1s;
+  }
+
+  .nav-arrow:hover:not(:disabled) {
+    color: var(--text);
+    border-color: var(--text-muted);
+  }
+
+  .nav-arrow:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .day-header {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-muted);
+    padding: 8px 0 4px;
+    margin-top: 4px;
+  }
+
+  .day-header:first-child {
+    margin-top: 0;
+  }
+
+  .day-header.today {
+    color: var(--accent);
   }
 
   .empty {

@@ -67,6 +67,9 @@ jobs:
         run: |
           npm ci
           npm install --save-dev @vitest/coverage-v8
+
+      - name: SvelteKit sync
+        run: npx svelte-kit sync
       
       - name: Run Rust coverage
         run: |

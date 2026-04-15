@@ -11,6 +11,13 @@ pub mod tray;
 
 pub use db::AppState;
 
+/// Tracks always-on-top widget mode state and the previous window geometry for restoration.
+pub struct WindowState {
+    pub is_widget_mode: bool,
+    pub previous_size: Option<(u32, u32)>,
+    pub previous_position: Option<(i32, i32)>,
+}
+
 /// Update the tray icon, tooltip, and menu to reflect the current session state.
 /// Frontend calls this after every start/stop/pause/resume/switch action.
 ///
@@ -32,14 +39,24 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
+                .with_handler(|app, shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.show();
-                            let _ = win.unminimize();
-                            let _ = win.set_focus();
+                        match shortcut.key {
+                            Code::KeyS => {
+                                // Ctrl+Shift+S: bring window to front + open search overlay
+                                if let Some(win) = app.get_webview_window("main") {
+                                    let _ = win.show();
+                                    let _ = win.unminimize();
+                                    let _ = win.set_focus();
+                                }
+                                let _ = app.emit("focus-search", ());
+                            }
+                            Code::KeyW => {
+                                // Ctrl+Alt+W: toggle widget mode — let frontend call toggle_widget_mode
+                                let _ = app.emit("toggle-widget-mode", ());
+                            }
+                            _ => {}
                         }
-                        let _ = app.emit("focus-search", ());
                     }
                 })
                 .build(),
@@ -54,11 +71,21 @@ pub fn run() {
             let db_path = app_dir.join("work_tracker.db");
             let conn = db::initialize(&db_path)?;
             app.manage(AppState { db: Mutex::new(conn) });
+            app.manage(Mutex::new(WindowState {
+                is_widget_mode: false,
+                previous_size: None,
+                previous_position: None,
+            }));
 
             // Register Ctrl+Shift+S → bring window to front + open search overlay
             let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyS);
             app.handle().global_shortcut().register(shortcut)
                 .map_err(|e| format!("Failed to register global shortcut: {}", e))?;
+
+            // Register Ctrl+Alt+W → toggle always-on-top widget mode
+            let widget_shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyW);
+            app.handle().global_shortcut().register(widget_shortcut)
+                .map_err(|e| format!("Failed to register widget shortcut: {}", e))?;
 
             // Set up system tray with icon and right-click menu
             tray::setup_tray(app)?;
@@ -95,6 +122,8 @@ pub fn run() {
             commands::reports::export_csv,
             commands::reports::get_report,
             update_tray_state,
+            commands::window::toggle_widget_mode,
+            commands::window::resize_widget,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

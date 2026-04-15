@@ -41,7 +41,12 @@ vi.mock('$lib/stores/sessions.svelte', () => ({
     todays: [],
     recent: [],
     allFavorites: [],
+    weekOffset: 0,
+    weekSessions: [],
+    selectedWeekLabel: 'Apr 14 – Apr 20, 2026',
+    setWeekOffset: vi.fn().mockResolvedValue(undefined),
     refreshToday: vi.fn().mockResolvedValue(undefined),
+    refreshWeek: vi.fn().mockResolvedValue(undefined),
     refreshRecent: vi.fn().mockResolvedValue(undefined),
     refreshAll: vi.fn().mockResolvedValue(undefined),
   },
@@ -80,6 +85,17 @@ vi.mock('$lib/api/reports', () => ({
   getRecentWorkOrders: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock('$lib/stores/widget.svelte', () => ({
+  widgetStore: {
+    isWidgetMode: false,
+    setWidgetMode: vi.fn(),
+  },
+}));
+
+vi.mock('$lib/api/window', () => ({
+  toggleWidgetMode: vi.fn().mockResolvedValue(false),
+}));
+
 // Stub browser APIs that components may call on error paths
 vi.stubGlobal('alert', vi.fn());
 
@@ -87,6 +103,7 @@ vi.stubGlobal('alert', vi.fn());
 import Timer from '$lib/components/Timer.svelte';
 import SearchSwitch from '$lib/components/SearchSwitch.svelte';
 import SessionList from '$lib/components/SessionList.svelte';
+import WidgetOverlay from '$lib/components/WidgetOverlay.svelte';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -143,13 +160,39 @@ describe('SessionList component — mount smoke tests', () => {
     expect(() => render(SessionList)).not.toThrow();
   });
 
-  it('renders heading', () => {
+  it('renders week navigation', () => {
     render(SessionList);
-    expect(screen.getByText("Today's sessions")).toBeTruthy();
+    expect(screen.getByLabelText('Previous week')).toBeTruthy();
+    expect(screen.getByLabelText('Next week')).toBeTruthy();
   });
 
-  it('renders empty state when no sessions today', () => {
+  it('renders empty state when no sessions this week', () => {
     render(SessionList);
-    expect(screen.getByText('No sessions today')).toBeTruthy();
+    expect(screen.getByText('No sessions this week')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WidgetOverlay component
+// ---------------------------------------------------------------------------
+
+describe('WidgetOverlay component — mount smoke tests', () => {
+  it('mounts without throwing', () => {
+    expect(() => render(WidgetOverlay)).not.toThrow();
+  });
+
+  it('renders "Not tracking" state when no active session', () => {
+    render(WidgetOverlay);
+    expect(screen.getByText('Not tracking')).toBeTruthy();
+  });
+
+  it('renders Stopped badge when not tracking', () => {
+    render(WidgetOverlay);
+    expect(screen.getByLabelText(/Stopped/i)).toBeTruthy();
+  });
+
+  it('renders exit button', () => {
+    render(WidgetOverlay);
+    expect(screen.getByTitle(/Exit widget mode/i)).toBeTruthy();
   });
 });

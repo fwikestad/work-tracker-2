@@ -102,3 +102,46 @@ Document: docs/security-review-001.md. Decisions merged into squad/decisions.md.
 - withGlobalTauri: true — code-level concern, not privacy risk
 
 **Document**: `.squad/decisions/inbox/ackbar-pre-public-security-review.md`
+
+---
+
+### 2026-04-13: Full Security Audit #002 — Complete
+
+**Purpose**: Comprehensive security audit of the work-tracker-2 codebase.
+
+**Result**: **LOW RISK** — 0 Critical, 0 High, 2 Medium, 2 Low findings.
+
+**Automated Scans**:
+- `cargo audit`: 0 vulnerabilities (20 GTK3 warnings, transitive, not actionable)
+- `npm audit`: 3 low (cookie in @sveltejs/kit, not exploitable in desktop)
+
+**Findings**:
+
+| # | Severity | Title | GitHub Issue |
+|---|----------|-------|--------------|
+| 1 | Medium | CSP Disabled | #6 |
+| 2 | Medium | withGlobalTauri: true | #9 |
+| 3 | Low | CSV Formula Injection | — |
+| 4 | Low | No Input Length Validation | — |
+
+**Positive Observations**:
+- ✅ All SQL parameterized (no injection)
+- ✅ No unsafe DOM ops (innerHTML, eval)
+- ✅ No hardcoded secrets
+- ✅ Shell plugin removed (previous finding fixed)
+- ✅ Mutex-guarded DB access
+- ✅ UUID v4 for IDs
+- ✅ Capability scope appropriate
+
+**Recommendations**:
+1. **P1**: Set restrictive CSP and `withGlobalTauri: false`
+2. **P2**: Add input length validation (255/2000 char limits)
+3. **P2**: Add CSV formula prefix sanitization
+
+**Document**: `.squad/decisions.md` (merged from inbox)
+
+### 2026-04-15: Security Audit Results Consolidated
+
+All findings merged into .squad/decisions.md. GitHub Issues #6 and #9 tracking P1 fixes. No code changes required for MVP; findings are configuration/design-level.
+
+**Next steps**: Monitor GitHub for implementation status on CSP and withGlobalTauri fixes.

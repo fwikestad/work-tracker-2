@@ -103,7 +103,12 @@ describe('sessions store — can be imported without throwing', () => {
     expect(sessionsStore).toHaveProperty('todays');
     expect(sessionsStore).toHaveProperty('recent');
     expect(sessionsStore).toHaveProperty('allFavorites');
+    expect(sessionsStore).toHaveProperty('weekOffset');
+    expect(sessionsStore).toHaveProperty('weekSessions');
+    expect(sessionsStore).toHaveProperty('selectedWeekLabel');
+    expect(typeof sessionsStore.setWeekOffset).toBe('function');
     expect(typeof sessionsStore.refreshToday).toBe('function');
+    expect(typeof sessionsStore.refreshWeek).toBe('function');
     expect(typeof sessionsStore.refreshRecent).toBe('function');
     expect(typeof sessionsStore.refreshAll).toBe('function');
   });

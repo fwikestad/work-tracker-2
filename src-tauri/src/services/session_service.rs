@@ -1,9 +1,35 @@
+//! Session management service layer.
+//!
+//! Provides atomic operations for time tracking sessions including:
+//! - Starting/stopping/switching work sessions
+//! - Pause/resume functionality (Phase 2)
+//! - Crash recovery for orphaned sessions
+//! - Quick-add workflow for creating customers + work orders atomically
+//!
+//! All session operations maintain data integrity through transactions and ensure
+//! at most one active session exists at any time.
+
 use rusqlite::{Connection, params};
 use uuid::Uuid;
 use chrono::Utc;
 use crate::models::{session::*, customer::*, work_order::*, error::AppError};
 
-/// Stop the currently active session (if any). Returns the stopped session id.
+/// Stop the currently active session (if any).
+///
+/// Sets `end_time` to current timestamp, calculates `duration_seconds` (gross wall-clock time),
+/// and clears the `active_session` singleton. No-op if no session is active.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+///
+/// # Returns
+///
+/// The session ID that was stopped, or `None` if no session was active.
+///
+/// # Errors
+///
+/// Returns `AppError::Database` if the query fails.
 pub fn stop_active_session(conn: &Connection) -> Result<Option<String>, AppError> {
     // Get active session
     let mut stmt = conn.prepare("SELECT session_id FROM active_session WHERE id = 1")?;
@@ -39,7 +65,24 @@ pub fn stop_active_session(conn: &Connection) -> Result<Option<String>, AppError
     }
 }
 
-/// Create and start a new session for the given work_order_id. Stops any active session first.
+/// Switch to tracking a different work order.
+///
+/// Atomically stops the current session (if any) and starts a new session for the specified
+/// work order. Updates the `active_session` singleton and recent work orders tracking.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `work_order_id` - UUID of the work order to start tracking
+///
+/// # Returns
+///
+/// The newly created `Session` with `end_time = None` (running state).
+///
+/// # Errors
+///
+/// Returns `AppError::NotFound` if the work order does not exist or is archived.
+/// Returns `AppError::Database` on transaction failure.
 pub fn switch_to_work_order(conn: &Connection, work_order_id: &str) -> Result<Session, AppError> {
     // Verify work order exists
     let _exists: i64 = conn.query_row(
@@ -86,7 +129,23 @@ pub fn switch_to_work_order(conn: &Connection, work_order_id: &str) -> Result<Se
     get_session_by_id(conn, &session_id)
 }
 
-/// Stop current session with metadata
+/// Stop the current session and optionally add notes and activity type.
+///
+/// Convenience wrapper around `stop_active_session` that also updates session metadata.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `notes` - Optional session notes to save
+/// * `activity_type` - Optional activity classification (e.g., "meeting", "development")
+///
+/// # Returns
+///
+/// The stopped `Session` with all metadata, or `None` if no session was active.
+///
+/// # Errors
+///
+/// Returns `AppError::Database` on query failure.
 pub fn stop_current_session(conn: &Connection, notes: Option<&str>, activity_type: Option<&str>) -> Result<Option<Session>, AppError> {
     let session_id = stop_active_session(conn)?;
     
@@ -121,7 +180,22 @@ pub fn stop_current_session(conn: &Connection, notes: Option<&str>, activity_typ
     }
 }
 
-/// Get active session with joined display data
+/// Get the currently active session with customer and work order details.
+///
+/// Joins `active_session` → `time_sessions` → `work_orders` → `customers` to retrieve
+/// full display context. Calculates `elapsed_seconds` accounting for pause intervals.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+///
+/// # Returns
+///
+/// An `ActiveSession` with all display data, or `None` if no session is active.
+///
+/// # Errors
+///
+/// Returns `AppError::Database` on query failure.
 pub fn get_active_session(conn: &Connection) -> Result<Option<ActiveSession>, AppError> {
     let mut stmt = conn.prepare("
         SELECT 
@@ -174,7 +248,23 @@ pub fn get_active_session(conn: &Connection) -> Result<Option<ActiveSession>, Ap
     }
 }
 
-/// Check for orphan sessions on startup
+/// Detect orphaned sessions on application startup.
+///
+/// An orphaned session is one that has `end_time = NULL` and a stale heartbeat
+/// (last_heartbeat > 2 minutes ago). This indicates the app crashed or was force-quit
+/// without properly closing the session.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+///
+/// # Returns
+///
+/// An `OrphanSession` with display context if found, or `None` if no orphan exists.
+///
+/// # Errors
+///
+/// Returns `AppError::Database` on query failure.
 pub fn check_for_orphan_session(conn: &Connection) -> Result<Option<OrphanSession>, AppError> {
     let mut stmt = conn.prepare("
         SELECT 
@@ -208,7 +298,23 @@ pub fn check_for_orphan_session(conn: &Connection) -> Result<Option<OrphanSessio
     }
 }
 
-/// Recover an orphan session (close it at current time)
+/// Recover an orphaned session by closing it with the current timestamp.
+///
+/// User chooses to "accept" the orphan — close it now and preserve the tracked time.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `session_id` - UUID of the orphaned session
+///
+/// # Returns
+///
+/// The recovered `Session` with `end_time` set to now.
+///
+/// # Errors
+///
+/// Returns `AppError::NotFound` if the session does not exist.
+/// Returns `AppError::Database` on update failure.
 pub fn recover_session(conn: &Connection, session_id: &str) -> Result<Session, AppError> {
     let now = Utc::now().to_rfc3339();
     
@@ -236,7 +342,19 @@ pub fn recover_session(conn: &Connection, session_id: &str) -> Result<Session, A
     get_session_by_id(conn, session_id)
 }
 
-/// Discard an orphan session (delete it)
+/// Discard an orphaned session by deleting it from the database.
+///
+/// User chooses to reject the orphan — delete it without preserving any time.
+/// Clears the `active_session` singleton.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `session_id` - UUID of the orphaned session to delete
+///
+/// # Errors
+///
+/// Returns `AppError::Database` on deletion failure.
 pub fn discard_orphan_session(conn: &Connection, session_id: &str) -> Result<(), AppError> {
     conn.execute("DELETE FROM time_sessions WHERE id = ?", params![session_id])?;
     conn.execute(
@@ -246,7 +364,24 @@ pub fn discard_orphan_session(conn: &Connection, session_id: &str) -> Result<(),
     Ok(())
 }
 
-/// quick_add: create customer (optional) + work order + start session atomically
+/// Quick-add workflow: create customer + work order + start session atomically.
+///
+/// Phase 1 feature for inline creation without navigating away from active timer view.
+/// Either uses an existing customer or creates a new one based on parameters.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `params` - QuickAddParams with either `customer_id` (existing) or `customer_name` (create new)
+///
+/// # Returns
+///
+/// A `QuickAddResult` containing the customer, work order, and newly started session.
+///
+/// # Errors
+///
+/// Returns `AppError::Validation` if neither `customer_id` nor `customer_name` is provided.
+/// Returns `AppError::Database` on transaction failure.
 pub fn quick_add(conn: &Connection, params: &QuickAddParams) -> Result<QuickAddResult, AppError> {
     let tx = conn.unchecked_transaction()?;
     let now = Utc::now().to_rfc3339();
@@ -289,7 +424,19 @@ pub fn quick_add(conn: &Connection, params: &QuickAddParams) -> Result<QuickAddR
     })
 }
 
-/// Pause the currently active session
+/// Pause the currently active session (Phase 2 feature).
+///
+/// Sets `is_paused = 1` and records `paused_session_at` timestamp. Timer freezes but session
+/// remains open (not closed). Pause duration will be subtracted from effective duration on resume.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+///
+/// # Errors
+///
+/// Returns `AppError::Validation` if no session is active or session is already paused.
+/// Returns `AppError::Database` on update failure.
 pub fn pause_session(conn: &Connection) -> Result<(), AppError> {
     let now = Utc::now().to_rfc3339();
     
@@ -321,7 +468,19 @@ pub fn pause_session(conn: &Connection) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Resume the currently paused session
+/// Resume the currently paused session (Phase 2 feature).
+///
+/// Calculates pause duration (now - paused_session_at) and adds it to `total_paused_seconds`.
+/// Clears `is_paused` and `paused_session_at`. Timer resumes accumulating elapsed time.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+///
+/// # Errors
+///
+/// Returns `AppError::Validation` if no session is active, session is not paused, or pause state is invalid.
+/// Returns `AppError::Database` on update failure.
 pub fn resume_session(conn: &Connection) -> Result<(), AppError> {
     let now = Utc::now().to_rfc3339();
     
@@ -358,7 +517,18 @@ pub fn resume_session(conn: &Connection) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Update heartbeat for active session
+/// Update the heartbeat timestamp for crash detection.
+///
+/// Called periodically (e.g., every 30 seconds) by the frontend to signal the app is alive.
+/// If heartbeat becomes stale (>2 minutes), `check_for_orphan_session` detects it on next startup.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+///
+/// # Errors
+///
+/// Returns `AppError::Database` on update failure.
 pub fn update_heartbeat(conn: &Connection) -> Result<(), AppError> {
     let now = Utc::now().to_rfc3339();
     
@@ -372,11 +542,27 @@ pub fn update_heartbeat(conn: &Connection) -> Result<(), AppError> {
 
 // Helper functions
 
-/// Parse a timestamp string that may be in RFC3339 or SQLite datetime format.
-/// 
-/// Supports:
-/// - RFC3339: "2024-01-15T10:30:00Z" or "2024-01-15T10:30:00+00:00"
-/// - SQLite: "2024-01-15 10:30:00"
+/// Parse a timestamp string supporting both RFC3339 and SQLite datetime formats.
+///
+/// Provides backward compatibility with older sessions that may have SQLite-format timestamps
+/// while new sessions use RFC3339 (current standard).
+///
+/// # Supported Formats
+///
+/// - RFC3339: "2024-01-15T10:30:00Z" or "2024-01-15T10:30:00+00:00" (current)
+/// - SQLite: "2024-01-15 10:30:00" (legacy, converted internally)
+///
+/// # Arguments
+///
+/// * `timestamp` - Timestamp string in either format
+///
+/// # Returns
+///
+/// Parsed `chrono::DateTime<FixedOffset>` with UTC timezone.
+///
+/// # Errors
+///
+/// Returns `AppError::Validation` if the format is unrecognized.
 fn parse_timestamp(timestamp: &str) -> Result<chrono::DateTime<chrono::FixedOffset>, AppError> {
     // Try RFC3339 first (current format)
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(timestamp) {
@@ -395,6 +581,23 @@ fn parse_timestamp(timestamp: &str) -> Result<chrono::DateTime<chrono::FixedOffs
     Err(AppError::Validation(format!("Invalid timestamp format: {}", timestamp)))
 }
 
+/// Calculate duration in seconds between two timestamps.
+///
+/// Supports mixed formats (one RFC3339, one SQLite) via `parse_timestamp`.
+/// Returns gross wall-clock time (no pause subtraction — handled elsewhere).
+///
+/// # Arguments
+///
+/// * `start` - Start timestamp (any supported format)
+/// * `end` - End timestamp (any supported format)
+///
+/// # Returns
+///
+/// Duration in seconds as `i64`.
+///
+/// # Errors
+///
+/// Returns `AppError::Validation` if either timestamp is invalid.
 fn calculate_duration(start: &str, end: &str) -> Result<i64, AppError> {
     let start_dt = parse_timestamp(start)?;
     let end_dt = parse_timestamp(end)?;
@@ -403,10 +606,38 @@ fn calculate_duration(start: &str, end: &str) -> Result<i64, AppError> {
     Ok(duration.num_seconds())
 }
 
+/// Calculate elapsed seconds from a start timestamp to now.
+///
+/// Helper for real-time elapsed time calculations in active sessions.
+///
+/// # Arguments
+///
+/// * `start` - Start timestamp (any supported format)
+///
+/// # Returns
+///
+/// Elapsed seconds as `i64`.
 fn calculate_elapsed(start: &str) -> Result<i64, AppError> {
     calculate_duration(start, &Utc::now().to_rfc3339())
 }
 
+/// Fetch a session by ID with joined customer and work order details.
+///
+/// Internal helper used by public functions to retrieve full session context.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `id` - Session UUID
+///
+/// # Returns
+///
+/// A `Session` with all fields populated including `effective_duration`.
+///
+/// # Errors
+///
+/// Returns `AppError::NotFound` if the session does not exist.
+/// Returns `AppError::Database` on query failure.
 fn get_session_by_id(conn: &Connection, id: &str) -> Result<Session, AppError> {
     let mut stmt = conn.prepare("
         SELECT 
@@ -453,6 +684,13 @@ fn get_session_by_id(conn: &Connection, id: &str) -> Result<Session, AppError> {
     })
 }
 
+/// Fetch a customer by ID.
+///
+/// Internal helper for quick-add workflow.
+///
+/// # Errors
+///
+/// Returns `AppError::NotFound` if the customer does not exist.
 fn get_customer_by_id(conn: &Connection, id: &str) -> Result<Customer, AppError> {
     conn.query_row(
         "SELECT id, name, code, color, created_at, updated_at, archived_at FROM customers WHERE id = ?",
@@ -474,6 +712,13 @@ fn get_customer_by_id(conn: &Connection, id: &str) -> Result<Customer, AppError>
     })
 }
 
+/// Fetch a work order by ID with joined customer details.
+///
+/// Internal helper for quick-add workflow and session retrieval.
+///
+/// # Errors
+///
+/// Returns `AppError::NotFound` if the work order does not exist.
 fn get_work_order_by_id(conn: &Connection, id: &str) -> Result<WorkOrder, AppError> {
     conn.query_row(
         "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
