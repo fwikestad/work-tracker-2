@@ -27,7 +27,7 @@ Two medium-severity findings and three low-severity findings were identified. No
 
 ## Findings
 
-### [SEV-001] Content Security Policy Disabled
+### [SEV-001] Content Security Policy Disabled ✅ FIXED
 
 - **Severity:** Medium (CVSS 3.1 score: 5.4)
 - **Location:** `src-tauri/tauri.conf.json:31`
@@ -38,13 +38,13 @@ Two medium-severity findings and three low-severity findings were identified. No
   1. Store a `<script>` tag in a notes field (if rendered as HTML)
   2. When the notes field renders, the script executes
   3. Script calls `window.__TAURI__.core.invoke('delete_session', { id: '...' })` to delete data
-- **Recommended Fix:** Set a restrictive CSP. At minimum:
+- **Fix Applied:** Restrictive CSP set in `src-tauri/tauri.conf.json`:
   ```json
   "security": {
     "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
   }
   ```
-  Note: `unsafe-inline` for styles may be needed for Svelte's style handling. Test after applying.
+  Scripts are restricted to same-origin only (no inline scripts). `unsafe-inline` for styles is retained for Svelte's scoped CSS.
 
 ---
 
