@@ -188,7 +188,7 @@ describe('WidgetOverlay component — mount smoke tests', () => {
 
   it('renders Stopped badge when not tracking', () => {
     render(WidgetOverlay);
-    expect(screen.getByText(/Stopped/i)).toBeTruthy();
+    expect(screen.getByLabelText(/Stopped/i)).toBeTruthy();
   });
 
   it('renders exit button', () => {
