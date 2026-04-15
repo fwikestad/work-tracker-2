@@ -16,6 +16,9 @@ pub struct WindowState {
     pub is_widget_mode: bool,
     pub previous_size: Option<(u32, u32)>,
     pub previous_position: Option<(i32, i32)>,
+    /// Physical Y position saved before the widget dropdown expands the window.
+    /// Used to restore the window to its original vertical position when the dropdown closes.
+    pub widget_pre_expand_y: Option<i32>,
 }
 
 /// Update the tray icon, tooltip, and menu to reflect the current session state.
@@ -75,6 +78,7 @@ pub fn run() {
                 is_widget_mode: false,
                 previous_size: None,
                 previous_position: None,
+                widget_pre_expand_y: None,
             }));
 
             // Register Ctrl+Shift+S → bring window to front + open search overlay
