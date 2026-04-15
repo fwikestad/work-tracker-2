@@ -57,34 +57,21 @@ All critical security paths (SQL injection, command injection, sensitive data ex
 
 ## 3. Medium Severity Findings
 
-### 3.1 CSP Disabled (`csp: null`) — NOTED (Recommendation Only)
+### 3.1 CSP Disabled (`csp: null`) — ✅ FIXED
 
 **Location:** `src-tauri/tauri.conf.json` line 27
 
-**Finding:** Content Security Policy is explicitly disabled.
+**Finding:** Content Security Policy was explicitly disabled.
 
-**Risk Assessment for This App: LOW**
-
-For a **local-only desktop app** that:
-- Loads no remote URLs
-- Has no external API integrations
-- Serves all content from local SvelteKit build
-- Has no user-generated HTML rendering (`{@html}` not used)
-
-The risk of XSS exploitation is minimal because:
-1. No vector for injecting remote scripts (no remote content loaded)
-2. No `{@html}` directives that could render user input as HTML
-3. User data (names, notes) is rendered as text content, not HTML
-
-**Recommendation:** For defense-in-depth, consider enabling a permissive CSP:
+**Fix Applied:** Restrictive CSP enabled:
 
 ```json
 "security": {
-  "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+  "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
 }
 ```
 
-**Action Required:** Manual testing needed before enabling. SvelteKit may require `unsafe-inline` for styles. **Not implemented in this review** — requires user approval and testing.
+Scripts are now restricted to same-origin only (no inline scripts). `unsafe-inline` for styles is retained for Svelte's scoped CSS handling. This eliminates the XSS blast radius and prevents injected scripts from executing in the WebView.
 
 ### 3.2 File System Permissions Not Scoped ✅ FIXED (Partial)
 
