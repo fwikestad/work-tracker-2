@@ -45,6 +45,13 @@ This document catalogs all features of Work Tracker 2, organized by phase and st
 - ✅ **Breakdown by work order** — List of projects worked on today with hours
 - ✅ **Real-time updates** — Summary refreshes as sessions are created/edited/deleted
 
+### D.1. Week Summary
+
+- ✅ **Weekly view** — View all work from the current week (Monday–Sunday)
+- ✅ **Week navigation** — Arrow controls to move to previous/next weeks
+- ✅ **Inline editing** — Click entries to adjust duration, notes, or activity type
+- ✅ **Access via tab** — Dedicated tab in navigation bar
+
 ### E. Reports & Export
 
 - ✅ **Date range filtering** — Select today, this week, this month, or custom range
@@ -114,6 +121,14 @@ This document catalogs all features of Work Tracker 2, organized by phase and st
 - ✅ **Bulk operations** — Select multiple customers (Phase 2+)
 - ✅ **Status display** — Show active vs. archived
 - ✅ **Last-used metadata** — Show when customer was last worked on
+
+### E. Widget Mode
+
+- ✅ **Always-on-top window** — Shrink to compact floating overlay
+- ✅ **Persistent tracking** — Continue tracking while widget is visible
+- ✅ **Quick-switch from widget** — Click work order name to switch projects
+- ✅ **Toggle with shortcut** — Ctrl+W / Cmd+W to enable/disable widget mode
+- ✅ **Restore previous state** — Window size/position restored when exiting widget mode
 
 ---
 

@@ -545,6 +545,192 @@ await invoke('discard_orphan_session', { session_id: 'orphan-uuid' });
 
 ---
 
+## Session Commands (continued)
+
+### pause_session
+
+Pause the currently active session (freeze timer without closing session).
+
+**TypeScript**: `invoke<void>('pause_session', {})`
+
+**Parameters**: None
+
+**Returns**: `null` (or void on success)
+
+**Errors**:
+- `NO_ACTIVE_SESSION` — No session is currently running
+
+**Example**:
+```typescript
+await invoke('pause_session', {});
+// Timer is now paused; session remains open
+```
+
+---
+
+### resume_session
+
+Resume a paused session (unfreeze timer and continue).
+
+**TypeScript**: `invoke<void>('resume_session', {})`
+
+**Parameters**: None
+
+**Returns**: `null` (or void on success)
+
+**Errors**:
+- `NO_ACTIVE_SESSION` — No session is currently paused
+
+**Example**:
+```typescript
+await invoke('resume_session', {});
+// Timer resumes counting; session continues
+```
+
+---
+
+### update_heartbeat
+
+Update the heartbeat timestamp for the active session. Used to detect stale sessions on app restart.
+
+**TypeScript**: `invoke<void>('update_heartbeat', {})`
+
+**Parameters**: None
+
+**Returns**: `null` (or void on success)
+
+**Errors**:
+- `NO_ACTIVE_SESSION` — No session is currently active
+
+**Example**:
+```typescript
+// Called periodically by frontend to keep session "alive"
+await invoke('update_heartbeat', {});
+```
+
+---
+
+## Work Order Commands (continued)
+
+### toggle_favorite
+
+Mark or unmark a work order as a favorite (pinned) for quick access.
+
+**TypeScript**: `invoke<WorkOrder>('toggle_favorite', params)`
+
+**Parameters**:
+- `work_order_id` (string, required): Work order UUID
+
+**Returns**: Updated `WorkOrder` object with `is_favorite` toggled
+
+**Errors**:
+- `NOT_FOUND` — Work order ID does not exist
+
+**Example**:
+```typescript
+const updated = await invoke<WorkOrder>('toggle_favorite', {
+  work_order_id: 'workorder-uuid'
+});
+console.log(`Favorite: ${updated.is_favorite}`);
+```
+
+---
+
+### unarchive_work_order
+
+Restore an archived work order (make it available for tracking again).
+
+**TypeScript**: `invoke<void>('unarchive_work_order', params)`
+
+**Parameters**:
+- `id` (string, required): Work order UUID
+
+**Returns**: `null` (or void on success)
+
+**Errors**:
+- `NOT_FOUND` — Work order ID does not exist
+
+**Example**:
+```typescript
+await invoke('unarchive_work_order', { id: 'workorder-uuid' });
+// Work order is now available for tracking
+```
+
+---
+
+## Customer Commands (continued)
+
+### unarchive_customer
+
+Restore an archived customer (make it available again with its work orders).
+
+**TypeScript**: `invoke<void>('unarchive_customer', params)`
+
+**Parameters**:
+- `id` (string, required): Customer UUID
+
+**Returns**: `null` (or void on success)
+
+**Errors**:
+- `NOT_FOUND` — Customer ID does not exist
+
+**Example**:
+```typescript
+await invoke('unarchive_customer', { id: 'customer-uuid' });
+// Customer is now visible and available
+```
+
+---
+
+## Window Commands
+
+### toggle_widget_mode
+
+Toggle the app into/out of always-on-top widget mode (compact floating window).
+
+**TypeScript**: `invoke<boolean>('toggle_widget_mode', params)`
+
+**Parameters**:
+- `enable` (boolean, required): true to enable widget mode, false to disable
+
+**Returns**: `boolean` — New widget mode state (true if enabled)
+
+**Errors**: None (window operations are forgiving)
+
+**Example**:
+```typescript
+// Enter widget mode (compact, floating, always-on-top)
+const result = await invoke<boolean>('toggle_widget_mode', { enable: true });
+console.log(`Widget mode: ${result}`);
+
+// Exit widget mode and restore previous size/position
+await invoke<boolean>('toggle_widget_mode', { enable: false });
+```
+
+---
+
+### resize_widget
+
+Manually resize the widget window to specified dimensions.
+
+**TypeScript**: `invoke<void>('resize_widget', params)`
+
+**Parameters**:
+- `width` (number, required): Width in logical pixels
+- `height` (number, required): Height in logical pixels
+
+**Returns**: `null` (or void on success)
+
+**Errors**: None (window operations are forgiving)
+
+**Example**:
+```typescript
+// Resize widget to 400x150 logical pixels
+await invoke('resize_widget', { width: 400, height: 150 });
+```
+
+---
+
 ## Report & Export Commands
 
 ### get_daily_summary
@@ -669,6 +855,94 @@ const csv = await invoke<string>('export_csv', {
 
 // Save to file (using file dialog or other mechanism)
 console.log(csv);
+```
+
+---
+
+### get_report
+
+Generate a detailed report for a date range with customizable grouping.
+
+**TypeScript**: `invoke<ReportData>('get_report', params)`
+
+**Parameters**:
+- `start_date` (string, required): ISO 8601 date string (e.g., "2026-04-01")
+- `end_date` (string, required): ISO 8601 date string (e.g., "2026-04-30")
+
+**Returns**: `ReportData` object
+```typescript
+interface ReportData {
+  start_date: string;
+  end_date: string;
+  total_seconds: number;
+  by_customer: {
+    customer_id: string;
+    customer_name: string;
+    total_seconds: number;
+    work_orders: {
+      work_order_id: string;
+      work_order_name: string;
+      total_seconds: number;
+      sessions: number;
+    }[];
+  }[];
+}
+```
+
+**Errors**:
+- `INVALID_DATE_RANGE` — Start date is after end date
+- `DB_ERROR` — Database query failed
+
+**Example**:
+```typescript
+const report = await invoke<ReportData>('get_report', {
+  start_date: '2026-04-01',
+  end_date: '2026-04-30'
+});
+
+console.log(`April total: ${report.total_seconds / 3600} hours`);
+report.by_customer.forEach(c => {
+  console.log(`  ${c.customer_name}: ${c.total_seconds / 3600}h (${c.work_orders.length} projects)`);
+});
+```
+
+---
+
+## System Tray Commands
+
+### update_tray_state
+
+Update the system tray icon tooltip and menu to reflect the current session state. Call this after every start/stop/pause/resume/switch action.
+
+**TypeScript**: `invoke<void>('update_tray_state', params)`
+
+**Parameters**:
+- `work_order_name` (string | null, required): Name of active work order, or null if stopped
+- `is_paused` (boolean, required): true if session is paused, false otherwise
+
+**Returns**: `null` (or void on success)
+
+**Errors**: None (tray updates are forgiving)
+
+**Example**:
+```typescript
+// After starting a session
+await invoke('update_tray_state', {
+  work_order_name: 'API Development',
+  is_paused: false
+});
+
+// After pausing
+await invoke('update_tray_state', {
+  work_order_name: 'API Development',
+  is_paused: true
+});
+
+// After stopping
+await invoke('update_tray_state', {
+  work_order_name: null,
+  is_paused: false
+});
 ```
 
 ---

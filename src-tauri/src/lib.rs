@@ -123,6 +123,7 @@ pub fn run() {
             commands::reports::get_report,
             update_tray_state,
             commands::window::toggle_widget_mode,
+            commands::window::resize_widget,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

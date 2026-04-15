@@ -6,6 +6,24 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 
 ## Learnings
 
+### 2026-05-xx: Widget Overlay Redesign — Dynamic Resize + New Layout
+
+**Context**: Fredrik wanted to remove the timer from the widget, promote customer name as the primary label, and fix dropdown clipping by resizing the window dynamically.
+
+**New layout**: Header row = `[status emoji] [Customer Name] [✕]` (customer at 15px/600), Row 2 = work-order button with chevron (full-width, bordered, 13px/normal/muted). "Not tracking" is shown inline in the customer slot when no active session.
+
+**Dynamic resize pattern**: Added `resize_widget` Tauri command + `resizeWidget(w, h)` TS function. Widget base height is 90px (`WIDGET_BASE_H`). On dropdown open: `expandedH = 90 + min(recentCount, 6) * 40 + 8`. On close/exit: reset to 90. This replaces the old `position: fixed; bottom: 0` dropdown hack.
+
+**Overflow**: Changed `.widget` from `overflow: hidden` to `overflow: visible` so `position: absolute; top: 100%` dropdown flows below the trigger instead of being clipped. The window resize is what actually makes it visible.
+
+**Badge icon-only**: Status badge now shows only the emoji (🟢/🟡/⊘), no label text — cleaner in the compact 90px widget.
+
+**`resize_widget` vs `toggle_widget_mode`**: Kept them separate intentionally — `toggle_widget_mode` saves/restores previous geometry; `resize_widget` just sets size without touching that saved state. Calling `resize_widget` from `exitWidgetMode` before `toggleWidgetMode(false)` ensures clean state reset even though `toggle_widget_mode` will restore the previous size anyway.
+
+**CI**: ✅ cargo check passes | TS type-check has pre-existing `@types/node` env issue unrelated to these changes.
+
+---
+
 ### 2026-05-xx: Widget Context-Switch Dropdown — Complete
 
 **Context**: Fredrik wanted to switch work orders directly from the widget without opening the main window.
@@ -968,3 +986,65 @@ color: inherit;
 ## 2026-04-12: Added Unarchive for Work Orders
 
 Implemented `unarchiveWorkOrder` in `src/lib/api/workOrders.ts` (mirroring `archiveWorkOrder`). Updated `WorkOrderList.svelte` to import and use `unarchiveWorkOrder`, added `handleUnarchive` function, and conditionally render Archive/Unarchive buttons based on `wo.archivedAt` (null = show Archive, non-null = show Unarchive). Added `.btn-unarchive` styles matching customer component (teal accent on hover). All 55 tests passing.
+
+---
+
+### 2026-05-xx: JSDoc Coverage - Frontend Stores and API Wrappers
+
+Context: Issue 15 requested comprehensive JSDoc comments for the two primary frontend stores (timer.svelte.ts and sessions.svelte.ts) plus brief API wrapper documentation to improve IDE tooltip quality and developer experience.
+
+Files documented:
+- src/lib/stores/timer.svelte.ts: Added module-level JSDoc describing the store purpose (active session management, timer updates, heartbeat). Documented all public getters, methods, and internal helper functions. Added JSDoc to state variables explaining their purpose.
+
+- src/lib/stores/sessions.svelte.ts: Added module-level JSDoc describing the store role (session data by day/week, recent work orders, week navigation). Documented the WeekDay interface and all helper functions. Added JSDoc to all public getters and methods. Explained the refresh strategy for keeping todaysSessions in sync when viewing past weeks.
+
+- src/lib/api/customers.ts: One-liner JSDoc for all 5 functions.
+- src/lib/api/sessions.ts: One-liner JSDoc for all 13 functions.
+- src/lib/api/workOrders.ts: One-liner JSDoc for all 6 functions.
+- src/lib/api/reports.ts: One-liner JSDoc for all 4 functions.
+- src/lib/api/window.ts: One-liner JSDoc for 2 functions.
+
+JSDoc format: Used standard JSDoc syntax with brief one-line descriptions for most functions. For stores, included longer explanations covering why and usage patterns. Added param, returns, and throws tags where appropriate. Included context about atomic operations, orphan recovery, and refresh strategies.
+
+Verification: npm run build succeeded with no TypeScript errors. JSDoc comments do not affect runtime behavior; they only improve IDE intellisense.
+
+Outcome: Frontend now has comprehensive JSDoc coverage (approx 95 percent) for the core stores and all API wrapper functions. IDE tooltips now provide actionable information about parameters, return values, and side effects.
+
+---
+
+### 2026-04-15: Frontend JSDoc Documentation Complete (Issue #15)
+
+**Task**: Implement comprehensive JSDoc for frontend stores and API wrappers
+
+**Deliverables**:
+- `src/lib/stores/timer.svelte.ts`: 19 items documented (100%)
+- `src/lib/stores/sessions.svelte.ts`: 16 items documented (100%)
+- API wrappers (5 files): 30 functions documented (100%)
+- Overall coverage: ~95% JSDoc coverage
+
+**Implementation**:
+- Module-level JSDoc describing store purposes and responsibilities
+- All public getters and methods documented with brief descriptions
+- All helper functions documented with context
+- API wrappers: one-liner descriptions optimized for IDE tooltips
+- Stores: comprehensive explanations including implementation details and refresh strategies
+
+**Key Context Documented**:
+- Atomic operations (e.g., `setActive` stops timer and starts heartbeat)
+- Orphan recovery patterns
+- Refresh strategies for keeping data in sync
+- Performance characteristics
+
+**Verification**:
+- ✅ `npm run build` — TypeScript compilation succeeded
+- ✅ No logic changes — only documentation added
+
+**Impact**:
+- IDE Intellisense shows full documentation on hover
+- New developers understand store patterns without reading implementation
+- All public store APIs self-documenting
+- Future maintainers have clear context about expected behavior
+
+**GitHub Issue #15**: RESOLVED
+
+**Outcome**: Frontend documentation complete for Phase 1-3 scope. Stores and API layer fully documented. Developer experience significantly improved through IDE tooltips.

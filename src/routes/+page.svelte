@@ -12,7 +12,7 @@
   import { toggleWidgetMode } from '$lib/api/window';
   import { listen } from '@tauri-apps/api/event';
 
-  let activeView = $state<'track' | 'reports'>('track');
+  let activeView = $state<'track' | 'week' | 'reports'>('track');
   let summaryRef = $state<DailySummary | null>(null);
   let searchSwitchRef = $state<SearchSwitch | null>(null);
   let togglingWidget = $state(false);
@@ -86,6 +86,13 @@
     </button>
     <button
       class="nav-btn"
+      class:active={activeView === 'week'}
+      onclick={() => (activeView = 'week')}
+    >
+      Week Summary
+    </button>
+    <button
+      class="nav-btn"
       class:active={activeView === 'reports'}
       onclick={() => (activeView = 'reports')}
     >
@@ -110,6 +117,7 @@
       <Timer />
       <SearchSwitch bind:this={searchSwitchRef} />
       <DailySummary bind:this={summaryRef} />
+    {:else if activeView === 'week'}
       <SessionList />
     {:else if activeView === 'reports'}
       <ReportView />

@@ -2,6 +2,17 @@ use std::sync::Mutex;
 use crate::WindowState;
 
 #[tauri::command]
+pub fn resize_widget(
+    window: tauri::Window,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    window
+        .set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn toggle_widget_mode(
     window: tauri::Window,
     state: tauri::State<'_, Mutex<WindowState>>,
@@ -16,14 +27,16 @@ pub fn toggle_widget_mode(
         ws.previous_position = Some((position.x, position.y));
 
         window
-            .set_size(tauri::Size::Physical(tauri::PhysicalSize {
-                width: 320,
-                height: 150,
+            .set_size(tauri::Size::Logical(tauri::LogicalSize {
+                width: 320.0,
+                height: 100.0,
             }))
             .map_err(|e| e.to_string())?;
+        window.set_resizable(false).map_err(|e| e.to_string())?;
         window.set_always_on_top(true).map_err(|e| e.to_string())?;
     } else {
         window.set_always_on_top(false).map_err(|e| e.to_string())?;
+        window.set_resizable(true).map_err(|e| e.to_string())?;
 
         if let Some((w, h)) = ws.previous_size.take() {
             window

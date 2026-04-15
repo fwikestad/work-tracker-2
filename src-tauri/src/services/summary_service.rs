@@ -1,10 +1,23 @@
+//! Summary and reporting service layer.
+//!
+//! Provides aggregated views of tracked time including:
+//! - Daily summaries (grouped by customer/work order)
+//! - Date range reports with flexible filtering
+//! - CSV export for external analysis
+//! - Recent work orders tracking
+//!
+//! All queries use `EFFECTIVE_DURATION_SQL` to respect manual duration overrides.
+
 use rusqlite::{Connection, params};
 use crate::models::{session::*, work_order::WorkOrder, error::AppError};
 
-// SQL fragment for calculating effective duration.
-// duration_seconds stores gross wall-clock time (end_time − start_time, including paused
-// intervals) per decisions.md Section 618.  duration_override lets the user substitute
-// a manual value.  The COALESCE prefers the manual override when set.
+/// SQL fragment for calculating effective duration.
+///
+/// `duration_seconds` stores gross wall-clock time (end_time - start_time, including paused
+/// intervals) per decisions.md Section 618. `duration_override` lets the user substitute
+/// a manual value. The COALESCE prefers the manual override when set.
+///
+/// Used consistently across all summary and report queries to ensure correct duration totals.
 const EFFECTIVE_DURATION_SQL: &str = "COALESCE(ts.duration_override, ts.duration_seconds)";
 
 /// Fetch sessions with work order and customer details joined.
@@ -12,15 +25,22 @@ const EFFECTIVE_DURATION_SQL: &str = "COALESCE(ts.duration_override, ts.duration
 /// This helper eliminates duplication between daily summary and report queries.
 /// Both need the same session data with joined work order and customer info.
 ///
-/// # Parameters
-/// - `conn`: Database connection
-/// - `where_clause`: SQL WHERE condition (e.g., "date(ts.start_time) = date(?)")
-/// - `params`: Query parameters corresponding to placeholders in where_clause
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `where_clause` - SQL WHERE condition (e.g., "date(ts.start_time) = date(?)")
+/// * `params` - Query parameters corresponding to placeholders in where_clause
 ///
 /// # Returns
-/// Vector of `Session` objects with all fields populated including effective_duration
+///
+/// Vector of `Session` objects with all fields populated including `effective_duration`.
+///
+/// # Errors
+///
+/// Returns `AppError::Database` on query failure.
 ///
 /// # Example
+///
 /// ```ignore
 /// let sessions = fetch_sessions(
 ///     &conn,
@@ -80,6 +100,30 @@ fn fetch_sessions(
     sessions.map_err(AppError::Database)
 }
 
+/// Get a daily summary of all tracked time for a specific date.
+///
+/// Returns aggregated totals grouped by customer and work order, plus a list of all
+/// completed sessions for that day. Only includes sessions with `end_time IS NOT NULL`.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `date` - Date string in "YYYY-MM-DD" format (e.g., "2026-04-14")
+///
+/// # Returns
+///
+/// A `DailySummary` containing:
+/// - `total_seconds`: Sum of all effective durations for the day
+/// - `entries`: Aggregated by customer/work order with session counts
+/// - `sessions`: Full list of completed sessions with all metadata
+///
+/// # Errors
+///
+/// Returns `AppError::Database` on query failure.
+///
+/// # Performance
+///
+/// Target: <100ms for typical daily load (10-50 sessions).
 pub fn get_daily_summary(conn: &Connection, date: &str) -> Result<DailySummary, AppError> {
     // Get summary entries (aggregated by customer and work order)
     let query = format!("
@@ -128,6 +172,27 @@ pub fn get_daily_summary(conn: &Connection, date: &str) -> Result<DailySummary, 
     })
 }
 
+/// Get a list of recently used work orders for quick switching.
+///
+/// Returns work orders ordered by favorite status first, then most recent usage.
+/// Excludes archived work orders and customers.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `limit` - Maximum number of work orders to return
+///
+/// # Returns
+///
+/// Vector of `WorkOrder` objects with customer details joined.
+///
+/// # Errors
+///
+/// Returns `AppError::Database` on query failure.
+///
+/// # Usage
+///
+/// Used by the quick-switch UI to populate recent/favorite work orders list.
 pub fn get_recent_work_orders(conn: &Connection, limit: i64) -> Result<Vec<WorkOrder>, AppError> {
     let mut stmt = conn.prepare("
         SELECT 
@@ -172,6 +237,31 @@ pub fn get_recent_work_orders(conn: &Connection, limit: i64) -> Result<Vec<WorkO
     work_orders.map_err(AppError::Database)
 }
 
+/// Export time tracking data as CSV for a date range.
+///
+/// Generates CSV with headers: Date, Customer, Work Order, Start Time, End Time,
+/// Duration (minutes), Activity Type, Notes.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `start_date` - Start date in "YYYY-MM-DD" format (inclusive)
+/// * `end_date` - End date in "YYYY-MM-DD" format (inclusive)
+///
+/// # Returns
+///
+/// CSV string ready for file export. Fields with commas/quotes are properly escaped.
+///
+/// # Errors
+///
+/// Returns `AppError::Database` on query failure.
+///
+/// # Example Output
+///
+/// ```csv
+/// Date,Customer,Work Order,Start Time,End Time,Duration (minutes),Activity Type,Notes
+/// 2026-04-14,Acme Corp,Website Redesign,2026-04-14T09:00:00Z,2026-04-14T11:30:00Z,150,development,"Fixed header bug"
+/// ```
 pub fn export_csv(conn: &Connection, start_date: &str, end_date: &str) -> Result<String, AppError> {
     let mut stmt = conn.prepare("
         SELECT 
@@ -226,6 +316,31 @@ pub fn export_csv(conn: &Connection, start_date: &str, end_date: &str) -> Result
     Ok(csv)
 }
 
+/// Generate a detailed report for a date range.
+///
+/// Similar to `get_daily_summary` but for arbitrary date ranges. Returns aggregated totals
+/// grouped by customer and work order, ordered by total duration descending.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `start_date` - Start date in "YYYY-MM-DD" format (inclusive)
+/// * `end_date` - End date in "YYYY-MM-DD" format (inclusive)
+///
+/// # Returns
+///
+/// A `ReportData` containing:
+/// - `total_seconds`: Sum of all effective durations in the range
+/// - `entries`: Aggregated by customer/work order, sorted by duration (highest first)
+/// - `sessions`: Full list of completed sessions in the range
+///
+/// # Errors
+///
+/// Returns `AppError::Database` on query failure.
+///
+/// # Performance
+///
+/// Target: <500ms for typical weekly/monthly reports (50-200 sessions).
 pub fn get_report(conn: &Connection, start_date: &str, end_date: &str) -> Result<ReportData, AppError> {
     // Get aggregated entries (grouped by customer and work order)
     let query = format!("
@@ -280,6 +395,18 @@ pub fn get_report(conn: &Connection, start_date: &str, end_date: &str) -> Result
     })
 }
 
+/// Escape CSV field values according to RFC 4180.
+///
+/// Wraps values containing commas, quotes, or newlines in double-quotes and escapes
+/// internal quotes by doubling them.
+///
+/// # Arguments
+///
+/// * `value` - String to escape
+///
+/// # Returns
+///
+/// CSV-safe string (either unchanged or quoted and escaped).
 fn escape_csv(value: &str) -> String {
     if value.contains(',') || value.contains('"') || value.contains('\n') {
         format!("\"{}\"", value.replace('"', "\"\""))

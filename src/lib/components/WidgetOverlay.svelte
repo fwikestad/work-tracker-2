@@ -2,9 +2,13 @@
   import { timer } from '$lib/stores/timer.svelte';
   import { widgetStore } from '$lib/stores/widget.svelte';
   import { sessionsStore } from '$lib/stores/sessions.svelte';
-  import { toggleWidgetMode } from '$lib/api/window';
+  import { toggleWidgetMode, resizeWidget } from '$lib/api/window';
   import { startSession } from '$lib/api/sessions';
-  import { formatDuration } from '$lib/utils/formatters';
+
+  const WIDGET_W = 320;
+  const WIDGET_BASE_H = 100;
+  const ITEM_H = 40;
+  const DROPDOWN_MAX_ITEMS = 6;
 
   async function exitWidgetMode() {
     await toggleWidgetMode(false);
@@ -19,20 +23,26 @@
         : { icon: '🟢', label: 'Running', cls: 'running' }
   );
 
-  // Context-switch dropdown
   let dropdownOpen = $state(false);
   let highlightIndex = $state(0);
-  let switcherRef = $state<HTMLDivElement | undefined>(undefined);
 
   function openDropdown() {
     sessionsStore.refreshRecent();
     dropdownOpen = true;
     highlightIndex = 0;
+    const itemCount = Math.min(sessionsStore.recent.length || 1, DROPDOWN_MAX_ITEMS);
+    resizeWidget(WIDGET_W, WIDGET_BASE_H + itemCount * ITEM_H + 8);
   }
 
   function closeDropdown() {
     dropdownOpen = false;
     highlightIndex = 0;
+    resizeWidget(WIDGET_W, WIDGET_BASE_H);
+  }
+
+  function toggleDropdown() {
+    if (dropdownOpen) closeDropdown();
+    else openDropdown();
   }
 
   async function switchTo(workOrderId: string) {
@@ -43,15 +53,9 @@
     await sessionsStore.refreshRecent();
   }
 
-  function handleClickOutside(e: MouseEvent) {
-    if (switcherRef && !switcherRef.contains(e.target as Node)) {
-      closeDropdown();
-    }
-  }
-
   function handleKeydown(e: KeyboardEvent) {
     if (!dropdownOpen) return;
-    const items = sessionsStore.recent.slice(0, 6);
+    const items = sessionsStore.recent.slice(0, DROPDOWN_MAX_ITEMS);
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       highlightIndex = Math.min(highlightIndex + 1, items.length - 1);
@@ -66,13 +70,6 @@
       closeDropdown();
     }
   }
-
-  $effect(() => {
-    if (dropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  });
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -80,113 +77,107 @@
 <div class="widget">
   <div class="header">
     <span class="badge {stateBadge.cls}" aria-label={stateBadge.label}>
-      {stateBadge.icon} {stateBadge.label}
+      {stateBadge.icon}
     </span>
+    {#if timer.active}
+      <span class="customer-name" title={timer.active.customerName}>
+        {timer.active.customerName}
+      </span>
+    {:else}
+      <span class="customer-name muted">Not tracking</span>
+    {/if}
     <button class="exit-btn" onclick={exitWidgetMode} title="Exit widget mode (Ctrl+Alt+W)">
       ✕
     </button>
   </div>
 
-  <div class="elapsed" class:dim={!timer.isTracking}>
-    {formatDuration(timer.elapsed)}
-  </div>
-
-  {#if timer.active}
-    <div class="context-switcher" bind:this={switcherRef}>
-      <button
-        class="context-btn"
-        onclick={openDropdown}
-        aria-expanded={dropdownOpen}
-        aria-haspopup="listbox"
-        title="Switch work order"
-      >
-        <span class="context-text">
-          <span class="work-order" title={timer.active.workOrderName}>
-            {timer.active.workOrderName}
-          </span>
-          <span class="customer" title={timer.active.customerName}>
-            {#if timer.active.customerColor}
-              <span class="dot" style="background: {timer.active.customerColor}"></span>
-            {/if}
-            {timer.active.customerName}
-          </span>
+  <div class="context-switcher">
+    <button
+      class="context-btn"
+      onclick={toggleDropdown}
+      aria-expanded={dropdownOpen}
+      aria-haspopup="listbox"
+      title={timer.active ? 'Switch work order' : 'Start tracking'}
+    >
+      {#if timer.active}
+        <span class="work-order-name" title={timer.active.workOrderName}>
+          {timer.active.workOrderName}
         </span>
-        <span class="chevron" class:open={dropdownOpen}>▾</span>
-      </button>
-
-      {#if dropdownOpen}
-        <div class="dropdown" role="listbox" aria-label="Recent work orders">
-          {#each sessionsStore.recent.slice(0, 6) as wo, i}
-            <button
-              class="dropdown-item"
-              class:active={wo.id === timer.active?.workOrderId}
-              class:highlighted={i === highlightIndex}
-              role="option"
-              aria-selected={wo.id === timer.active?.workOrderId}
-              onclick={() => switchTo(wo.id)}
-            >
-              <span class="item-work-order">{wo.name}</span>
-              <span class="item-customer">
-                {#if wo.customerColor}
-                  <span class="dot small" style="background: {wo.customerColor}"></span>
-                {/if}
-                {wo.customerName}
-              </span>
-            </button>
-          {/each}
-          {#if sessionsStore.recent.length === 0}
-            <div class="empty">No recent work orders</div>
-          {/if}
-        </div>
+      {:else}
+        <span class="work-order-name placeholder">Start tracking…</span>
       {/if}
-    </div>
-  {:else}
-    <div class="not-tracking">Not tracking</div>
-  {/if}
+      <span class="chevron" class:open={dropdownOpen}>▾</span>
+    </button>
+
+    {#if dropdownOpen}
+      <div class="backdrop" role="presentation" onmousedown={closeDropdown}></div>
+      <div class="dropdown" role="listbox" aria-label="Recent work orders">
+        {#each sessionsStore.recent.slice(0, DROPDOWN_MAX_ITEMS) as wo, i}
+          <button
+            class="dropdown-item"
+            class:active={wo.id === timer.active?.workOrderId}
+            class:highlighted={i === highlightIndex}
+            role="option"
+            aria-selected={wo.id === timer.active?.workOrderId}
+            onclick={() => switchTo(wo.id)}
+          >
+            <span class="item-work-order">{wo.name}</span>
+            <span class="item-customer">
+              {#if wo.customerColor}
+                <span class="dot" style="background: {wo.customerColor}"></span>
+              {/if}
+              {wo.customerName}
+            </span>
+          </button>
+        {/each}
+        {#if sessionsStore.recent.length === 0}
+          <div class="empty">No recent work orders</div>
+        {/if}
+      </div>
+    {/if}
+  </div>
 </div>
 
 <style>
   .widget {
     width: 100%;
-    height: 100vh;
+    height: auto;
     background: var(--surface);
     display: flex;
     flex-direction: column;
     padding: 10px 12px 8px;
     box-sizing: border-box;
-    overflow: hidden;
-    gap: 2px;
+    overflow: visible;
+    gap: 4px;
   }
 
   .header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    min-height: 26px;
+    gap: 6px;
+    min-height: 28px;
   }
 
   .badge {
-    font-size: 11px;
+    font-size: 14px;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .customer-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 15px;
     font-weight: 600;
-    padding: 2px 6px;
-    border-radius: 3px;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .badge.running {
-    background: var(--accent);
-    color: white;
-  }
-
-  .badge.paused {
-    background: #f59e0b;
-    color: white;
-  }
-
-  .badge.stopped {
-    background: var(--border);
+  .customer-name.muted {
     color: var(--text-muted);
+    font-weight: 400;
   }
 
   .exit-btn {
@@ -200,6 +191,7 @@
     line-height: 1;
     min-height: 26px;
     min-width: 26px;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -210,21 +202,6 @@
     color: var(--text);
   }
 
-  .elapsed {
-    font-size: 34px;
-    font-weight: 700;
-    font-family: 'Consolas', 'Monaco', monospace;
-    color: var(--text);
-    letter-spacing: -1px;
-    line-height: 1.1;
-    white-space: nowrap;
-  }
-
-  .elapsed.dim {
-    color: var(--text-muted);
-  }
-
-  /* Context switcher trigger */
   .context-switcher {
     position: relative;
   }
@@ -232,51 +209,40 @@
   .context-btn {
     width: 100%;
     background: transparent;
-    border: none;
-    padding: 2px 4px 2px 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 10px;
     cursor: pointer;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 4px;
-    border-radius: 3px;
     text-align: left;
-    min-height: 44px;
+    min-height: 36px;
   }
 
   .context-btn:hover {
-    background: var(--border);
+    background: var(--bg);
   }
 
   .context-btn:focus-visible {
     outline: 1px solid var(--accent);
   }
 
-  .context-text {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-
-  .work-order {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .customer {
-    font-size: 11px;
+  .work-order-name {
+    font-size: 13px;
+    font-weight: 400;
     color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    display: flex;
-    align-items: center;
-    gap: 5px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .work-order-name.placeholder {
+    font-style: italic;
+    opacity: 0.6;
   }
 
   .chevron {
@@ -292,26 +258,32 @@
   }
 
   .dot {
-    width: 7px;
-    height: 7px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     flex-shrink: 0;
     display: inline-block;
   }
 
-  /* Dropdown overlays above the widget content (fixed to bottom of viewport) */
-  .dropdown {
+  .backdrop {
     position: fixed;
-    bottom: 0;
+    inset: 0;
+    z-index: 49;
+    cursor: default;
+  }
+
+  .dropdown {
+    position: absolute;
+    top: 100%;
     left: 0;
     right: 0;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-bottom: none;
-    border-radius: 4px 4px 0 0;
+    border-radius: 4px;
     overflow-y: auto;
     z-index: 50;
-    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    margin-top: 2px;
   }
 
   .dropdown-item {
@@ -326,7 +298,7 @@
     flex-direction: column;
     gap: 1px;
     text-align: left;
-    min-height: 32px;
+    min-height: 40px;
   }
 
   .dropdown-item:last-child {
@@ -366,20 +338,10 @@
     text-overflow: ellipsis;
   }
 
-  .dot.small {
-    width: 6px;
-    height: 6px;
-  }
-
   .empty {
     padding: 10px 12px;
     font-size: 12px;
     color: var(--text-muted);
     text-align: center;
-  }
-
-  .not-tracking {
-    font-size: 13px;
-    color: var(--text-muted);
   }
 </style>
