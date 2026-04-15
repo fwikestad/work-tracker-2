@@ -112,18 +112,13 @@ The risk of XSS exploitation is minimal because:
 
 ## 4. Low/Informational Findings
 
-### 4.1 `withGlobalTauri: true` Exposes Tauri API
+### 4.1 `withGlobalTauri` — **FIXED**
 
-**Location:** `src-tauri/tauri.conf.json` line 14
+**Location:** `src-tauri/tauri.conf.json`
 
-**Finding:** The `__TAURI__` global is exposed to the webview.
+**Finding:** Previously `withGlobalTauri: true` exposed the entire Tauri IPC layer via `window.__TAURI__` to all scripts in the WebView, amplifying the impact of any XSS vulnerability.
 
-**Risk Assessment: LOW** for this app because:
-- No remote content is loaded
-- No third-party scripts included
-- IPC is still protected by capability system
-
-**Recommendation:** Keep as-is for development convenience. For maximum security in production, set to `false` and import Tauri APIs explicitly.
+**Resolution:** Set to `withGlobalTauri: false`. All frontend code uses explicit imports (`import { invoke } from '@tauri-apps/api/core'`), so no functional change was required. The `window.__TAURI__` global is no longer exposed.
 
 ### 4.2 No Input Length Validation on User Strings
 
