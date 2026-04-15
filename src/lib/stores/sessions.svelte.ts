@@ -36,7 +36,10 @@ const DAY_NAMES = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'
  * @returns ISO date string.
  */
 function toIsoDate(date: Date): string {
-  return date.toISOString().split('T')[0];
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 /**
@@ -221,7 +224,7 @@ export const sessionsStore = {
     const sessions = await listSessions(toIsoDate(monday), toIsoDate(sunday));
     const byDate = new Map<string, Session[]>();
     for (const s of sessions) {
-      const d = s.startTime.split('T')[0];
+      const d = toIsoDate(new Date(s.startTime));
       if (!byDate.has(d)) byDate.set(d, []);
       byDate.get(d)!.push(s);
     }
