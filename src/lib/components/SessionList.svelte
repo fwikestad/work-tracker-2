@@ -5,9 +5,17 @@
   import { formatTime, formatHuman } from '$lib/utils/formatters';
   import type { Session } from '$lib/types';
 
-  type EditState = { id: string; notes: string; duration: string; activityType: string };
+  type EditState = { 
+    id: string; 
+    startTime: string;
+    endTime: string;
+    notes: string; 
+    duration: string; 
+    activityType: string;
+  };
   let editState = $state<EditState | null>(null);
   let saving = $state(false);
+  let validationError = $state<string | null>(null);
 
   function isRunning(session: Session) {
     return session.id === timer.active?.sessionId && !timer.isPaused;
@@ -17,33 +25,66 @@
     return session.id === timer.active?.sessionId && timer.isPaused;
   }
 
+  // Convert ISO 8601 to datetime-local format (YYYY-MM-DDTHH:mm)
+  function toDatetimeLocal(isoString: string | null | undefined): string {
+    if (!isoString) return '';
+    // datetime-local format: YYYY-MM-DDTHH:mm (no seconds, no Z)
+    return isoString.slice(0, 16);
+  }
+
+  // Convert datetime-local to RFC3339 (ISO 8601)
+  function fromDatetimeLocal(localString: string): string {
+    if (!localString) return '';
+    // Add seconds and Z suffix for RFC3339
+    return localString + ':00Z';
+  }
+
   function startEdit(session: Session) {
     editState = {
       id: session.id,
+      startTime: toDatetimeLocal(session.startTime),
+      endTime: toDatetimeLocal(session.endTime),
       notes: session.notes ?? '',
       activityType: session.activityType ?? '',
       duration: session.effectiveDuration ? String(Math.round(session.effectiveDuration / 60)) : ''
     };
+    validationError = null;
   }
 
   function cancelEdit() {
     editState = null;
+    validationError = null;
   }
 
   async function saveEdit(sessionId: string) {
     if (!editState) return;
+    
+    // Client-side validation
+    validationError = null;
+    if (editState.startTime && editState.endTime) {
+      const start = new Date(fromDatetimeLocal(editState.startTime));
+      const end = new Date(fromDatetimeLocal(editState.endTime));
+      if (start >= end) {
+        validationError = 'Start time must be before end time';
+        return;
+      }
+    }
+    
     saving = true;
     try {
       const durationMins = parseInt(editState.duration);
       await updateSession(sessionId, {
+        startTime: editState.startTime ? fromDatetimeLocal(editState.startTime) : undefined,
+        endTime: editState.endTime ? fromDatetimeLocal(editState.endTime) : undefined,
         notes: editState.notes || undefined,
         activityType: editState.activityType || undefined,
         durationOverride: editState.duration && !isNaN(durationMins) ? durationMins * 60 : undefined
       });
       await sessionsStore.refreshWeek();
       editState = null;
+      validationError = null;
     } catch (e: any) {
-      alert(e?.message ?? 'Failed to save');
+      validationError = e?.message ?? 'Failed to save';
     } finally {
       saving = false;
     }
@@ -96,13 +137,37 @@
             {#if editState?.id === session.id}
               <div class="session editing" style="border-left-color: {session.customerColor ?? 'var(--border)'}">
                 <div class="edit-form">
+                  {#if validationError}
+                    <div class="error-banner">{validationError}</div>
+                  {/if}
+                  <label>
+                    <span>Start time</span>
+                    <input 
+                      type="datetime-local" 
+                      bind:value={editState.startTime} 
+                      disabled={isRunning(session) || saving}
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>End time</span>
+                    <input 
+                      type="datetime-local" 
+                      bind:value={editState.endTime} 
+                      disabled={isRunning(session) || saving}
+                      required={!!editState.endTime}
+                    />
+                  </label>
+                  {#if isRunning(session)}
+                    <div class="hint-note">Stop the session before editing times</div>
+                  {/if}
                   <label>
                     <span>Duration (minutes)</span>
-                    <input type="number" bind:value={editState.duration} placeholder="Auto" />
+                    <input type="number" bind:value={editState.duration} placeholder="Auto" disabled={saving} />
                   </label>
                   <label>
                     <span>Activity type</span>
-                    <select bind:value={editState.activityType}>
+                    <select bind:value={editState.activityType} disabled={saving}>
                       <option value="">—</option>
                       <option value="meeting">Meeting</option>
                       <option value="development">Development</option>
@@ -114,7 +179,7 @@
                   </label>
                   <label>
                     <span>Notes</span>
-                    <textarea bind:value={editState.notes} rows="3" placeholder="What did you work on?"></textarea>
+                    <textarea bind:value={editState.notes} rows="3" placeholder="What did you work on?" disabled={saving}></textarea>
                   </label>
                   <div class="actions">
                     <button class="btn-sm btn-primary" onclick={() => saveEdit(session.id)} disabled={saving}>
@@ -442,6 +507,22 @@
     gap: 12px;
   }
 
+  .error-banner {
+    background: var(--danger);
+    color: white;
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .hint-note {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 4px 0;
+  }
+
   label {
     display: flex;
     flex-direction: column;
@@ -463,6 +544,7 @@
     padding: 8px;
     font-family: inherit;
     font-size: 14px;
+    min-height: 44px;
   }
 
   input:focus,
@@ -470,6 +552,13 @@
   textarea:focus {
     outline: 1px solid var(--accent);
     border-color: var(--accent);
+  }
+
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   textarea {

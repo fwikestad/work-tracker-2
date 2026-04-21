@@ -539,6 +539,94 @@ All critical tests added post-refactor. No regressions. Ship verdict: **READY WI
 
 ---
 
+### 2026-04-16: Edit Start/End Times Tests Written (ISSUE #29) — TDD Before Implementation
+
+**Context**: User requested ability to edit start_time and end_time of completed sessions to fix forgotten starts/stops. Task was to write comprehensive tests BEFORE Chewie implements the feature.
+
+**Test File**: `src-tauri/tests/session_service_tests.rs` — 12 new tests (TC-EDIT-01 through TC-EDIT-12)
+
+**Coverage Areas**:
+
+**Happy Path (3 tests)**:
+- TC-EDIT-01: Update start_time → duration recalculates automatically
+- TC-EDIT-02: Update end_time → duration recalculates automatically  
+- TC-EDIT-03: Update both start_time AND end_time together
+
+**Validation (5 tests)**:
+- TC-EDIT-04: start_time >= end_time rejected (AppError::Validation)
+- TC-EDIT-05: Zero duration (start_time == end_time) rejected
+- TC-EDIT-06: Future end_time (>5 min beyond now) rejected
+- TC-EDIT-07: Cannot edit RUNNING session (end_time IS NULL)
+- TC-EDIT-11: Nonexistent session_id rejected (AppError::NotFound)
+
+**Overlap Prevention (1 test)**:
+- TC-EDIT-08: Editing times that would overlap another session rejected
+
+**Duration Override Interaction (1 test)**:
+- TC-EDIT-09: Editing times clears duration_override (or keeps it — DECISION REQUIRED)
+
+**Audit Trail (1 test)**:
+- TC-EDIT-10: updated_at timestamp bumped after edit
+
+**Tolerance (1 test)**:
+- TC-EDIT-12: Allow end_time within 5-minute tolerance for clock skew / user correction
+
+**Test Pattern**: All tests marked `#[ignore = "TODO: implement update_session_times function"]` — they compile but won't run until Chewie implements `session_service::update_session_times(conn, session_id, start_time?, end_time?)`.
+
+**Key Decisions Documented in Tests**:
+
+1. **Duration override clearing**: TC-EDIT-09 documents two possible behaviors:
+   - **Option A (recommended)**: Clear duration_override when times edited — calculated duration becomes source of truth
+   - **Option B**: Keep duration_override — manual override always wins
+   - Test body has both assertions commented with rationale. Chewie should pick one.
+
+2. **Future time tolerance**: Allow end_time up to 5 minutes in the future (TC-EDIT-12) to handle:
+   - Clock skew between devices
+   - User correction after forgetting to stop timer
+   - Timezone confusion
+   - Rejects end_time >5 min future (TC-EDIT-06)
+
+3. **Overlap detection scope**: TC-EDIT-08 checks for overlaps with ALL other sessions for the same work_order. Could be relaxed to same-user scope if needed.
+
+4. **Running session protection**: TC-EDIT-07 prevents editing active sessions (end_time IS NULL). User must stop session first, then edit.
+
+**Implementation Contract** (for Chewie):
+
+Function signature (proposed):
+```rust
+pub fn update_session_times(
+    conn: &Connection,
+    session_id: &str,
+    new_start_time: Option<&str>,
+    new_end_time: Option<&str>,
+) -> Result<Session, AppError>
+```
+
+Validations required:
+1. Session must exist (NotFound)
+2. Session must be complete (end_time NOT NULL) (Validation)
+3. If updating start_time: new_start < existing_end (or new_end if also provided)
+4. If updating end_time: existing_start (or new_start if provided) < new_end
+5. Duration must be > 0 after edit
+6. End_time must not be >5 min in future
+7. No overlap with other sessions (excluding self)
+8. Update duration_seconds = calculate_duration(start, end)
+9. Clear duration_override (or keep — TBD)
+10. Bump updated_at to current timestamp
+
+**Compilation Status**: ✅ Tests compile with warnings (unused variables in commented code). Build passes.
+
+**Activation**: Remove `#[ignore]` guards once `update_session_times` function exists. Run `cargo test tc_edit` to verify.
+
+**Cross-team context**:
+- **Chewie (Backend)**: Needs to implement `update_session_times` in `session_service.rs` + wire Tauri command
+- **Leia (Frontend)**: Will need UI for inline time editing (calendar picker or manual text input)
+- **Mothma (Docs)**: API reference should document validation rules and error codes
+
+**Decision Required**: Duration override behavior on time edit (TC-EDIT-09). Recommend clearing override (Option A) — if user manually edits times, calculated duration should be the new source of truth.
+
+---
+
 ### 2026-04-13: Phase 2 Kickoff — Test Coverage Complete
 
 Completed all Phase 2 test work items (P2-TEST-UI-1, P2-TEST-INT-1, P2-PERF-1) in parallel with frontend and backend agents. All tests passing. No Phase 1 regressions.

@@ -81,6 +81,44 @@ Comprehensive code review of Phase 1 implementation. Verified all recent bug fix
 
 ---
 
+### 2026-04-14: Issue #29 Implementation Plan — Edit Start/End Times
+
+**Task**: Research codebase and create concrete implementation plan for allowing users to edit start and end times on sessions.
+
+**Research Findings**:
+1. **Current state**:
+   - `UpdateSessionParams` only accepts `duration_override`, `activity_type`, `notes` (no start/end times)
+   - Frontend `SessionList.svelte` already has inline edit pattern fully working
+   - No overlap validation at DB level (Phase 2 consideration)
+   - Schema is clean: `start_time` NOT NULL, `end_time` nullable, proper indexes
+   - Dynamic SQL builder in `update_session` command is extensible
+
+2. **Architecture assessment**: 
+   - Low complexity: Extend existing UpdateSessionParams + add validation + extend UI form
+   - No breaking changes needed
+   - Active session protection prevents time corruption
+
+3. **Validation rules**:
+   - start_time < end_time (backend enforced)
+   - Cannot edit active (running) session times (prevents impossible state)
+   - duration_seconds auto-recalculated when times change (unless duration_override set)
+   - Invalid ISO strings caught with clear error messages
+
+4. **Effort estimate**: 9.5 hours total (4 hrs backend, 3 hrs frontend, 2 hrs testing)
+
+**Deliverable**: Comprehensive implementation plan written to `.squad/decisions/inbox/han-issue29-plan.md` with:
+- Step-by-step backend changes (Chewie)
+- UI form updates (Leia)
+- Validation strategy and edge cases
+- Backend + frontend test strategy
+- Team coordination notes
+
+**Recommendation**: Low-risk MVP addition. Approve for Phase 1 stretch or Phase 1.1 follow-up.
+
+**Next**: Chewie starts backend impl (UpdateSessionParams + validate_session_times function + update command). Leia parallels frontend after backend types finalized.
+
+---
+
 ### 2026-04-14: Edit Entry Feature Scoping
 
 Scoped the edit-entry feature following Fredrik's request to correct past time entries (16-hour overnight session). Delivered comprehensive decision document with UX approach, validation rules, API design, and implementation strategy.

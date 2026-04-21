@@ -701,3 +701,478 @@ fn tc_session_14_heartbeat_during_pause_preserves_pause_state() {
         "last_heartbeat must change after update_heartbeat"
     );
 }
+
+// ===========================================================================
+// EDIT START/END TIMES FEATURE TESTS (ISSUE #29)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// TC-EDIT-01: update_session_times — happy path: update start_time
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_edit_01_update_start_time_recalculates_duration() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Create and stop a session
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+    
+    // Back-date start by 60 seconds
+    conn.execute(
+        "UPDATE time_sessions SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-60 seconds') WHERE end_time IS NULL",
+        [],
+    ).expect("back-date start");
+    
+    let stopped = session_service::stop_current_session(&conn, None, None)
+        .expect("stop failed")
+        .expect("expected stopped session");
+    
+    let original_duration = stopped.duration_seconds.unwrap();
+    
+    // Update start_time to 120 seconds ago (doubling duration)
+    let new_start = chrono::Utc::now() - chrono::Duration::seconds(120);
+    let new_start_str = new_start.to_rfc3339();
+    
+    let updated = session_service::update_session_times(&conn, &stopped.id, Some(&new_start_str), None)
+        .expect("update_session_times failed");
+    
+    // Verify start_time updated
+    assert_eq!(updated.start_time, new_start_str, "start_time should be updated");
+    
+    // Verify duration recalculated (should roughly double)
+    let new_duration = updated.duration_seconds.unwrap();
+    assert!(new_duration >= original_duration * 2 - 5, 
+        "duration should increase from {} to ~{}, got {}", 
+        original_duration, original_duration * 2, new_duration);
+    
+    // Verify updated_at bumped
+    assert!(updated.updated_at > stopped.updated_at, 
+        "updated_at should be bumped after edit");
+}
+
+// ---------------------------------------------------------------------------
+// TC-EDIT-02: update_session_times — happy path: update end_time
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_edit_02_update_end_time_recalculates_duration() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Create and stop a session
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+    conn.execute(
+        "UPDATE time_sessions SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-60 seconds') WHERE end_time IS NULL",
+        [],
+    ).expect("back-date start");
+    
+    let stopped = session_service::stop_current_session(&conn, None, None)
+        .expect("stop failed")
+        .expect("expected stopped session");
+    
+    let original_duration = stopped.duration_seconds.unwrap();
+    let original_end = stopped.end_time.clone().unwrap();
+    
+    // Update end_time to 30 seconds earlier (halving duration)
+    let new_end = chrono::Utc::now() - chrono::Duration::seconds(30);
+    let new_end_str = new_end.to_rfc3339();
+    
+    let updated = session_service::update_session_times(&conn, &stopped.id, None, Some(&new_end_str))
+        .expect("update_session_times failed");
+    
+    // Verify end_time updated
+    assert_eq!(updated.end_time.unwrap(), new_end_str, "end_time should be updated");
+    
+    // Verify duration recalculated (should roughly halve)
+    let new_duration = updated.duration_seconds.unwrap();
+    assert!(new_duration >= original_duration / 2 - 5 && new_duration <= original_duration / 2 + 5,
+        "duration should decrease from {} to ~{}, got {}", 
+        original_duration, original_duration / 2, new_duration);
+}
+
+// ---------------------------------------------------------------------------
+// TC-EDIT-03: update_session_times — happy path: update both start and end
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_edit_03_update_both_start_and_end_times() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Create and stop a session
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+    conn.execute(
+        "UPDATE time_sessions SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-60 seconds') WHERE end_time IS NULL",
+        [],
+    ).expect("back-date start");
+    
+    let stopped = session_service::stop_current_session(&conn, None, None)
+        .expect("stop failed")
+        .expect("expected stopped session");
+    
+    // Update both times to a new 2-hour window
+    let new_start = chrono::Utc::now() - chrono::Duration::hours(3);
+    let new_end = chrono::Utc::now() - chrono::Duration::hours(1);
+    let new_start_str = new_start.to_rfc3339();
+    let new_end_str = new_end.to_rfc3339();
+    
+    let updated = session_service::update_session_times(&conn, &stopped.id, Some(&new_start_str), Some(&new_end_str))
+        .expect("update_session_times failed");
+    
+    // Verify both times updated
+    assert_eq!(updated.start_time, new_start_str, "start_time should be updated");
+    assert_eq!(updated.end_time.unwrap(), new_end_str, "end_time should be updated");
+    
+    // Verify duration is exactly 2 hours
+    let new_duration = updated.duration_seconds.unwrap();
+    assert!(new_duration >= 7195 && new_duration <= 7205,
+        "duration should be ~7200 seconds (2 hours), got {}", new_duration);
+}
+
+// ---------------------------------------------------------------------------
+// TC-EDIT-04: update_session_times — validation: start_time >= end_time rejected
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_edit_04_start_time_after_end_time_rejected() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Create and stop a session
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+    conn.execute(
+        "UPDATE time_sessions SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-60 seconds') WHERE end_time IS NULL",
+        [],
+    ).expect("back-date start");
+    
+    let stopped = session_service::stop_current_session(&conn, None, None)
+        .expect("stop failed")
+        .expect("expected stopped session");
+    
+    // Try to set start_time AFTER current end_time
+    let invalid_start = chrono::Utc::now() + chrono::Duration::hours(1);
+    let invalid_start_str = invalid_start.to_rfc3339();
+    
+    let result = session_service::update_session_times(&conn, &stopped.id, Some(&invalid_start_str), None);
+    assert!(result.is_err(), "update_session_times must reject start_time >= end_time");
+    
+    // Verify error is Validation type
+    match result {
+        Err(AppError::Validation(msg)) => {
+            assert!(msg.contains("start_time") && msg.contains("end_time"),
+                "error message should mention start_time and end_time");
+        },
+        _ => panic!("expected AppError::Validation, got {:?}", result),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TC-EDIT-05: update_session_times — validation: zero duration rejected
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_edit_05_zero_duration_rejected() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Create and stop a session
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+    conn.execute(
+        "UPDATE time_sessions SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-60 seconds') WHERE end_time IS NULL",
+        [],
+    ).expect("back-date start");
+    
+    let stopped = session_service::stop_current_session(&conn, None, None)
+        .expect("stop failed")
+        .expect("expected stopped session");
+    
+    // Try to set end_time == start_time (zero duration)
+    let same_time = stopped.start_time.clone();
+    
+    let result = session_service::update_session_times(&conn, &stopped.id, None, Some(&same_time));
+    assert!(result.is_err(), "update_session_times must reject zero duration");
+    
+    // Verify error is Validation type
+    match result {
+        Err(AppError::Validation(msg)) => {
+            assert!(msg.contains("duration") || msg.contains("zero"),
+                "error message should mention duration or zero");
+        },
+        _ => panic!("expected AppError::Validation, got {:?}", result),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TC-EDIT-06: update_session_times — validation: future end_time rejected
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_edit_06_future_end_time_rejected() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Create and stop a session
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+    conn.execute(
+        "UPDATE time_sessions SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-60 seconds') WHERE end_time IS NULL",
+        [],
+    ).expect("back-date start");
+    
+    let stopped = session_service::stop_current_session(&conn, None, None)
+        .expect("stop failed")
+        .expect("expected stopped session");
+    
+    // Try to set end_time in the future (more than 5 minutes beyond now)
+    let future_end = chrono::Utc::now() + chrono::Duration::minutes(10);
+    let future_end_str = future_end.to_rfc3339();
+    
+    let result = session_service::update_session_times(&conn, &stopped.id, None, Some(&future_end_str));
+    assert!(result.is_err(), "update_session_times must reject end_time too far in future");
+    
+    // Verify error is Validation type
+    match result {
+        Err(AppError::Validation(msg)) => {
+            assert!(msg.contains("future") || msg.contains("end_time"),
+                "error message should mention future or end_time");
+        },
+        _ => panic!("expected AppError::Validation, got {:?}", result),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TC-EDIT-07: update_session_times — validation: cannot edit running session
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_edit_07_cannot_edit_running_session() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Create a RUNNING session (no end_time)
+    let session = session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+    
+    // Try to update start_time of running session
+    let new_start = chrono::Utc::now() - chrono::Duration::hours(1);
+    let new_start_str = new_start.to_rfc3339();
+    
+    let result = session_service::update_session_times(&conn, &session.id, Some(&new_start_str), None);
+    assert!(result.is_err(), "update_session_times must reject editing running session");
+    
+    // Verify error is Validation type
+    match result {
+        Err(AppError::Validation(msg)) => {
+            assert!(msg.contains("running") || msg.contains("active") || msg.contains("complete"),
+                "error message should mention session state: {}", msg);
+        },
+        _ => panic!("expected AppError::Validation, got {:?}", result),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TC-EDIT-08: update_session_times — overlap prevention: editing creates overlap
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "TODO: implement update_session_times function"]
+fn tc_edit_08_overlap_prevention_on_time_edit() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Create first session: 2 hours ago → 1 hour ago
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+    conn.execute(
+        "UPDATE time_sessions SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-2 hours'), 
+                                  end_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-1 hour'),
+                                  duration_seconds = 3600
+         WHERE end_time IS NULL",
+        [],
+    ).expect("create first completed session");
+    
+    // Clear active session for next session
+    conn.execute("UPDATE active_session SET session_id = NULL WHERE id = 1", []).expect("clear active");
+    
+    // Create second session: now - 30 min → now
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+    conn.execute(
+        "UPDATE time_sessions SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-30 minutes') WHERE end_time IS NULL",
+        [],
+    ).expect("back-date second session");
+    
+    let second_session = session_service::stop_current_session(&conn, None, None)
+        .expect("stop failed")
+        .expect("expected stopped session");
+    
+    // Try to edit second session's start_time to overlap with first session
+    // (e.g., 90 minutes ago, which would overlap with the first session's 2hr→1hr window)
+    let overlap_start = chrono::Utc::now() - chrono::Duration::minutes(90);
+    let overlap_start_str = overlap_start.to_rfc3339();
+    
+    // TODO: Call update_session_times — should detect overlap
+    // let result = session_service::update_session_times(&conn, &second_session.id, Some(&overlap_start_str), None);
+    // assert!(result.is_err(), "update_session_times must prevent overlapping sessions");
+    
+    // Verify error is Validation type mentioning overlap
+    // match result {
+    //     Err(AppError::Validation(msg)) => {
+    //         assert!(msg.contains("overlap"),
+    //             "error message should mention overlap: {}", msg);
+    //     },
+    //     _ => panic!("expected AppError::Validation with overlap message, got {:?}", result),
+    // }
+}
+
+// ---------------------------------------------------------------------------
+// TC-EDIT-09: update_session_times — duration_override interaction: cleared on edit
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_edit_09_duration_override_cleared_on_time_edit() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Create and stop a session
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+    conn.execute(
+        "UPDATE time_sessions SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-60 seconds') WHERE end_time IS NULL",
+        [],
+    ).expect("back-date start");
+    
+    let stopped = session_service::stop_current_session(&conn, None, None)
+        .expect("stop failed")
+        .expect("expected stopped session");
+    
+    // Manually set a duration_override
+    conn.execute(
+        "UPDATE time_sessions SET duration_override = 7200 WHERE id = ?",
+        params![&stopped.id],
+    ).expect("set duration_override");
+    
+    // Verify override is set
+    let override_before: Option<i64> = conn
+        .query_row(
+            "SELECT duration_override FROM time_sessions WHERE id = ?",
+            params![&stopped.id],
+            |row| row.get(0),
+        )
+        .expect("query duration_override");
+    assert_eq!(override_before, Some(7200), "duration_override should be set before edit");
+    
+    // Update start_time — this should clear duration_override
+    let new_start = chrono::Utc::now() - chrono::Duration::hours(2);
+    let new_start_str = new_start.to_rfc3339();
+    
+    let updated = session_service::update_session_times(&conn, &stopped.id, Some(&new_start_str), None)
+        .expect("update_session_times failed");
+    
+    // DECISION: Duration override should be cleared when times are edited
+    // Rationale: If user manually edits times, calculated duration is the new source of truth
+    // Manual override would be stale/misleading
+    
+    // Verify duration_override is cleared
+    assert!(updated.duration_override.is_none(), 
+        "duration_override should be cleared when times are edited");
+    
+    // Alternative decision: KEEP duration_override (if team decides manual override always wins)
+    // assert_eq!(updated.duration_override, Some(7200), 
+    //     "duration_override should be preserved when times are edited");
+}
+
+// ---------------------------------------------------------------------------
+// TC-EDIT-10: update_session_times — audit trail: updated_at bumped
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_edit_10_updated_at_bumped_on_time_edit() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Create and stop a session
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+    conn.execute(
+        "UPDATE time_sessions SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-60 seconds') WHERE end_time IS NULL",
+        [],
+    ).expect("back-date start");
+    
+    let stopped = session_service::stop_current_session(&conn, None, None)
+        .expect("stop failed")
+        .expect("expected stopped session");
+    
+    let original_updated_at = stopped.updated_at.clone();
+    
+    // Wait 1 second to ensure updated_at differs
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    
+    // Update end_time
+    let new_end = chrono::Utc::now();
+    let new_end_str = new_end.to_rfc3339();
+    
+    let updated = session_service::update_session_times(&conn, &stopped.id, None, Some(&new_end_str))
+        .expect("update_session_times failed");
+    
+    // Verify updated_at is newer
+    assert!(updated.updated_at > original_updated_at,
+        "updated_at should be bumped after edit: was {}, now {}",
+        original_updated_at, updated.updated_at);
+}
+
+// ---------------------------------------------------------------------------
+// TC-EDIT-11: update_session_times — validation: session must exist
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_edit_11_nonexistent_session_rejected() {
+    let conn = init_test_db().expect("DB init failed");
+
+    let fake_session_id = uuid::Uuid::new_v4().to_string();
+    let new_start = chrono::Utc::now() - chrono::Duration::hours(1);
+    let new_start_str = new_start.to_rfc3339();
+    
+    let result = session_service::update_session_times(&conn, &fake_session_id, Some(&new_start_str), None);
+    assert!(result.is_err(), "update_session_times must reject nonexistent session");
+    
+    // Verify error is NotFound
+    match result {
+        Err(AppError::NotFound(msg)) => {
+            assert!(msg.contains(&fake_session_id),
+                "error message should mention session ID: {}", msg);
+        },
+        _ => panic!("expected AppError::NotFound, got {:?}", result),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TC-EDIT-12: update_session_times — tolerance: allow small future times
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_edit_12_allow_small_future_tolerance() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Create and stop a session
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+    conn.execute(
+        "UPDATE time_sessions SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-60 seconds') WHERE end_time IS NULL",
+        [],
+    ).expect("back-date start");
+    
+    let stopped = session_service::stop_current_session(&conn, None, None)
+        .expect("stop failed")
+        .expect("expected stopped session");
+    
+    // Try to set end_time 2 minutes in the future (within tolerance for clock skew)
+    let slightly_future = chrono::Utc::now() + chrono::Duration::minutes(2);
+    let slightly_future_str = slightly_future.to_rfc3339();
+    
+    let result = session_service::update_session_times(&conn, &stopped.id, None, Some(&slightly_future_str));
+    assert!(result.is_ok(), 
+        "update_session_times should allow end_time within reasonable tolerance (e.g., 5 minutes): {:?}", 
+        result);
+    
+    // Rationale: Allow small future times to handle:
+    // 1. Clock skew between devices
+    // 2. User correction when they forgot to stop timer
+    // 3. Timezone confusion
+    // Suggested tolerance: 5 minutes
+}

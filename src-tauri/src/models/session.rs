@@ -44,6 +44,8 @@ pub struct OrphanSession {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateSessionParams {
+    pub start_time: Option<String>,
+    pub end_time: Option<String>,
     pub duration_override: Option<i64>,
     pub activity_type: Option<String>,
     pub notes: Option<String>,

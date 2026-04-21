@@ -30,6 +30,89 @@ pub fn update_session(state: State<AppState>, id: String, params: UpdateSessionP
     let conn = get_conn(&state)?;
     let now = Utc::now().to_rfc3339();
     
+    // If start_time or end_time is being updated, use the specialized function
+    if params.start_time.is_some() || params.end_time.is_some() {
+        // Call update_session_times for validation and duration recalculation
+        let updated = session_service::update_session_times(
+            &conn,
+            &id,
+            params.start_time.as_deref(),
+            params.end_time.as_deref(),
+        )?;
+        
+        // If other fields (notes, activity_type, duration_override) are provided,
+        // apply them in a second update
+        if params.notes.is_some() || params.activity_type.is_some() || params.duration_override.is_some() {
+            let mut updates = vec!["updated_at = ?"];
+            let mut values: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(now.clone())];
+            
+            if params.duration_override.is_some() {
+                updates.push("duration_override = ?");
+                values.push(Box::new(params.duration_override));
+            }
+            if params.activity_type.is_some() {
+                updates.push("activity_type = ?");
+                values.push(Box::new(params.activity_type.clone()));
+            }
+            if params.notes.is_some() {
+                updates.push("notes = ?");
+                values.push(Box::new(params.notes.clone()));
+            }
+            
+            values.push(Box::new(id.clone()));
+            
+            let sql = format!("UPDATE time_sessions SET {} WHERE id = ?", updates.join(", "));
+            let params_refs: Vec<&dyn rusqlite::ToSql> = values.iter().map(|b| b.as_ref()).collect();
+            
+            conn.execute(&sql, rusqlite::params_from_iter(params_refs))?;
+            
+            // Fetch and return the final updated session
+            return conn.query_row(
+                "SELECT 
+                    ts.id,
+                    ts.work_order_id,
+                    wo.name,
+                    c.name,
+                    c.color,
+                    ts.start_time,
+                    ts.end_time,
+                    ts.duration_seconds,
+                    ts.duration_override,
+                    COALESCE(ts.duration_override, ts.duration_seconds),
+                    ts.activity_type,
+                    ts.notes,
+                    ts.created_at,
+                    ts.updated_at
+                FROM time_sessions ts
+                JOIN work_orders wo ON ts.work_order_id = wo.id
+                JOIN customers c ON wo.customer_id = c.id
+                WHERE ts.id = ?",
+                params![&id],
+                |row| {
+                    Ok(Session {
+                        id: row.get(0)?,
+                        work_order_id: row.get(1)?,
+                        work_order_name: row.get(2)?,
+                        customer_name: row.get(3)?,
+                        customer_color: row.get(4)?,
+                        start_time: row.get(5)?,
+                        end_time: row.get(6)?,
+                        duration_seconds: row.get(7)?,
+                        duration_override: row.get(8)?,
+                        effective_duration: row.get(9)?,
+                        activity_type: row.get(10)?,
+                        notes: row.get(11)?,
+                        created_at: row.get(12)?,
+                        updated_at: row.get(13)?,
+                    })
+                }
+            ).map_err(AppError::Database);
+        }
+        
+        return Ok(updated);
+    }
+    
+    // Original path: only updating notes, activity_type, or duration_override
     // Build dynamic UPDATE query
     let mut updates = vec!["updated_at = ?"];
     let mut values: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(now.clone())];
