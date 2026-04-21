@@ -6,6 +6,45 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 
 ## Learnings
 
+### 2026-04-21: Issue #35 — Reports Grouping (Day → Customer → Work Order)
+
+**Task Completed**: Integrated hierarchical grouping pattern into ReportView.svelte with proper expand/collapse behavior.
+
+**Implementation**:
+
+1. **`src/lib/utils/reportGrouping.ts` — Core grouping utility**:
+   - `groupSessionsByDay()` function accepts Session[] and returns DayGroup[]
+   - Three-level hierarchy: DayGroup → CustomerGroup → WorkOrderGroup
+   - Sorting: Days descending (newest first), Customers and Work Orders ascending (alphabetical)
+   - Duration aggregation at each level (null → 0)
+   - Null customer/work order names converted to "Unknown Customer" / "Unknown Work Order"
+
+2. **`src/lib/utils/formatters.ts` — Date formatting**:
+   - Added `formatDay(dateStr: string): string` helper
+   - Constructs Date in local timezone via `new Date(year, month-1, day)` to avoid UTC off-by-one
+   - Never uses `new Date(isoString)` for date-only ISO strings
+
+3. **ReportView.svelte — UI integration**:
+   - Expand/collapse state via `expandedDays: Set<string>` and `expandedCustomers: Set<string>`
+   - Days always expanded on load; Customers collapsed by default
+   - Three-level nesting: `.day-group` > `.day-customers` > `.customer-group` > `.work-orders`
+   - Day headers: `font-weight: 700; font-size: 15px`
+   - Customer rows indented: `margin-left: 14px`
+   - Data source: `reportData.sessions: Session[]` with guard `?? []` for backward compatibility
+
+**Key Design Decisions**:
+- Expand/collapse keys scoped per day (`"YYYY-MM-DD::customerName"`) — same customer can be expanded on one day, collapsed on another
+- Always use `formatDay()` for date display to avoid timezone issues
+- Guard data access (`sessions ?? []`) for test mock compatibility
+
+**Quality Gate**: Wedge provided 17-test suite (100% pass, zero regressions on 84 existing tests)
+
+**CI Status**: ✅ 4/4 checks passed (cargo check, cargo test, npm test, npm run build)
+
+**Branch/PR**: `squad/35-reports-grouping` | PR #36 open, ready for merge
+
+---
+
 ### 2026-05-xx: Widget Overlay Redesign — Dynamic Resize + New Layout
 
 **Context**: Fredrik wanted to remove the timer from the widget, promote customer name as the primary label, and fix dropdown clipping by resizing the window dynamically.
