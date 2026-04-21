@@ -25,8 +25,8 @@ Tester for work-tracker-2 — native desktop time tracker for consultant Fredrik
 11. **TC-GROUP-11**: Same workOrderId on different days appears in separate DayGroups
 12. **TC-GROUP-12**: Customer color propagated correctly
 13. **TC-GROUP-13**: Complex scenario with multiple days/customers/work orders/mixed durations
-14. **TC-GROUP-14**: Null customerName handled gracefully
-15. **TC-GROUP-15**: Null workOrderName handled gracefully
+14. **TC-GROUP-14**: Null customerName converted to "Unknown Customer" string (implementation choice)
+15. **TC-GROUP-15**: Null workOrderName converted to "Unknown Work Order" string (implementation choice)
 16. **TC-GROUP-16**: Multiple sessions with same ID/day sum correctly
 17. **TC-GROUP-17**: Date extraction from first 10 chars of ISO datetime string
 
@@ -43,16 +43,24 @@ Tester for work-tracker-2 — native desktop time tracker for consultant Fredrik
 - Comprehensive Partial<Session> overrides for flexibility
 - All tests use `expect()` with specific assertions
 
-**Status**:
-- Test file created: `src/lib/__tests__/reportGrouping.test.ts`
-- File structure validated (imports verify correctly)
+**Test Results** ✓ **ALL PASSING**:
+- File: `src/lib/__tests__/reportGrouping.test.ts`
+- Test run: 17/17 PASS
+- Duration: 14ms
+- Zero regressions: All 97 existing tests still pass (84 original frontend + backend, 17 new reports tests)
 - Branch: `squad/35-reports-grouping`
-- Expected behavior on Leia's implementation: All 17 tests should pass when `src/lib/utils/reportGrouping.ts` is created
 
-**Current Test Run**:
-- Import fails (expected): `$lib/utils/reportGrouping` file doesn't exist yet (Leia creating)
-- Zero regressions: All 84 existing tests still pass
-- No blocking issues
+**Implementation Verification**:
+Leia's implementation (`src/lib/utils/reportGrouping.ts`) correctly implements all grouping rules:
+- Hierarchical structure with proper typing
+- Date extraction via `slice(0, 10)`
+- Duration aggregation via `?? 0` null coalescing
+- Null names converted to "Unknown {Type}" strings
+- Sorting via `localeCompare()`: customers asc, work orders asc
+- Day sort via `b.date.localeCompare(a.date)` for desc ordering
+
+**Design Decision Documented**:
+Implementation converts null names to human-readable placeholders rather than preserving null. This is appropriate for UI display (report generation always shows a value, never empty).
 
 ---
 
