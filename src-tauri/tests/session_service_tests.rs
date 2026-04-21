@@ -773,7 +773,7 @@ fn tc_edit_02_update_end_time_recalculates_duration() {
         .expect("expected stopped session");
     
     let original_duration = stopped.duration_seconds.unwrap();
-    let original_end = stopped.end_time.clone().unwrap();
+    let _original_end = stopped.end_time.clone().unwrap();
     
     // Update end_time to 30 seconds earlier (halving duration)
     let new_end = chrono::Utc::now() - chrono::Duration::seconds(30);
@@ -1000,14 +1000,14 @@ fn tc_edit_08_overlap_prevention_on_time_edit() {
         [],
     ).expect("back-date second session");
     
-    let second_session = session_service::stop_current_session(&conn, None, None)
+    let _second_session = session_service::stop_current_session(&conn, None, None)
         .expect("stop failed")
         .expect("expected stopped session");
     
     // Try to edit second session's start_time to overlap with first session
     // (e.g., 90 minutes ago, which would overlap with the first session's 2hr→1hr window)
     let overlap_start = chrono::Utc::now() - chrono::Duration::minutes(90);
-    let overlap_start_str = overlap_start.to_rfc3339();
+    let _overlap_start_str = overlap_start.to_rfc3339();
     
     // TODO: Call update_session_times — should detect overlap
     // let result = session_service::update_session_times(&conn, &second_session.id, Some(&overlap_start_str), None);
