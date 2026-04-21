@@ -40,6 +40,16 @@ pub fn init_test_db() -> SqlResult<Connection> {
     Ok(conn)
 }
 
+/// Create an in-memory database for dev mode. No persistence — fresh DB on each app start.
+pub fn init_dev_db() -> SqlResult<Connection> {
+    let conn = Connection::open_in_memory()?;
+    conn.execute_batch("
+        PRAGMA foreign_keys = ON;
+    ")?;
+    run_migrations(&conn)?;
+    Ok(conn)
+}
+
 pub fn initialize(db_path: &Path) -> SqlResult<Connection> {
     let conn = Connection::open(db_path)?;
     

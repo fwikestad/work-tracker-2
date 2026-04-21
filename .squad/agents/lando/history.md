@@ -397,3 +397,46 @@ _Populated as Lando works on the project._
 5. ✅ Verified tag was pushed: git tag -l v0.1.1 returned v0.1.1
 
 **Next Build**: Tag v0.1.1 will trigger release.yml with the fix in place.
+
+## Session: Dev/Prod Isolation (2026-04-14)
+
+**Task**: Allow dev build to run independently from any installed production version — Issue #31
+
+**Problem**: Dev and prod builds shared the same app identifier (`com.work-tracker-2.app`), causing:
+- Same app data directory → data collisions between dev/prod
+- Difficulty distinguishing which version is running
+
+**Solution**: Created Tauri 2 config overlay for dev environment
+
+**Changes**:
+1. Created `src-tauri/tauri.dev.conf.json` — config overlay for dev builds
+   - Changed `identifier` to `"com.work-tracker-2.dev"` (vs prod `"com.work-tracker-2.app"`)
+   - Changed `productName` to `"Work Tracker 2 (Dev)"` for visual distinction
+   - Minimal overlay: only overrides 2 fields, inherits rest from base config
+
+2. Updated `package.json` script `tauri:dev`:
+   - From: `"tauri dev"`
+   - To: `"tauri dev --config src-tauri/tauri.dev.conf.json"`
+   - Path is relative to CWD (repo root), not src-tauri/
+
+**Impact**:
+- Dev and prod now use separate app data directories (platform-specific, based on identifier)
+- Window title shows "(Dev)" suffix — immediate visual confirmation
+- No risk of dev work polluting production database
+- Developers can safely run both versions simultaneously (if needed)
+
+**Tauri 2 Config Merge Behavior**:
+- Base config: `src-tauri/tauri.conf.json` (all defaults)
+- Overlay config: `src-tauri/tauri.dev.conf.json` (only overrides)
+- Final config: Deep merge at runtime by Tauri CLI
+- Best practice: Keep overlays minimal (only changed fields)
+
+**Files Modified**:
+- Created: `src-tauri/tauri.dev.conf.json` (141 bytes)
+- Updated: `package.json` (tauri:dev script)
+
+**Verification**: ✅ Files created, syntax valid, npm script updated correctly
+
+**Orchestration Log**: `.squad/orchestration-log/2026-04-21T09-18-43Z-lando.md`
+
+**Decision Documented**: `.squad/decisions/decisions.md#dev-prod-environment-isolation`
