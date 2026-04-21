@@ -6,6 +6,16 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 
 ## Learnings
 
+### Bug Fix: Keypress regression after reports grouping PR (#36)
+
+**Root Cause**: `ReportView.svelte` contained a `$effect()` that wrote to `$state` variables (`expandedDays`, `expandedCustomers`) after `reportData` loaded. In Svelte 5, writing to reactive state inside `$effect` triggers a synchronous flush cycle. This flush can interrupt keydown event propagation before the event bubbles to the `window` listener registered in `+layout.svelte`, breaking all global keyboard shortcuts (Ctrl+N, Ctrl+K, Ctrl+S, etc.).
+
+**Fix**: Moved the `expandedDays` / `expandedCustomers` initialisation out of `$effect` and into `loadReport()` directly, immediately after `reportData = await getReport(...)`. State is set once, synchronously, in the async handler — no reactive side-effects.
+
+**Pattern to remember**: Never write to `$state` inside a Svelte 5 `$effect` when the intent is "initialise once when data arrives." Use the async function that fetches the data instead. Reserve `$effect` for genuinely reactive subscriptions that have no other natural home.
+
+---
+
 ### 2026-04-21: Issue #35 — Reports Grouping (Day → Customer → Work Order)
 
 **Task Completed**: Integrated hierarchical grouping pattern into ReportView.svelte with proper expand/collapse behavior.
