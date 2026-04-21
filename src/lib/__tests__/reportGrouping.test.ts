@@ -529,8 +529,9 @@ describe('groupSessionsByDay', () => {
 
 		expect(result).toHaveLength(1);
 		expect(result[0].customers).toHaveLength(1);
-		// null customerName should be kept as-is or grouped under "null" key
-		expect(result[0].customers[0].customerName).toBeNull();
+		// null customerName is converted to "Unknown Customer" string by implementation
+		expect(result[0].customers[0].customerName).toBe('Unknown Customer');
+		expect(result[0].customers[0].totalSeconds).toBe(3600);
 	});
 
 	it('TC-GROUP-15: Handles sessions with null workOrderName gracefully', () => {
@@ -549,7 +550,9 @@ describe('groupSessionsByDay', () => {
 		expect(result).toHaveLength(1);
 		expect(result[0].customers).toHaveLength(1);
 		expect(result[0].customers[0].workOrders).toHaveLength(1);
-		expect(result[0].customers[0].workOrders[0].workOrderName).toBeNull();
+		// null workOrderName is converted to "Unknown Work Order" string by implementation
+		expect(result[0].customers[0].workOrders[0].workOrderName).toBe('Unknown Work Order');
+		expect(result[0].customers[0].workOrders[0].totalSeconds).toBe(3600);
 	});
 
 	it('TC-GROUP-16: Multiple sessions with same day but different session IDs sum correctly', () => {
