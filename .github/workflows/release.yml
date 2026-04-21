@@ -43,6 +43,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
+          cache: false
       
       - name: Add x86_64 Rust target (macOS Universal)
         if: matrix.platform == 'macos-latest'
@@ -52,6 +53,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22.x'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
       
       - name: Set version from tag
         shell: bash
@@ -81,18 +84,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: src-tauri/target
-          key: ${{ runner.os }}-cargo-build-release-${{ hashFiles('src-tauri/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-build-release-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-build-release-
-            ${{ runner.os }}-cargo-build-
+            ${{ runner.os }}-${{ matrix.target }}-cargo-build-release-
+            ${{ runner.os }}-${{ matrix.target }}-cargo-build-
       
-      - name: Cache npm dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
+      - name: Clean bundle artifacts
+        shell: bash
+        run: |
+          rm -rf src-tauri/target/release/bundle || true
+          rm -rf src-tauri/target/universal-apple-darwin/release/bundle || true
       
       - name: Install frontend dependencies
         run: npm ci
