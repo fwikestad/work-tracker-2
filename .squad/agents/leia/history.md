@@ -1048,3 +1048,43 @@ Outcome: Frontend now has comprehensive JSDoc coverage (approx 95 percent) for t
 **GitHub Issue #15**: RESOLVED
 
 **Outcome**: Frontend documentation complete for Phase 1-3 scope. Stores and API layer fully documented. Developer experience significantly improved through IDE tooltips.
+
+---
+
+### 2026-04-14: Session Time Editing Frontend (Issue #29)
+
+**Context**: Fredrik needed to manually correct start and end times of sessions when he forgot to start or stop tracking.
+
+**Approach**: Extended the existing inline edit form in SessionList.svelte to support editing start/end times using <input type="datetime-local"> fields.
+
+**Format conversion**: datetime-local inputs use YYYY-MM-DDTHH:mm format, but backend expects RFC3339 (YYYY-MM-DDTHH:mm:ssZ). Implemented helper functions:
+- 	oDatetimeLocal(isoString): Strips seconds and 'Z' suffix (.slice(0, 16))
+- romDatetimeLocal(localString): Appends :00Z to convert back
+
+**Validation**: Client-side validation ensures start < end before sending to backend. Shows error banner if validation fails. Replaces lert() with inline error display (alidationError state).
+
+**Active session handling**: Time fields are disabled (disabled={isRunning(session) || saving}) when a session is currently running. Shows hint: "Stop the session before editing times".
+
+**EditState updates**: Extended EditState type to include startTime: string and ndTime: string. Populated from session data in startEdit() using datetime-local format conversion.
+
+**UpdateSessionParams**: Added startTime?: string and ndTime?: string to the frontend type definition to match backend DTO changes.
+
+**Touch targets**: All input fields meet 44px min-height requirement with min-height: 44px CSS rule.
+
+**Svelte 5 runes**: Used $state() for alidationError. No $effect() at module level. All event handlers use onclick not on:click.
+
+**CI Results**:
+- ✅ cargo clippy -- -D warnings — passed (0 warnings)
+- ✅ 
+pm test -- --run — 84 passed, 17 skipped (all tests green)
+- ✅ 
+pm run build — build succeeded, no errors
+- ⚠️ cargo test — compilation memory issue (unrelated to changes, backend builds cleanly)
+
+**Gotchas**:
+- datetime-local format differs from RFC3339 — must convert both ways
+- Active sessions (no endTime) need special handling — disable editing but don't crash
+- Always validate start < end before submitting to avoid backend errors
+
+**Outcome**: Users can now fix forgotten start/stop times directly in the inline edit form. Frontend changes complete and tested. Backend changes (Chewie) handle the actual time update logic.
+
