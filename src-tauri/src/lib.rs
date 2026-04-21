@@ -65,14 +65,26 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            let app_dir = app.path().app_data_dir()
-                .map_err(|e| Box::new(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    format!("Failed to get app data dir: {}", e)
-                )) as Box<dyn std::error::Error>)?;
-            std::fs::create_dir_all(&app_dir)?;
-            let db_path = app_dir.join("work_tracker.db");
-            let conn = db::initialize(&db_path)?;
+            let conn = if cfg!(debug_assertions) {
+                db::init_dev_db().map_err(|e| {
+                    Box::new(std::io::Error::other(
+                        format!("Failed to initialize dev DB: {}", e)
+                    )) as Box<dyn std::error::Error>
+                })?
+            } else {
+                let app_dir = app.path().app_data_dir()
+                    .map_err(|e| Box::new(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("Failed to get app data dir: {}", e)
+                    )) as Box<dyn std::error::Error>)?;
+                std::fs::create_dir_all(&app_dir)?;
+                let db_path = app_dir.join("work_tracker.db");
+                db::initialize(&db_path).map_err(|e| {
+                    Box::new(std::io::Error::other(
+                        format!("Failed to initialize DB: {}", e)
+                    )) as Box<dyn std::error::Error>
+                })?
+            };
             app.manage(AppState { db: Mutex::new(conn) });
             app.manage(Mutex::new(WindowState {
                 is_widget_mode: false,
@@ -93,6 +105,12 @@ pub fn run() {
 
             // Set up system tray with icon and right-click menu
             tray::setup_tray(app)?;
+
+            // In debug builds, update window title to distinguish from installed prod
+            #[cfg(debug_assertions)]
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.set_title("Work Tracker 2 [Dev]");
+            }
 
             Ok(())
         })

@@ -1,5 +1,122 @@
 # Work Tracker 2 — Decisions Log
 
+## Dev/Prod Environment Isolation
+
+**Date**: 2026-04-14  
+**Agent**: Lando (DevOps)  
+**Issue**: #31  
+**Status**: Implemented  
+
+---
+
+### Context
+
+Developers need to run development builds of Work Tracker 2 without interfering with an installed production version. Previously, both shared the same Tauri app identifier (`com.work-tracker-2.app`), causing data collision and confusion.
+
+### Decision
+
+Create a **Tauri 2 config overlay** (`src-tauri/tauri.dev.conf.json`) that changes the app identifier and product name for dev builds:
+
+- **Debug builds** → `com.work-tracker-2.dev`, displayed as "Work Tracker 2 (Dev)"
+- **Release builds** → `com.work-tracker-2.app`, displayed as "Work Tracker 2"
+
+### Implementation
+
+- Created `src-tauri/tauri.dev.conf.json` with overrides for `productName` and `identifier`
+- Updated `package.json` npm script: `"tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json"`
+
+### Rationale
+
+- Uses native Tauri 2 config overlay feature (no hacks, well-supported)
+- Minimal duplication (only 4 lines vs full config)
+- Different app identifiers = completely isolated data directories across platforms
+- Clear intent via filename
+- Zero code changes required
+
+### Impact
+
+- ✅ Dev and prod can run simultaneously without conflicts
+- ✅ Window title clearly marks dev builds
+- ✅ Data directories remain separate
+- ⚠️ Dev data lost on app restart (intentional)
+
+---
+
+## In-Memory Database for Dev Builds
+
+**Date**: 2026-04-22  
+**Author**: Chewie (Backend Dev)  
+**Status**: Implemented  
+**Related Issue**: #31
+
+---
+
+### Context
+
+Work Tracker 2 dev builds and production builds were both using the same persistent SQLite database file, causing conflicts when developers wanted to test features while using the production app or run fresh for each dev session.
+
+### Decision
+
+Use compile-time conditional compilation (`cfg!(debug_assertions)`) to separate dev and production database initialization:
+
+- **Debug builds** → In-memory SQLite database (`:memory:`)
+- **Release builds** → Persistent file-based SQLite database
+
+### Implementation
+
+#### Added `init_dev_db()` Function
+Location: `src-tauri/src/db/mod.rs`
+
+```rust
+pub fn init_dev_db() -> SqlResult<Connection> {
+    let conn = Connection::open_in_memory()?;
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    run_migrations(&conn)?;
+    Ok(conn)
+}
+```
+
+#### Modified Setup Hook
+Location: `src-tauri/src/lib.rs`
+
+Conditionally initializes database:
+- If `cfg!(debug_assertions)` → use `init_dev_db()` (in-memory)
+- Otherwise → use `db::initialize()` (persistent)
+
+#### Added Dev Window Title
+Debug builds set window title to "Work Tracker 2 [Dev]" for visual distinction.
+
+### Rationale
+
+1. **Independence**: Dev and prod never interfere
+2. **Fresh State**: Every dev launch starts with clean database
+3. **Speed**: In-memory SQLite is faster than file I/O
+4. **Simplicity**: No cleanup, no stale data
+5. **Test-like Environment**: Same pattern as `init_test_db()` used in unit tests
+6. **Compile-time Decision**: `cfg!(debug_assertions)` is standard Rust, automatic, no config needed
+
+### Trade-offs
+
+**Advantages**:
+- ✅ Dev and prod completely isolated  
+- ✅ Fresh database on every dev start  
+- ✅ No persistent dev data to maintain  
+- ✅ Clear visual distinction  
+- ✅ Zero risk of corrupting production data  
+
+**Disadvantages**:
+- ❌ Dev data lost on app restart (intentional)  
+- ❌ Cannot test persistence/recovery flows in dev mode  
+- ❌ Must use release build to test real database behavior
+
+### Verification
+
+CI checks passing:
+- ✅ `cargo clippy -- -D warnings` — 0 warnings
+- ✅ `cargo test` — 53 tests passed
+
+---
+
 ## CI Enforcement — Definition of Done for All Coding Agents
 
 **Date**: 2026-04-13  
