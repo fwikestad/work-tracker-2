@@ -49,6 +49,12 @@
     error = '';
     try {
       reportData = await getReport(startDate, endDate);
+      // Expand all day groups by default when data loads
+      if (reportData) {
+        const groups = groupSessionsByDay(reportData.sessions ?? []);
+        expandedDays = new Set(groups.map((g) => g.date));
+        expandedCustomers = new Set();
+      }
     } catch (e: any) {
       error = e?.message ?? 'Failed to load report';
     } finally {
@@ -108,15 +114,6 @@
   const dayGroups = $derived.by(() => {
     if (!reportData) return [];
     return groupSessionsByDay(reportData.sessions ?? []);
-  });
-
-  // When report data loads, expand all day groups by default
-  $effect(() => {
-    if (reportData) {
-      const groups = groupSessionsByDay(reportData.sessions ?? []);
-      expandedDays = new Set(groups.map((g) => g.date));
-      expandedCustomers = new Set();
-    }
   });
 
   $effect(() => {
