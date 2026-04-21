@@ -295,6 +295,7 @@
     letter-spacing: 0.5px;
     color: var(--text-muted);
     padding: 8px 4px 4px;
+    flex-shrink: 0;
   }
 
   .results {
@@ -318,6 +319,7 @@
     flex-direction: column;
     gap: 4px;
     min-height: 44px;
+    flex-shrink: 0;
   }
 
   .result-item:hover,
