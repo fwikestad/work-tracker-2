@@ -2,6 +2,7 @@
 /// Uses an in-memory SQLite database for isolation.
 use app_lib::db::{init_test_db, initialize};
 use app_lib::services::{session_service, summary_service};
+use app_lib::models::error::AppError;
 use rusqlite::{Connection, params};
 
 // ---------------------------------------------------------------------------

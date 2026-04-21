@@ -814,6 +814,11 @@ pub fn update_session_times(
     
     // Validate: start < end
     if start_dt >= end_dt {
+        if start_dt == end_dt {
+            return Err(AppError::Validation(
+                "Session duration must be greater than zero".to_string()
+            ));
+        }
         return Err(AppError::Validation(
             "start_time must be before end_time".to_string()
         ));
