@@ -1,10 +1,11 @@
 <script lang="ts">
   import { getReport } from '$lib/api/reports';
-  import { formatHuman } from '$lib/utils/formatters';
+  import { formatHuman, formatDay } from '$lib/utils/formatters';
   import { exportCsv } from '$lib/api/reports';
   import { save } from '@tauri-apps/plugin-dialog';
   import { writeTextFile } from '@tauri-apps/plugin-fs';
-  import type { ReportData, ReportEntry } from '$lib/types';
+  import type { ReportData } from '$lib/types';
+  import { groupSessionsByDay } from '$lib/utils/reportGrouping';
   import { onMount } from 'svelte';
 
   let reportData = $state<ReportData | null>(null);
@@ -15,6 +16,7 @@
   let rangeType = $state<'week' | 'month' | 'custom'>('week');
   let startDate = $state('');
   let endDate = $state('');
+  let expandedDays = $state<Set<string>>(new Set());
   let expandedCustomers = $state<Set<string>>(new Set());
 
   // Initialize with "this week" once mounted (client-only; avoids SSR invoke failure)
@@ -23,7 +25,7 @@
   function updateDateRange(type: 'week' | 'month' | 'custom') {
     rangeType = type;
     const now = new Date();
-    
+
     if (type === 'week') {
       // Monday of current week
       const day = now.getDay();
@@ -71,7 +73,7 @@
       if (path) {
         await writeTextFile(path, csv);
         exportSuccess = true;
-        setTimeout(() => exportSuccess = false, 3000);
+        setTimeout(() => (exportSuccess = false), 3000);
       }
     } catch (e: any) {
       error = e?.message ?? 'Export failed';
@@ -80,36 +82,41 @@
     }
   }
 
-  function toggleCustomer(customerId: string) {
-    if (expandedCustomers.has(customerId)) {
-      expandedCustomers.delete(customerId);
+  function toggleDay(date: string) {
+    if (expandedDays.has(date)) {
+      expandedDays.delete(date);
     } else {
-      expandedCustomers.add(customerId);
+      expandedDays.add(date);
+    }
+    expandedDays = new Set(expandedDays);
+  }
+
+  function toggleCustomer(date: string, customerName: string) {
+    const key = `${date}::${customerName}`;
+    if (expandedCustomers.has(key)) {
+      expandedCustomers.delete(key);
+    } else {
+      expandedCustomers.add(key);
     }
     expandedCustomers = new Set(expandedCustomers);
   }
 
-  // Group entries by customer
-  const groupedEntries = $derived.by(() => {
-    if (!reportData) return new Map<string, { customerName: string; customerColor: string | null; entries: ReportEntry[]; totalSeconds: number }>();
-    
-    const map = new Map<string, { customerName: string; customerColor: string | null; entries: ReportEntry[]; totalSeconds: number }>();
-    
-    for (const entry of reportData.entries) {
-      if (!map.has(entry.customerId)) {
-        map.set(entry.customerId, {
-          customerName: entry.customerName,
-          customerColor: entry.customerColor,
-          entries: [],
-          totalSeconds: 0
-        });
-      }
-      const group = map.get(entry.customerId)!;
-      group.entries.push(entry);
-      group.totalSeconds += entry.totalSeconds;
+  function isCustomerExpanded(date: string, customerName: string): boolean {
+    return expandedCustomers.has(`${date}::${customerName}`);
+  }
+
+  const dayGroups = $derived.by(() => {
+    if (!reportData) return [];
+    return groupSessionsByDay(reportData.sessions ?? []);
+  });
+
+  // When report data loads, expand all day groups by default
+  $effect(() => {
+    if (reportData) {
+      const groups = groupSessionsByDay(reportData.sessions ?? []);
+      expandedDays = new Set(groups.map((g) => g.date));
+      expandedCustomers = new Set();
     }
-    
-    return map;
   });
 
   $effect(() => {
@@ -173,32 +180,55 @@
       <span class="total-value">{formatHuman(reportData.totalSeconds)}</span>
     </div>
 
-    {#if groupedEntries.size === 0}
+    {#if dayGroups.length === 0}
       <div class="empty">No sessions in this period</div>
     {:else}
       <div class="breakdown">
-        {#each [...groupedEntries.entries()] as [customerId, group]}
-          <div class="customer-group">
-            <button class="customer-header" onclick={() => toggleCustomer(customerId)}>
-              <div class="customer-info">
-                {#if group.customerColor}
-                  <span class="dot" style="background: {group.customerColor}"></span>
-                {/if}
-                <span class="customer-name">{group.customerName}</span>
-                <span class="expand-icon">{expandedCustomers.has(customerId) ? '▼' : '▶'}</span>
+        {#each dayGroups as dayGroup}
+          <div class="day-group">
+            <button class="day-header" onclick={() => toggleDay(dayGroup.date)}>
+              <div class="day-info">
+                <span class="expand-icon">{expandedDays.has(dayGroup.date) ? '▼' : '▶'}</span>
+                <span class="day-label">{formatDay(dayGroup.date)}</span>
               </div>
-              <span class="customer-total">{formatHuman(group.totalSeconds)}</span>
+              <span class="day-total">{formatHuman(dayGroup.totalSeconds)}</span>
             </button>
 
-            {#if expandedCustomers.has(customerId)}
-              <div class="work-orders">
-                {#each group.entries as entry}
-                  <div class="work-order-entry">
-                    <div class="work-order-info">
-                      <span class="work-order-name">{entry.workOrderName}</span>
-                      <span class="session-count">{entry.sessionCount} session{entry.sessionCount !== 1 ? 's' : ''}</span>
-                    </div>
-                    <span class="work-order-total">{formatHuman(entry.totalSeconds)}</span>
+            {#if expandedDays.has(dayGroup.date)}
+              <div class="day-customers">
+                {#each dayGroup.customers as customer}
+                  <div class="customer-group">
+                    <button
+                      class="customer-header"
+                      onclick={() => toggleCustomer(dayGroup.date, customer.customerName)}
+                    >
+                      <div class="customer-info">
+                        {#if customer.customerColor}
+                          <span class="dot" style="background: {customer.customerColor}"></span>
+                        {/if}
+                        <span class="customer-name">{customer.customerName}</span>
+                        <span class="expand-icon"
+                          >{isCustomerExpanded(dayGroup.date, customer.customerName) ? '▼' : '▶'}</span
+                        >
+                      </div>
+                      <span class="customer-total">{formatHuman(customer.totalSeconds)}</span>
+                    </button>
+
+                    {#if isCustomerExpanded(dayGroup.date, customer.customerName)}
+                      <div class="work-orders">
+                        {#each customer.workOrders as wo}
+                          <div class="work-order-entry">
+                            <div class="work-order-info">
+                              <span class="work-order-name">{wo.workOrderName}</span>
+                              <span class="session-count"
+                                >{wo.sessionCount} session{wo.sessionCount !== 1 ? 's' : ''}</span
+                              >
+                            </div>
+                            <span class="work-order-total">{formatHuman(wo.totalSeconds)}</span>
+                          </div>
+                        {/each}
+                      </div>
+                    {/if}
                   </div>
                 {/each}
               </div>
@@ -349,11 +379,62 @@
     gap: 8px;
   }
 
-  .customer-group {
+  /* Day-level container */
+  .day-group {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
+  }
+
+  .day-header {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--text);
+  }
+
+  .day-header:hover {
+    background: var(--bg);
+  }
+
+  .day-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .day-label {
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  .day-total {
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  /* Customer rows indented under the day */
+  .day-customers {
+    border-top: 1px solid var(--border);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .customer-group {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-left: 14px;
   }
 
   .customer-header {
@@ -361,7 +442,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px;
+    padding: 10px 12px;
     background: transparent;
     border: none;
     cursor: pointer;
@@ -370,7 +451,7 @@
   }
 
   .customer-header:hover {
-    background: var(--bg);
+    background: var(--surface);
   }
 
   .customer-info {
@@ -384,6 +465,7 @@
     height: 10px;
     border-radius: 50%;
     display: inline-block;
+    flex-shrink: 0;
   }
 
   .customer-name {
@@ -403,7 +485,7 @@
 
   .work-orders {
     border-top: 1px solid var(--border);
-    padding: 8px;
+    padding: 6px 8px;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -414,7 +496,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
-    background: var(--bg);
+    background: var(--surface);
     border-radius: var(--radius);
   }
 
