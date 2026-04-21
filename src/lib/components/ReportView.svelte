@@ -5,7 +5,7 @@
   import { save } from '@tauri-apps/plugin-dialog';
   import { writeTextFile } from '@tauri-apps/plugin-fs';
   import type { ReportData } from '$lib/types';
-  import { groupSessionsByDay } from '$lib/utils/reportGrouping';
+  import { groupSessionsByDay, groupSessionsByWeek } from '$lib/utils/reportGrouping';
   import { onMount } from 'svelte';
 
   let reportData = $state<ReportData | null>(null);
@@ -18,6 +18,7 @@
   let endDate = $state('');
   let expandedDays = $state<Set<string>>(new Set());
   let expandedCustomers = $state<Set<string>>(new Set());
+  let expandedWeeks = $state<Set<string>>(new Set());
 
   // Initialize with "this week" once mounted (client-only; avoids SSR invoke failure)
   onMount(() => updateDateRange('week'));
@@ -54,6 +55,11 @@
         const groups = groupSessionsByDay(reportData.sessions ?? []);
         expandedDays = new Set(groups.map((g) => g.date));
         expandedCustomers = new Set();
+        
+        if (rangeType === 'month') {
+          const wGroups = groupSessionsByWeek(reportData.sessions ?? []);
+          expandedWeeks = new Set(wGroups.map((w) => w.weekStart));
+        }
       }
     } catch (e: any) {
       error = e?.message ?? 'Failed to load report';
@@ -107,6 +113,15 @@
     expandedCustomers = new Set(expandedCustomers);
   }
 
+  function toggleWeek(weekStart: string) {
+    if (expandedWeeks.has(weekStart)) {
+      expandedWeeks.delete(weekStart);
+    } else {
+      expandedWeeks.add(weekStart);
+    }
+    expandedWeeks = new Set(expandedWeeks);
+  }
+
   function isCustomerExpanded(date: string, customerName: string): boolean {
     return expandedCustomers.has(`${date}::${customerName}`);
   }
@@ -114,6 +129,11 @@
   const dayGroups = $derived.by(() => {
     if (!reportData) return [];
     return groupSessionsByDay(reportData.sessions ?? []);
+  });
+
+  const weekGroups = $derived.by(() => {
+    if (!reportData || rangeType !== 'month') return [];
+    return groupSessionsByWeek(reportData.sessions ?? []);
   });
 
   $effect(() => {
@@ -177,61 +197,133 @@
       <span class="total-value">{formatHuman(reportData.totalSeconds)}</span>
     </div>
 
-    {#if dayGroups.length === 0}
+    {#if (rangeType === 'month' ? weekGroups.length === 0 : dayGroups.length === 0)}
       <div class="empty">No sessions in this period</div>
     {:else}
       <div class="breakdown">
-        {#each dayGroups as dayGroup}
-          <div class="day-group">
-            <button class="day-header" onclick={() => toggleDay(dayGroup.date)}>
-              <div class="day-info">
-                <span class="expand-icon">{expandedDays.has(dayGroup.date) ? '▼' : '▶'}</span>
-                <span class="day-label">{formatDay(dayGroup.date)}</span>
-              </div>
-              <span class="day-total">{formatHuman(dayGroup.totalSeconds)}</span>
-            </button>
+        {#if rangeType === 'month'}
+          <!-- Week → Day → Customer → WO grouping -->
+          {#each weekGroups as weekGroup}
+            <div class="week-group">
+              <button class="week-header" onclick={() => toggleWeek(weekGroup.weekStart)}>
+                <div class="week-info">
+                  <span class="expand-icon">{expandedWeeks.has(weekGroup.weekStart) ? '▼' : '▶'}</span>
+                  <span class="week-label">{weekGroup.weekLabel}</span>
+                </div>
+                <span class="week-total">{formatHuman(weekGroup.totalSeconds)}</span>
+              </button>
+              
+              {#if expandedWeeks.has(weekGroup.weekStart)}
+                <div class="week-days">
+                  {#each weekGroup.days as dayGroup}
+                    <div class="day-group">
+                      <button class="day-header" onclick={() => toggleDay(dayGroup.date)}>
+                        <div class="day-info">
+                          <span class="expand-icon">{expandedDays.has(dayGroup.date) ? '▼' : '▶'}</span>
+                          <span class="day-label">{formatDay(dayGroup.date)}</span>
+                        </div>
+                        <span class="day-total">{formatHuman(dayGroup.totalSeconds)}</span>
+                      </button>
 
-            {#if expandedDays.has(dayGroup.date)}
-              <div class="day-customers">
-                {#each dayGroup.customers as customer}
-                  <div class="customer-group">
-                    <button
-                      class="customer-header"
-                      onclick={() => toggleCustomer(dayGroup.date, customer.customerName)}
-                    >
-                      <div class="customer-info">
-                        {#if customer.customerColor}
-                          <span class="dot" style="background: {customer.customerColor}"></span>
-                        {/if}
-                        <span class="customer-name">{customer.customerName}</span>
-                        <span class="expand-icon"
-                          >{isCustomerExpanded(dayGroup.date, customer.customerName) ? '▼' : '▶'}</span
-                        >
-                      </div>
-                      <span class="customer-total">{formatHuman(customer.totalSeconds)}</span>
-                    </button>
-
-                    {#if isCustomerExpanded(dayGroup.date, customer.customerName)}
-                      <div class="work-orders">
-                        {#each customer.workOrders as wo}
-                          <div class="work-order-entry">
-                            <div class="work-order-info">
-                              <span class="work-order-name">{wo.workOrderName}</span>
-                              <span class="session-count"
-                                >{wo.sessionCount} session{wo.sessionCount !== 1 ? 's' : ''}</span
+                      {#if expandedDays.has(dayGroup.date)}
+                        <div class="day-customers">
+                          {#each dayGroup.customers as customer}
+                            <div class="customer-group">
+                              <button
+                                class="customer-header"
+                                onclick={() => toggleCustomer(dayGroup.date, customer.customerName)}
                               >
+                                <div class="customer-info">
+                                  {#if customer.customerColor}
+                                    <span class="dot" style="background: {customer.customerColor}"></span>
+                                  {/if}
+                                  <span class="customer-name">{customer.customerName}</span>
+                                  <span class="expand-icon"
+                                    >{isCustomerExpanded(dayGroup.date, customer.customerName) ? '▼' : '▶'}</span
+                                  >
+                                </div>
+                                <span class="customer-total">{formatHuman(customer.totalSeconds)}</span>
+                              </button>
+
+                              {#if isCustomerExpanded(dayGroup.date, customer.customerName)}
+                                <div class="work-orders">
+                                  {#each customer.workOrders as wo}
+                                    <div class="work-order-entry">
+                                      <div class="work-order-info">
+                                        <span class="work-order-name">{wo.workOrderName}</span>
+                                        <span class="session-count"
+                                          >{wo.sessionCount} session{wo.sessionCount !== 1 ? 's' : ''}</span
+                                        >
+                                      </div>
+                                      <span class="work-order-total">{formatHuman(wo.totalSeconds)}</span>
+                                    </div>
+                                  {/each}
+                                </div>
+                              {/if}
                             </div>
-                            <span class="work-order-total">{formatHuman(wo.totalSeconds)}</span>
-                          </div>
-                        {/each}
-                      </div>
-                    {/if}
-                  </div>
-                {/each}
-              </div>
-            {/if}
-          </div>
-        {/each}
+                          {/each}
+                        </div>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/each}
+        {:else}
+          <!-- Week/Custom: flat day grouping (unchanged) -->
+          {#each dayGroups as dayGroup}
+            <div class="day-group">
+              <button class="day-header" onclick={() => toggleDay(dayGroup.date)}>
+                <div class="day-info">
+                  <span class="expand-icon">{expandedDays.has(dayGroup.date) ? '▼' : '▶'}</span>
+                  <span class="day-label">{formatDay(dayGroup.date)}</span>
+                </div>
+                <span class="day-total">{formatHuman(dayGroup.totalSeconds)}</span>
+              </button>
+
+              {#if expandedDays.has(dayGroup.date)}
+                <div class="day-customers">
+                  {#each dayGroup.customers as customer}
+                    <div class="customer-group">
+                      <button
+                        class="customer-header"
+                        onclick={() => toggleCustomer(dayGroup.date, customer.customerName)}
+                      >
+                        <div class="customer-info">
+                          {#if customer.customerColor}
+                            <span class="dot" style="background: {customer.customerColor}"></span>
+                          {/if}
+                          <span class="customer-name">{customer.customerName}</span>
+                          <span class="expand-icon"
+                            >{isCustomerExpanded(dayGroup.date, customer.customerName) ? '▼' : '▶'}</span
+                          >
+                        </div>
+                        <span class="customer-total">{formatHuman(customer.totalSeconds)}</span>
+                      </button>
+
+                      {#if isCustomerExpanded(dayGroup.date, customer.customerName)}
+                        <div class="work-orders">
+                          {#each customer.workOrders as wo}
+                            <div class="work-order-entry">
+                              <div class="work-order-info">
+                                <span class="work-order-name">{wo.workOrderName}</span>
+                                <span class="session-count"
+                                  >{wo.sessionCount} session{wo.sessionCount !== 1 ? 's' : ''}</span
+                                >
+                              </div>
+                              <span class="work-order-total">{formatHuman(wo.totalSeconds)}</span>
+                            </div>
+                          {/each}
+                        </div>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/each}
+        {/if}
       </div>
     {/if}
   {:else}
@@ -518,4 +610,60 @@
     font-weight: 600;
     color: var(--text);
   }
+
+  /* Week-level container */
+  .week-group {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .week-header {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .week-header:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .week-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .week-label {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .week-total {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .week-days {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  /* Indent day groups inside a week */
+  .week-days .day-group {
+    margin-left: 0;
+  }
+
 </style>
