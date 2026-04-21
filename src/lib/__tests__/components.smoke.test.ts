@@ -11,6 +11,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/svelte';
+import { sessionsStore } from '$lib/stores/sessions.svelte';
 
 // ---------------------------------------------------------------------------
 // Mocks — must be declared before component imports.
@@ -108,6 +109,9 @@ import WidgetOverlay from '$lib/components/WidgetOverlay.svelte';
 beforeEach(() => {
   vi.clearAllMocks();
   cleanup();
+  sessionsStore.todays = [];
+  sessionsStore.recent = [];
+  sessionsStore.allFavorites = [];
 });
 
 // ---------------------------------------------------------------------------
@@ -148,6 +152,36 @@ describe('SearchSwitch component — mount smoke tests', () => {
   it('renders empty state message when no work orders', () => {
     render(SearchSwitch);
     expect(screen.getByText('No work orders yet')).toBeTruthy();
+  });
+
+  it('renders all favorites and recents when many are present', () => {
+    const makeWorkOrder = (id: string, name: string, isFavorite = false) => ({
+      id,
+      customerId: `customer-${id}`,
+      customerName: 'Customer',
+      customerColor: null,
+      name,
+      code: null,
+      description: null,
+      status: 'active' as const,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      archivedAt: null,
+      isFavorite,
+    });
+
+    sessionsStore.allFavorites = Array.from({ length: 8 }, (_, i) =>
+      makeWorkOrder(`fav-${i}`, `Favorite ${i}`, true)
+    );
+    sessionsStore.recent = Array.from({ length: 12 }, (_, i) =>
+      makeWorkOrder(`recent-${i}`, `Recent ${i}`, false)
+    );
+
+    render(SearchSwitch);
+    expect(screen.getByText('⭐ Favorites')).toBeTruthy();
+    expect(screen.getByText('🕐 Recent')).toBeTruthy();
+    expect(screen.getByText('Favorite 7')).toBeTruthy();
+    expect(screen.getByText('Recent 11')).toBeTruthy();
   });
 });
 
