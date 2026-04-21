@@ -22,6 +22,13 @@ export function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
+/** Format a "YYYY-MM-DD" date string as a human-readable day label (e.g. "Monday, April 21, 2026") */
+export function formatDay(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const d = new Date(year, month - 1, day); // local timezone — avoids UTC off-by-one
+  return d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}
+
 /** Today's date as YYYY-MM-DD in local timezone */
 export function today(): string {
   const d = new Date();
