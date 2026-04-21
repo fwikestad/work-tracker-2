@@ -10,15 +10,9 @@
   import QuickAdd from '$lib/components/QuickAdd.svelte';
   import RecoveryDialog from '$lib/components/RecoveryDialog.svelte';
 
-  onMount(async () => {
-    // Initialize app state
-    await Promise.all([timer.refresh(), sessionsStore.refreshAll()]);
-
-    // Check for orphan session (crash recovery)
-    const orphan = await checkForOrphanSession();
-    if (orphan) timer.setOrphan(orphan);
-
-    // Register global keyboard shortcuts
+  onMount(() => {
+    // Register shortcuts synchronously at the top of onMount — before any await
+    // so a failing init call cannot prevent shortcuts from being registered.
     const unregKb = registerShortcuts({
       onQuickAdd: () => uiStore.openQuickAdd(),
       onSearch: () => uiStore.openSearch(),
@@ -45,12 +39,29 @@
       }
     });
 
-    // Listen for global shortcut event from Rust (Ctrl+Shift+S from any app)
-    const unlistenSearch = await listen('focus-search', () => {
-      uiStore.openSearch();
-    });
+    let unlistenSearch = () => {};
+    let disposed = false;
+
+    // Async init runs in a fire-and-forget IIFE so onMount can return
+    // a synchronous cleanup function (Svelte 5 ignores async cleanup).
+    (async () => {
+      try {
+        await Promise.all([timer.refresh(), sessionsStore.refreshAll()]);
+
+        const orphan = await checkForOrphanSession();
+        if (orphan) timer.setOrphan(orphan);
+
+        // Listen for global shortcut event from Rust (Ctrl+Shift+S from any app)
+        const off = await listen('focus-search', () => uiStore.openSearch());
+        if (disposed) off();
+        else unlistenSearch = off;
+      } catch (e) {
+        console.error('[layout] init error:', e);
+      }
+    })();
 
     return () => {
+      disposed = true;
       unregKb();
       unlistenSearch();
     };
