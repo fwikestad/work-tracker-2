@@ -6,6 +6,39 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 
 ## Learnings
 
+### 2026-04-22: Weekly Grouping for Monthly Reports
+
+**Task Completed**: Added Week → Day → Customer → Work Order grouping structure for monthly report view.
+
+**Implementation**:
+
+1. **`src/lib/utils/reportGrouping.ts`**:
+   - Added `WeekGroup` interface with `weekStart` (Monday YYYY-MM-DD), `weekLabel` (e.g., "Apr 14 – Apr 20"), `totalSeconds`, and `days: DayGroup[]`
+   - Implemented `groupSessionsByWeek()` function that internally calls `groupSessionsByDay()` and groups by calendar week (Monday–Sunday)
+   - Helper `getMondayOf()` computes the Monday for any date (accounting for Sunday = 0 in JS)
+   - Helper `formatWeekLabel()` formats week ranges intelligently ("Apr 14 – 20" if same month, "Apr 28 – May 4" if crossing months)
+   - Weeks sorted newest first (descending by `weekStart`)
+
+2. **`src/lib/components/ReportView.svelte`**:
+   - Added `expandedWeeks: Set<string>` state for week expand/collapse
+   - Added `weekGroups` derived state (only computed when `rangeType === 'month'`)
+   - Updated `loadReport()` to expand all weeks by default when month view
+   - Template conditionally renders week grouping for month view, flat day grouping for week/custom
+   - CSS styles for `.week-group`, `.week-header`, `.week-info`, `.week-label`, `.week-total`, `.week-days`
+   - Week groups indent day groups using `padding: 8px` wrapper
+
+**Key Design Decisions**:
+- Week grouping only applies to `rangeType === 'month'` — week and custom ranges remain flat (day grouping only)
+- All weeks expanded by default on load for instant visibility
+- Empty state check handles both week and day grouping: `weekGroups.length === 0` for month, `dayGroups.length === 0` for others
+- Used UTC-based week calculation to avoid timezone edge cases
+
+**Quality Gate**: ✅ All 113 frontend tests pass, build succeeds, clippy clean, cargo tests pass
+
+**Branch**: `squad/monthly-week-grouping` (branched from `squad/35-reports-grouping`)
+
+---
+
 ### Bug Fix: Keypress regression after reports grouping PR (#36)
 
 **Root Cause**: `ReportView.svelte` contained a `$effect()` that wrote to `$state` variables (`expandedDays`, `expandedCustomers`) after `reportData` loaded. In Svelte 5, writing to reactive state inside `$effect` triggers a synchronous flush cycle. This flush can interrupt keydown event propagation before the event bubbles to the `window` listener registered in `+layout.svelte`, breaking all global keyboard shortcuts (Ctrl+N, Ctrl+K, Ctrl+S, etc.).
