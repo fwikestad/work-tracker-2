@@ -112,3 +112,9 @@ Backend Dev for work-tracker-2 — native desktop time tracker for consultant Fr
 - Window title "[Dev]" for visual distinction in debug mode
 - All 53 Rust tests pass, 0 Clippy warnings
 
+**2026-04-22: Graceful Global Shortcut Registration**:
+- Fixed panic on startup when Ctrl+Shift+S or Ctrl+Alt+W already registered by another instance
+- Changed from `.map_err(...)?` (propagates error) to `if let Err(e)` pattern (logs warning to stderr)
+- App now starts successfully even when hotkeys are taken — shortcuts are optional UX enhancement
+- Pattern: Non-fatal features should degrade gracefully, not block app startup
+

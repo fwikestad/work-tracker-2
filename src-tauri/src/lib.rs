@@ -95,13 +95,15 @@ pub fn run() {
 
             // Register Ctrl+Shift+S → bring window to front + open search overlay
             let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyS);
-            app.handle().global_shortcut().register(shortcut)
-                .map_err(|e| format!("Failed to register global shortcut: {}", e))?;
+            if let Err(e) = app.handle().global_shortcut().register(shortcut) {
+                eprintln!("[warn] Could not register Ctrl+Shift+S shortcut (already taken?): {}", e);
+            }
 
             // Register Ctrl+Alt+W → toggle always-on-top widget mode
             let widget_shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyW);
-            app.handle().global_shortcut().register(widget_shortcut)
-                .map_err(|e| format!("Failed to register widget shortcut: {}", e))?;
+            if let Err(e) = app.handle().global_shortcut().register(widget_shortcut) {
+                eprintln!("[warn] Could not register Ctrl+Alt+W shortcut (already taken?): {}", e);
+            }
 
             // Set up system tray with icon and right-click menu
             tray::setup_tray(app)?;
