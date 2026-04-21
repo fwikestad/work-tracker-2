@@ -115,6 +115,8 @@ export interface UpdateWorkOrderParams {
 }
 
 export interface UpdateSessionParams {
+  startTime?: string;
+  endTime?: string;
   durationOverride?: number;
   activityType?: string;
   notes?: string;

@@ -93,7 +93,7 @@ function buildWeekDays(monday: Date, byDate: Map<string, Session[]>): WeekDay[] 
       isToday: dateStr === todayStr,
       sessions: byDate.get(dateStr) ?? []
     };
-  });
+  }).reverse();
 }
 
 /** All sessions tracked today (continuously updated). */

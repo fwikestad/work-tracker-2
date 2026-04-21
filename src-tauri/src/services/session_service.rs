@@ -748,6 +748,129 @@ fn get_work_order_by_id(conn: &Connection, id: &str) -> Result<WorkOrder, AppErr
     })
 }
 
+/// Update start and/or end times of a completed session.
+///
+/// Validates that the session is not currently active, parses timestamps,
+/// ensures start < end, and recalculates duration_seconds. Also clears any
+/// duration_override (times become the new source of truth).
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `session_id` - UUID of the session to update
+/// * `start_time` - Optional new start time (ISO 8601 / RFC3339 string)
+/// * `end_time` - Optional new end time (ISO 8601 / RFC3339 string)
+///
+/// # Returns
+///
+/// The updated `Session` with recalculated duration.
+///
+/// # Errors
+///
+/// Returns `AppError::NotFound` if the session does not exist.
+/// Returns `AppError::Validation` if:
+/// - Session is currently active (running)
+/// - start_time >= end_time
+/// - end_time is too far in the future (>5 minutes)
+/// - Timestamp formats are invalid
+pub fn update_session_times(
+    conn: &Connection,
+    session_id: &str,
+    start_time: Option<&str>,
+    end_time: Option<&str>,
+) -> Result<Session, AppError> {
+    // Fetch current session
+    let current = get_session_by_id(conn, session_id)?;
+    
+    // Check if session is active (running)
+    let active_session_id: Option<String> = conn
+        .query_row(
+            "SELECT session_id FROM active_session WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+    
+    if active_session_id.as_deref() == Some(session_id) {
+        return Err(AppError::Validation(
+            "Cannot edit times of a running session. Stop the session first.".to_string()
+        ));
+    }
+    
+    // Ensure session is completed (has end_time)
+    if current.end_time.is_none() {
+        return Err(AppError::Validation(
+            "Cannot edit times of an incomplete session.".to_string()
+        ));
+    }
+    
+    // Determine effective start and end times
+    let effective_start = start_time.unwrap_or(&current.start_time);
+    let effective_end = end_time.unwrap_or(current.end_time.as_ref().unwrap());
+    
+    // Parse timestamps
+    let start_dt = parse_timestamp(effective_start)?;
+    let end_dt = parse_timestamp(effective_end)?;
+    
+    // Validate: start < end
+    if start_dt >= end_dt {
+        if start_dt == end_dt {
+            return Err(AppError::Validation(
+                "Session duration must be greater than zero".to_string()
+            ));
+        }
+        return Err(AppError::Validation(
+            "start_time must be before end_time".to_string()
+        ));
+    }
+    
+    // Validate: end_time not too far in future (allow 5 min tolerance for clock skew)
+    let now = Utc::now();
+    let future_tolerance = chrono::Duration::minutes(5);
+    if end_dt.with_timezone(&Utc) > now + future_tolerance {
+        return Err(AppError::Validation(
+            "end_time cannot be more than 5 minutes in the future".to_string()
+        ));
+    }
+    
+    // Calculate new duration
+    let new_duration = calculate_duration(effective_start, effective_end)?;
+    
+    if new_duration <= 0 {
+        return Err(AppError::Validation(
+            "Session duration must be greater than zero".to_string()
+        ));
+    }
+    
+    // Update session (clear duration_override since times are now source of truth)
+    let now_str = Utc::now().to_rfc3339();
+    let mut updates = vec!["duration_seconds = ?", "duration_override = NULL", "updated_at = ?"];
+    let mut values: Vec<Box<dyn rusqlite::ToSql>> = vec![
+        Box::new(new_duration),
+        Box::new(now_str.clone()),
+    ];
+    
+    if start_time.is_some() {
+        updates.push("start_time = ?");
+        values.push(Box::new(effective_start.to_string()));
+    }
+    
+    if end_time.is_some() {
+        updates.push("end_time = ?");
+        values.push(Box::new(effective_end.to_string()));
+    }
+    
+    values.push(Box::new(session_id.to_string()));
+    
+    let sql = format!("UPDATE time_sessions SET {} WHERE id = ?", updates.join(", "));
+    let params_refs: Vec<&dyn rusqlite::ToSql> = values.iter().map(|b| b.as_ref()).collect();
+    
+    conn.execute(&sql, rusqlite::params_from_iter(params_refs))?;
+    
+    // Return updated session
+    get_session_by_id(conn, session_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

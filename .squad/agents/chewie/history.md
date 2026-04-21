@@ -968,3 +968,35 @@ pm run build ✅
 
 **Outcome**: Service layer documentation complete for Phase 1-3 scope. Follows Rust best practices.
 
+
+### 2026-04-21: Session Time Editing — Validation Fix
+
+**Task**: Implement backend for editing start/end times of completed time sessions (Issue #29).
+
+**Context**: Leia (frontend dev) had already implemented most of the backend logic in a previous commit (552394a). The implementation included:
+- update_session_times() function in session_service.rs
+- Extended update_session command in sessions.rs
+- UpdateSessionParams with start_time/end_time fields
+- 11 test cases (TC-EDIT-01 through TC-EDIT-12)
+
+**My Contribution**: 
+Found and fixed a failing test case (tc_edit_05_zero_duration_rejected). The test expected an error message containing "duration" or "zero", but the validation was only checking start_dt >= end_dt with a generic "start_time must be before end_time" message.
+
+**Fix Applied**:
+- Split the validation into two cases:
+  - If start_dt == end_dt: Return "Session duration must be greater than zero"
+  - If start_dt > end_dt: Return "start_time must be before end_time"
+- Added missing use app_lib::models::error::AppError import to tests
+
+**Test Results**: 27 passed, 1 ignored (TC-EDIT-08 overlap prevention is Phase 2)
+
+**Pattern Learned**: When implementing validation, provide specific error messages that match what the test expectations are. Generic error messages may not convey enough information to the user or pass specific test assertions. Always check test expectations before implementing validation logic.
+
+**CI Status**: All 4 checks passed:
+- cargo clippy -- -D warnings ✓
+- cargo test ✓ (27 passed, 1 ignored)
+- npm test -- --run ✓ (84 passed, 17 skipped)
+- npm run build ✓
+
+---
+
