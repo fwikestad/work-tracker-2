@@ -6,6 +6,64 @@ Tester for work-tracker-2 — native desktop time tracker for consultant Fredrik
 
 ## Learnings
 
+### 2026-04-21: Issue #35 — Reports Grouping Test Suite (17 tests)
+
+**Task Completed**: Written comprehensive test suite for `groupSessionsByDay()` utility function.
+
+**Test Coverage (17 test cases)**:
+
+1. **TC-GROUP-01**: Empty input returns []
+2. **TC-GROUP-02**: Single session creates correct hierarchical structure (1 DayGroup → 1 CustomerGroup → 1 WorkOrderGroup)
+3. **TC-GROUP-03**: Same day/customer/work order: sessions summed, sessionCount incremented
+4. **TC-GROUP-04**: Same day/customer, different work orders: two WorkOrderGroups created
+5. **TC-GROUP-05**: Same day, different customers: two CustomerGroups sorted alphabetically
+6. **TC-GROUP-06**: Different days: two DayGroups, newest day first (desc sort)
+7. **TC-GROUP-07**: null effectiveDuration treated as 0
+8. **TC-GROUP-08**: Day total = sum of customer totals
+9. **TC-GROUP-09**: Customer total = sum of work order totals
+10. **TC-GROUP-10**: Work orders sorted alphabetically by name
+11. **TC-GROUP-11**: Same workOrderId on different days appears in separate DayGroups
+12. **TC-GROUP-12**: Customer color propagated correctly
+13. **TC-GROUP-13**: Complex scenario with multiple days/customers/work orders/mixed durations
+14. **TC-GROUP-14**: Null customerName converted to "Unknown Customer" string (implementation choice)
+15. **TC-GROUP-15**: Null workOrderName converted to "Unknown Work Order" string (implementation choice)
+16. **TC-GROUP-16**: Multiple sessions with same ID/day sum correctly
+17. **TC-GROUP-17**: Date extraction from first 10 chars of ISO datetime string
+
+**Key Patterns Tested**:
+- Hierarchical grouping (Day → Customer → WorkOrder)
+- Sorting: days desc by date, customers asc by name, work orders asc by name
+- Duration aggregation at each level
+- Session counting per work order
+- Null value handling (both effectiveDuration and names)
+- Edge cases: multiple aggregations, same entities on different days
+
+**Test Infrastructure**:
+- Helper factory `makeSession()` with sensible defaults
+- Comprehensive Partial<Session> overrides for flexibility
+- All tests use `expect()` with specific assertions
+
+**Test Results** ✓ **ALL PASSING**:
+- File: `src/lib/__tests__/reportGrouping.test.ts`
+- Test run: 17/17 PASS
+- Duration: 14ms
+- Zero regressions: All 97 existing tests still pass (84 original frontend + backend, 17 new reports tests)
+- Branch: `squad/35-reports-grouping`
+
+**Implementation Verification**:
+Leia's implementation (`src/lib/utils/reportGrouping.ts`) correctly implements all grouping rules:
+- Hierarchical structure with proper typing
+- Date extraction via `slice(0, 10)`
+- Duration aggregation via `?? 0` null coalescing
+- Null names converted to "Unknown {Type}" strings
+- Sorting via `localeCompare()`: customers asc, work orders asc
+- Day sort via `b.date.localeCompare(a.date)` for desc ordering
+
+**Design Decision Documented**:
+Implementation converts null names to human-readable placeholders rather than preserving null. This is appropriate for UI display (report generation always shows a value, never empty).
+
+---
+
 ### 2026-04-17: Issue #29 Review — Edit Session Start/End Times
 
 **Review Result**: APPROVED

@@ -1088,3 +1088,40 @@ pm run build — build succeeded, no errors
 
 **Outcome**: Users can now fix forgotten start/stop times directly in the inline edit form. Frontend changes complete and tested. Backend changes (Chewie) handle the actual time update logic.
 
+
+---
+
+### 2026-04-21: Reports Grouping Day -> Customer -> Work Order (Issue #35)
+
+**Context**: Reports view was flat (Customer -> Work Order across entire date range). Fredrik wanted day-first grouping so consultants can see what they worked on each specific day.
+
+**Approach**: The eportGrouping.ts utility and tests were already on the branch from prior squad work (Wedge + Lando). My job was to wire the utility into ReportView.svelte.
+
+**State changes**:
+- Removed groupedEntries derived (flat customer map)
+- Added dayGroups derived using groupSessionsByDay(reportData.sessions ?? [])
+- Added xpandedDays: Set<string> — initialized with all day keys on load (days start expanded)
+- Changed xpandedCustomers key scheme from customerId to \::\ (per-day per-customer, starts empty = collapsed)
+- $effect reinitializes both sets when eportData changes
+
+**?? [] guard**: The phase3 test mock returns { entries: [], totalSeconds: 0 } without a sessions field. Without the guard, groupSessionsByDay(undefined) throws and corrupts Svelte reactivity in tests. Added eportData.sessions ?? [] in both $derived.by and $effect.
+
+**Template structure**: Three-level nesting — day-group > day-customers > customer-group > work-orders. Day headers use larger font-weight to signal hierarchy. Customer rows indented with margin-left: 14px. Work order entries keep existing styles.
+
+**formatDay**: Uses 
+ew Date(year, month - 1, day) local timezone construction to avoid UTC off-by-one — documented in ormatters.ts as a comment.
+
+**CI Results**:
+- ✅ cargo clippy -- -D warnings — 0 warnings
+- ✅ cargo test — 27 passed, 1 ignored (pre-existing)
+- ✅ npm test -- --run — 101 passed, 17 skipped
+- ✅ npm run build — clean build
+
+**Learnings**:
+- Svelte 5 test mocks often return minimal shapes — always guard optional fields with ?? [] before iterating
+- $derived.by throwing will break Svelte reactivity in tests — crashes are silent but cause downstream test failures (like button active class not updating)
+- When branch already has partial work from other agents, check git log before creating files
+- 
+ew Date(year, month-1, day) is the correct pattern for timezone-safe date construction from "YYYY-MM-DD" strings
+
+**PR**: #36 — https://github.com/fwikestad/work-tracker-2/pull/36

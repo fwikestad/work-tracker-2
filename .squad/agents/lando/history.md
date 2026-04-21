@@ -440,3 +440,44 @@ _Populated as Lando works on the project._
 **Orchestration Log**: `.squad/orchestration-log/2026-04-21T09-18-43Z-lando.md`
 
 **Decision Documented**: `.squad/decisions/decisions.md#dev-prod-environment-isolation`
+
+## Session: Auto-Generate Release Notes (2026-04-21)
+
+**Task**: Configure GitHub's built-in release notes generator to produce layman-friendly release text — Issue #33
+
+**Problem**: The existing `release.yml` uses `generate_release_notes: true` but there was no `.github/release.yml` config file, resulting in unformatted commit/PR lists.
+
+**Solution**: Created `.github/release.yml` configuration with layman-friendly categories
+
+**Changes**:
+1. Created `.github/release.yml` — GitHub release notes generator config
+   - Categories: ✨ What's New, 🐛 Bug Fixes, ⚡ Improvements, 🔒 Security, 📚 Documentation, 🔧 Other Changes
+   - Maps PR labels to friendly section titles
+   - Excludes: ignore-for-release, dependencies, chore labels
+   - Catch-all "*" category for unlabeled PRs
+
+2. Updated `.github/workflows/release.yml` — publish job
+   - Added friendly `body` prefix before auto-generated notes
+   - Body text: "This release includes the latest improvements to Work Tracker 2. See the changes below — features, fixes, and other updates are listed in plain language."
+   - Auto-generated notes append after body (via `generate_release_notes: true`)
+
+**Impact**:
+- Release notes now organized into layman-friendly sections (not raw commit lists)
+- Users see "What's New" and "Bug Fixes" categories instead of technical commit messages
+- Body prefix provides context before detailed changelogs
+- No manual changelog maintenance required — GitHub auto-generates from PR labels
+
+**GitHub Release Notes Generator**:
+- Reads `.github/release.yml` to configure categories
+- Respects PR labels to categorize changes
+- `body` field prepends custom text before auto-generated notes
+- Works with existing `softprops/action-gh-release` action
+
+**Files Modified**:
+- Created: `.github/release.yml` (795 bytes)
+- Updated: `.github/workflows/release.yml` (added body field to Create GitHub Release step)
+
+**Branch**: squad/33-auto-generate-release-text
+**PR**: #34 — https://github.com/fwikestad/work-tracker-2/pull/34
+
+**Verification**: ✅ Config file created, workflow updated, PR opened
