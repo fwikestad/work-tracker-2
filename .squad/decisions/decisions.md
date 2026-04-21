@@ -613,6 +613,115 @@ effective_duration = gross_elapsed - total_paused_seconds - current_pause
 - Total tracked seconds
 - Sorted by total_seconds DESC (highest effort first)
 
+---
+
+## User Directive — Branch Creation Policy
+
+**Date**: 2026-04-21  
+**Author**: Fredrik Kristiansen Wikestad (via Copilot)  
+**Status**: Documented  
+
+### Decision
+
+When working on an issue, always create a new branch based on the main branch unless explicitly told to use a different base branch.
+
+### Rationale
+
+- Ensures clean, traceable feature branches for each issue
+- Prevents accidental dependencies on temporary branches
+- Maintains CI integrity and code review clarity
+
+---
+
+## Release Notes Configuration — Auto-Generate Layman-Friendly Release Notes
+
+**Date**: 2026-04-21  
+**Author**: Lando (DevOps Expert)  
+**Status**: Implemented  
+**PR**: #34  
+
+### Context
+
+GitHub's built-in release notes generator (`generate_release_notes: true`) was producing unformatted lists of commits and PRs without clear categorization, making releases hard to scan for users.
+
+### Decision
+
+Configure GitHub's release notes generator with layman-friendly category names using `.github/release.yml`.
+
+### Implementation
+
+1. **Created `.github/release.yml`** with categories:
+   - ✨ What's New (feature, enhancement labels)
+   - 🐛 Bug Fixes (bug, fix, bugfix labels)
+   - ⚡ Improvements (improvement, performance, refactor labels)
+   - 🔒 Security (security labels)
+   - 📚 Documentation (documentation, docs labels)
+   - 🔧 Other Changes (catch-all)
+
+2. **Updated `.github/workflows/release.yml`**:
+   - Added friendly body prefix explaining what users will find
+   - Kept `generate_release_notes: true` — auto-generated notes append after body
+   - Excluded labels: `ignore-for-release`, `dependencies`, `chore`
+
+### Rationale
+
+- **User-friendly**: Non-technical users can scan sections without decoding commits
+- **Zero maintenance**: GitHub auto-generates from PR labels
+- **Flexible**: Categories updatable without workflow changes
+- **Standard practice**: Uses GitHub's built-in feature, not custom scripts
+- **Body prefix**: Provides context before detailed changes
+
+### Impact
+
+- Release notes organized into scannable sections
+- Reduced manual changelog maintenance
+- Better user experience on GitHub releases page
+
+---
+
+## Reports View Grouping Pattern
+
+**Date**: 2026-04-21  
+**Author**: Leia  
+**Issue**: #35  
+**Status**: Complete (PR #36)
+
+### Decision
+
+Reports view groups sessions by **Day → Customer → Work Order** using `groupSessionsByDay()` from `src/lib/utils/reportGrouping.ts`.
+
+- Day groups: always expanded on load, collapsible
+- Customer groups within a day: collapsed by default, expandable
+- Work order items: visible when parent customer is expanded
+
+### Expand/Collapse Key Scheme
+
+- `expandedDays: Set<string>` — key is `"YYYY-MM-DD"`
+- `expandedCustomers: Set<string>` — key is `"YYYY-MM-DD::customerName"` (scoped per day)
+
+### Data Source
+
+Use `reportData.sessions: Session[]` (not `reportData.entries`) for day grouping. Always guard with `?? []` since older test mocks may not include the `sessions` field.
+
+### Date Formatting
+
+Use `formatDay(dateStr)` from `src/lib/utils/formatters.ts`. Constructs date as `new Date(year, month-1, day)` in local timezone to avoid UTC off-by-one errors. Never use `new Date(isoString)` for date-only strings.
+
+### Template Pattern
+
+Three-level nesting: `.day-group` > `.day-customers` > `.customer-group` > `.work-orders`. Day header has larger weight (`font-weight: 700`, `font-size: 15px`). Customer rows indented with `margin-left: 14px` to signal hierarchy under the day.
+
+### Test Coverage
+
+Comprehensive test suite in `src/lib/__tests__/reportGrouping.test.ts` with 17 test cases covering hierarchical grouping, sorting, aggregation, and edge cases. All tests passing (zero regressions on 84 existing tests).
+
+### Implementation Status
+
+- ✅ ReportView.svelte integrated with grouping utility
+- ✅ Date formatter with local timezone awareness
+- ✅ 4/4 CI checks passed
+- ✅ PR #36 open, ready for merge
+
 **Date Handling**:
 - Week boundaries: ISO 8601 (Mon-Sun, user preference later)
 - Month boundaries: 1st-last day
@@ -1226,3 +1335,65 @@ After:
 - 9 store/module smoke tests passing  
 - 9 component mount tests passing
 - **Total: 40 tests, 0 skipped, 0 failing**
+
+---
+
+## Keypress Regression Root Cause (Reports Grouping PR #36)
+
+**Author**: Leia (Frontend Dev)  
+**Date**: 2026-04-21  
+**Branch**: `squad/35-reports-grouping`  
+**Status**: Fixed and Merged  
+
+### What Broke
+
+All global keyboard shortcuts (Ctrl+N Quick-add, Ctrl+K Search, Ctrl+S Stop, P Pause, R Resume) stopped firing after the reports grouping feature was merged in PR #36.
+
+### Root Cause
+
+`ReportView.svelte` added a `$effect()` that wrote to two `$state` variables (`expandedDays`, `expandedCustomers`) when `reportData` loaded:
+
+```js
+// ❌ anti-pattern — writing $state inside $effect
+$effect(() => {
+  if (reportData) {
+    const groups = groupSessionsByDay(reportData.sessions ?? []);
+    expandedDays = new Set(groups.map((g) => g.date));
+    expandedCustomers = new Set();
+  }
+});
+```
+
+In Svelte 5, assigning to `$state` inside `$effect` triggers a **synchronous DOM flush cycle**. When this flush runs in the same microtask as a dispatched `keydown` event, it can interrupt the event's propagation path before it reaches the `window` listener registered in `+layout.svelte` — silencing all global shortcuts.
+
+### Fix Applied
+
+Moved the state initialisation out of `$effect` and into `loadReport()` directly, immediately after the async data fetch:
+
+```js
+// ✅ correct — set state once in the async handler
+async function loadReport() {
+  ...
+  reportData = await getReport(startDate, endDate);
+  if (reportData) {
+    const groups = groupSessionsByDay(reportData.sessions ?? []);
+    expandedDays = new Set(groups.map((g) => g.date));
+    expandedCustomers = new Set();
+  }
+}
+```
+
+The `$effect` block was removed entirely.
+
+### Rule to Enforce
+
+**Do not write to `$state` inside a Svelte 5 `$effect` when the intent is "initialise once when async data arrives."**  
+Use the async function that fetches the data instead.  
+`$effect` is for genuinely reactive subscriptions with no other natural home (e.g., registering/unregistering DOM listeners based on open/closed state).
+
+### CI After Fix
+
+- ✅ `cargo clippy -- -D warnings`
+- ✅ `cargo test` (39 tests, 1 ignored)
+- ✅ `npm test -- --run` (101 tests, 17 skipped)
+- ✅ `npm run build`

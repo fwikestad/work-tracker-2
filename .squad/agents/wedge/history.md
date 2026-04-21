@@ -64,6 +64,56 @@ Implementation converts null names to human-readable placeholders rather than pr
 
 ---
 
+### 2026-04-21: Issue #35 — Week Grouping Test Suite (12 tests)
+
+**Task Completed**: Written comprehensive test suite for `groupSessionsByWeek()` utility function.
+
+**Test Coverage (12 test cases)**:
+
+1. **TC-WEEK-01**: Empty input returns []
+2. **TC-WEEK-02**: Single session creates WeekGroup with correct weekStart (Tuesday → Monday)
+3. **TC-WEEK-03**: Sunday session → weekStart is preceding Monday
+4. **TC-WEEK-04**: Monday session → weekStart is same day
+5. **TC-WEEK-05**: Two sessions same week → one WeekGroup, totals summed
+6. **TC-WEEK-06**: Sessions in different weeks → two WeekGroups, newest first
+7. **TC-WEEK-07**: weekLabel format for cross-month boundary ("Apr 27 – May 3")
+8. **TC-WEEK-08**: weekLabel format for same-month week (accepts "Apr 20 – 26" or "Apr 20 – Apr 26")
+9. **TC-WEEK-09**: Week totalSeconds = sum of all day totals
+10. **TC-WEEK-10**: Days within week sorted newest first
+11. **TC-WEEK-11**: Month of sessions → correct number of WeekGroups (5 Wednesdays = 5 weeks)
+12. **TC-WEEK-12**: WeekGroup.days matches groupSessionsByDay output
+
+**Key Patterns Tested**:
+- Week boundary calculation (Monday-anchored calendar weeks)
+- weekStart computation for Mon/Tue/Wed/Thu/Fri/Sat/Sun
+- Cross-month week label formatting
+- Same-month week label formatting (shortened or full format accepted)
+- Week totals = sum of day totals
+- Days sorted newest first within each week
+- Weeks sorted newest first overall
+- Integration with groupSessionsByDay (delegated day grouping)
+
+**Test Results** ✓ **ALL PASSING**:
+- File: `src/lib/__tests__/reportGrouping.test.ts`
+- Test run: 29/29 PASS (17 day grouping + 12 week grouping)
+- Duration: 19ms
+- Zero regressions: All 113 existing tests still pass
+- Branch: `squad/35-reports-grouping`
+
+**Implementation Verification**:
+Leia's implementation (`src/lib/utils/reportGrouping.ts`) correctly implements week grouping:
+- `getMondayOf()` helper correctly computes Monday for any day of week
+- `formatWeekLabel()` produces "MMM D – MMM D" for cross-month, "MMM D – D" for same-month
+- `groupSessionsByWeek()` delegates to `groupSessionsByDay()` then groups days by week
+- Week totals computed via reduce over day totals
+- Days inherit sort order from groupSessionsByDay (newest first)
+- Weeks sorted newest first via `b.weekStart.localeCompare(a.weekStart)`
+
+**Design Observation**:
+Week grouping is a thin wrapper over day grouping, leveraging existing DayGroup structure. This is appropriate — days are the atomic unit, weeks are just time-based containers. Tests verify this delegation relationship (TC-WEEK-12).
+
+---
+
 ### 2026-04-17: Issue #29 Review — Edit Session Start/End Times
 
 **Review Result**: APPROVED

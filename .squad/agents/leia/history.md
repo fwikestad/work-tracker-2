@@ -6,6 +6,88 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 
 ## Learnings
 
+### 2026-04-22: Weekly Grouping for Monthly Reports
+
+**Task Completed**: Added Week → Day → Customer → Work Order grouping structure for monthly report view.
+
+**Implementation**:
+
+1. **`src/lib/utils/reportGrouping.ts`**:
+   - Added `WeekGroup` interface with `weekStart` (Monday YYYY-MM-DD), `weekLabel` (e.g., "Apr 14 – Apr 20"), `totalSeconds`, and `days: DayGroup[]`
+   - Implemented `groupSessionsByWeek()` function that internally calls `groupSessionsByDay()` and groups by calendar week (Monday–Sunday)
+   - Helper `getMondayOf()` computes the Monday for any date (accounting for Sunday = 0 in JS)
+   - Helper `formatWeekLabel()` formats week ranges intelligently ("Apr 14 – 20" if same month, "Apr 28 – May 4" if crossing months)
+   - Weeks sorted newest first (descending by `weekStart`)
+
+2. **`src/lib/components/ReportView.svelte`**:
+   - Added `expandedWeeks: Set<string>` state for week expand/collapse
+   - Added `weekGroups` derived state (only computed when `rangeType === 'month'`)
+   - Updated `loadReport()` to expand all weeks by default when month view
+   - Template conditionally renders week grouping for month view, flat day grouping for week/custom
+   - CSS styles for `.week-group`, `.week-header`, `.week-info`, `.week-label`, `.week-total`, `.week-days`
+   - Week groups indent day groups using `padding: 8px` wrapper
+
+**Key Design Decisions**:
+- Week grouping only applies to `rangeType === 'month'` — week and custom ranges remain flat (day grouping only)
+- All weeks expanded by default on load for instant visibility
+- Empty state check handles both week and day grouping: `weekGroups.length === 0` for month, `dayGroups.length === 0` for others
+- Used UTC-based week calculation to avoid timezone edge cases
+
+**Quality Gate**: ✅ All 113 frontend tests pass, build succeeds, clippy clean, cargo tests pass
+
+**Branch**: `squad/monthly-week-grouping` (branched from `squad/35-reports-grouping`)
+
+---
+
+### Bug Fix: Keypress regression after reports grouping PR (#36)
+
+**Root Cause**: `ReportView.svelte` contained a `$effect()` that wrote to `$state` variables (`expandedDays`, `expandedCustomers`) after `reportData` loaded. In Svelte 5, writing to reactive state inside `$effect` triggers a synchronous flush cycle. This flush can interrupt keydown event propagation before the event bubbles to the `window` listener registered in `+layout.svelte`, breaking all global keyboard shortcuts (Ctrl+N, Ctrl+K, Ctrl+S, etc.).
+
+**Fix**: Moved the `expandedDays` / `expandedCustomers` initialisation out of `$effect` and into `loadReport()` directly, immediately after `reportData = await getReport(...)`. State is set once, synchronously, in the async handler — no reactive side-effects.
+
+**Pattern to remember**: Never write to `$state` inside a Svelte 5 `$effect` when the intent is "initialise once when data arrives." Use the async function that fetches the data instead. Reserve `$effect` for genuinely reactive subscriptions that have no other natural home.
+
+---
+
+### 2026-04-21: Issue #35 — Reports Grouping (Day → Customer → Work Order)
+
+**Task Completed**: Integrated hierarchical grouping pattern into ReportView.svelte with proper expand/collapse behavior.
+
+**Implementation**:
+
+1. **`src/lib/utils/reportGrouping.ts` — Core grouping utility**:
+   - `groupSessionsByDay()` function accepts Session[] and returns DayGroup[]
+   - Three-level hierarchy: DayGroup → CustomerGroup → WorkOrderGroup
+   - Sorting: Days descending (newest first), Customers and Work Orders ascending (alphabetical)
+   - Duration aggregation at each level (null → 0)
+   - Null customer/work order names converted to "Unknown Customer" / "Unknown Work Order"
+
+2. **`src/lib/utils/formatters.ts` — Date formatting**:
+   - Added `formatDay(dateStr: string): string` helper
+   - Constructs Date in local timezone via `new Date(year, month-1, day)` to avoid UTC off-by-one
+   - Never uses `new Date(isoString)` for date-only ISO strings
+
+3. **ReportView.svelte — UI integration**:
+   - Expand/collapse state via `expandedDays: Set<string>` and `expandedCustomers: Set<string>`
+   - Days always expanded on load; Customers collapsed by default
+   - Three-level nesting: `.day-group` > `.day-customers` > `.customer-group` > `.work-orders`
+   - Day headers: `font-weight: 700; font-size: 15px`
+   - Customer rows indented: `margin-left: 14px`
+   - Data source: `reportData.sessions: Session[]` with guard `?? []` for backward compatibility
+
+**Key Design Decisions**:
+- Expand/collapse keys scoped per day (`"YYYY-MM-DD::customerName"`) — same customer can be expanded on one day, collapsed on another
+- Always use `formatDay()` for date display to avoid timezone issues
+- Guard data access (`sessions ?? []`) for test mock compatibility
+
+**Quality Gate**: Wedge provided 17-test suite (100% pass, zero regressions on 84 existing tests)
+
+**CI Status**: ✅ 4/4 checks passed (cargo check, cargo test, npm test, npm run build)
+
+**Branch/PR**: `squad/35-reports-grouping` | PR #36 open, ready for merge
+
+---
+
 ### 2026-05-xx: Widget Overlay Redesign — Dynamic Resize + New Layout
 
 **Context**: Fredrik wanted to remove the timer from the widget, promote customer name as the primary label, and fix dropdown clipping by resizing the window dynamically.
