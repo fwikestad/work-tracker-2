@@ -1335,3 +1335,65 @@ After:
 - 9 store/module smoke tests passing  
 - 9 component mount tests passing
 - **Total: 40 tests, 0 skipped, 0 failing**
+
+---
+
+## Keypress Regression Root Cause (Reports Grouping PR #36)
+
+**Author**: Leia (Frontend Dev)  
+**Date**: 2026-04-21  
+**Branch**: `squad/35-reports-grouping`  
+**Status**: Fixed and Merged  
+
+### What Broke
+
+All global keyboard shortcuts (Ctrl+N Quick-add, Ctrl+K Search, Ctrl+S Stop, P Pause, R Resume) stopped firing after the reports grouping feature was merged in PR #36.
+
+### Root Cause
+
+`ReportView.svelte` added a `$effect()` that wrote to two `$state` variables (`expandedDays`, `expandedCustomers`) when `reportData` loaded:
+
+```js
+// ❌ anti-pattern — writing $state inside $effect
+$effect(() => {
+  if (reportData) {
+    const groups = groupSessionsByDay(reportData.sessions ?? []);
+    expandedDays = new Set(groups.map((g) => g.date));
+    expandedCustomers = new Set();
+  }
+});
+```
+
+In Svelte 5, assigning to `$state` inside `$effect` triggers a **synchronous DOM flush cycle**. When this flush runs in the same microtask as a dispatched `keydown` event, it can interrupt the event's propagation path before it reaches the `window` listener registered in `+layout.svelte` — silencing all global shortcuts.
+
+### Fix Applied
+
+Moved the state initialisation out of `$effect` and into `loadReport()` directly, immediately after the async data fetch:
+
+```js
+// ✅ correct — set state once in the async handler
+async function loadReport() {
+  ...
+  reportData = await getReport(startDate, endDate);
+  if (reportData) {
+    const groups = groupSessionsByDay(reportData.sessions ?? []);
+    expandedDays = new Set(groups.map((g) => g.date));
+    expandedCustomers = new Set();
+  }
+}
+```
+
+The `$effect` block was removed entirely.
+
+### Rule to Enforce
+
+**Do not write to `$state` inside a Svelte 5 `$effect` when the intent is "initialise once when async data arrives."**  
+Use the async function that fetches the data instead.  
+`$effect` is for genuinely reactive subscriptions with no other natural home (e.g., registering/unregistering DOM listeners based on open/closed state).
+
+### CI After Fix
+
+- ✅ `cargo clippy -- -D warnings`
+- ✅ `cargo test` (39 tests, 1 ignored)
+- ✅ `npm test -- --run` (101 tests, 17 skipped)
+- ✅ `npm run build`
