@@ -164,6 +164,9 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+          body: |
+            This release includes the latest improvements to Work Tracker 2.
+            See the changes below — features, fixes, and other updates are listed in plain language.
           files: |
             artifacts/**/*.msi
             artifacts/**/*.exe
