@@ -1397,3 +1397,101 @@ Use the async function that fetches the data instead.
 - ✅ `cargo test` (39 tests, 1 ignored)
 - ✅ `npm test -- --run` (101 tests, 17 skipped)
 - ✅ `npm run build`
+
+---
+
+## Enable User-Mode Installation on Windows (No Admin Required)
+
+**Date**: 2026-04-21  
+**Author**: Lando (DevOps Expert)  
+**Status**: PROPOSED  
+**Context**: Corporate deployment requires non-admin installation capability
+
+### Problem
+
+Work Tracker 2 will be deployed to corporate environments where users do NOT have local administrator privileges. Current installer configuration defaults to per-machine installation requiring admin rights.
+
+**Current State**:
+- Tauri builds both MSI (WiX) and NSIS (.exe) installers
+- Both default to per-machine installation → **require admin elevation** ❌
+- No explicit `bundle.windows` configuration in `tauri.conf.json`
+- Release workflow publishes both installer types
+
+### Proposed Solution
+
+**Enable NSIS installer with dual-mode installation** (`installMode: "both"`).
+
+#### Configuration Change
+
+Add Windows-specific bundle configuration to `src-tauri/tauri.conf.json`:
+
+```json
+{
+  "bundle": {
+    "windows": {
+      "nsis": {
+        "installMode": "both",
+        "displayLanguageSelector": false
+      }
+    }
+  }
+}
+```
+
+### How It Works
+
+**`installMode: "both"`** gives users a choice at installation time:
+
+1. **"Install for me only"** (default, recommended) — User-mode installation:
+   - Installs to: `%LOCALAPPDATA%\Programs\Work Tracker 2\`
+   - No admin elevation required ✅
+   - Per-user Start Menu entries
+   - Uninstall requires no admin
+
+2. **"Install for all users"** — Admin installation (optional):
+   - Installs to: `C:\Program Files\Work Tracker 2\`
+   - Requires admin UAC prompt
+   - System-wide Start Menu entries
+
+Default selection is user-mode, so corporate users can install without privileges.
+
+### App Data Safety ✅
+
+Work Tracker 2 already writes all persistent data to user-mode-safe paths:
+
+- Database: `%LOCALAPPDATA%\com.work-tracker-2.app\work_tracker.db`
+- No writes to `Program Files` or system directories
+- Code: `app.path().app_data_dir()` in `src-tauri/src/lib.rs:75`
+
+User-mode installation is fully compatible with existing data storage.
+
+### Platform Comparison
+
+- **Windows NSIS (with this change)**: User-mode ✅, Admin-mode ✅
+- **Windows MSI**: Admin-mode ✅, user-mode ❌ (difficult)
+- **macOS DMG**: Drag-and-drop to `~/Applications` — no admin required ✅
+- **Linux AppImage**: Portable executable — no installation ✅
+- **Linux DEB**: Package manager install — requires sudo ❌
+
+### Testing Checklist
+
+Before deploying to corporate environment:
+
+- [ ] Build installer with new config: `npm run tauri:build`
+- [ ] Test user-mode installation on Windows without admin account
+- [ ] Verify app launches and writes to `%LOCALAPPDATA%` path
+- [ ] Verify Start Menu shortcut created in user profile
+- [ ] Test uninstallation without admin rights
+- [ ] Test admin-mode installation still works (for IT departments)
+- [ ] Update documentation to recommend user-mode install for corporate users
+
+### Recommendation
+
+**APPROVE AND IMPLEMENT**. This is a zero-risk change that enables corporate deployment:
+
+- ✅ Backwards compatible (admin installs still work)
+- ✅ No code changes required
+- ✅ One-line config change
+- ✅ Solves the stated deployment blocker
+
+**Implementation**: Add config to `tauri.conf.json`, rebuild, test on non-admin Windows account, deploy.

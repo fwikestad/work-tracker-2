@@ -98,6 +98,41 @@ Decisions merged into squad/decisions.md. Ready for implementation.
    - Current baseline: ~10% (16 Rust tests, 2 frontend tests)
    - Target progression: 10% (Phase 1) → 40% (Phase 2) → 70% (stable)
 
+### User-Mode Installation Research (2026-04-12)
+
+**Task**: Research and document whether Work Tracker 2 supports user-mode installation (without admin rights) on Windows.
+
+**Findings**:
+
+1. **Current Installer Configuration**:
+   - `tauri.conf.json` has minimal `bundle` config — only icons defined
+   - NO explicit Windows installer settings (no `bundle.windows.nsis` or `bundle.windows.wix`)
+   - Tauri defaults to building BOTH MSI and NSIS installers on Windows (`targets: "all"`)
+   - Current release workflow collects both: `*.msi` and `*.exe` (NSIS)
+
+2. **Default Behavior**:
+   - **MSI installers** (WiX) default to per-machine install → **requires admin** ❌
+   - **NSIS installers** (.exe) default to per-machine install → **requires admin** ❌
+   - Without explicit `installMode` config, Tauri builds admin-requiring installers
+
+3. **App Data Directory** (user-mode safe):
+   - Database stored via `app.path().app_data_dir()` — resolves to `%LOCALAPPDATA%\com.work-tracker-2.app\work_tracker.db`
+   - On Windows: `C:\Users\<username>\AppData\Local\com.work-tracker-2.app\work_tracker.db`
+   - ✅ Safe for user-mode — no writes to `Program Files` or system directories
+
+4. **Solution**: Enable NSIS `installMode: "both"`
+   - Add `bundle.windows.nsis.installMode: "both"` to `tauri.conf.json`
+   - Installer will offer user choice: "Install for me only" (user-mode) vs "Install for all users" (admin)
+   - User-mode installs to `%LOCALAPPDATA%\Programs\Work Tracker 2\`
+   - Admin install goes to `C:\Program Files\Work Tracker 2\`
+
+5. **Platform Comparison**:
+   - **macOS DMG**: Drag-and-drop to Applications folder — no admin required ✅
+   - **Linux AppImage**: Portable executable — no installation, no admin ✅
+   - **Linux DEB**: Package install via `apt` — requires sudo ❌
+
+**Recommendation**: Add NSIS user-mode config to enable corporate deployment without admin rights.
+
 5. **Release Automation Trade-offs**:
    - Manual version bumping (Phase 1): Simple but error-prone
    - Automated with release-please (Phase 2+): Requires conventional commits
@@ -481,3 +516,41 @@ _Populated as Lando works on the project._
 **PR**: #34 — https://github.com/fwikestad/work-tracker-2/pull/34
 
 **Verification**: ✅ Config file created, workflow updated, PR opened
+
+## Session: User-Mode Installer Research (2026-04-21)
+
+**Task**: Research corporate deployment requirements for Windows installers — non-admin installation capability
+
+**Problem**: Corporate environments restrict local admin privileges. Current Tauri configuration defaults to per-machine installation requiring admin rights.
+
+**Research Summary**:
+
+1. **Current Configuration**:
+   - `tauri.conf.json` has minimal `bundle` config (only icons)
+   - Builds both MSI (WiX) and NSIS (.exe) installers
+   - Both default to per-machine install → **admin required** ❌
+
+2. **App Data Already User-Mode Safe** ✅:
+   - Database: `%LOCALAPPDATA%\com.work-tracker-2.app\work_tracker.db`
+   - Code: `app.path().app_data_dir()` — resolves to user-writable path
+   - No system directory writes
+   - Compatible with user-mode installation
+
+3. **Solution: NSIS User-Mode Config**:
+   - Add `bundle.windows.nsis.installMode: "both"` to `tauri.conf.json`
+   - Offers user choice at install time:
+     - "Install for me only" (default) → `%LOCALAPPDATA%\Programs\Work Tracker 2\`
+     - "Install for all users" → `C:\Program Files\Work Tracker 2\`
+   - Zero code changes, one-line config
+
+4. **Platform Status**:
+   - macOS: Drag-and-drop to ~/Applications — no admin ✅
+   - Linux: AppImage (portable) — no admin ✅
+   - Windows (with fix): Both user + admin modes ✅
+   - Linux DEB: Package manager — requires sudo ❌
+
+**Recommendation**: APPROVE — Zero-risk change enabling corporate deployment.
+
+**Decision Documented**: `.squad/decisions/decisions.md#enable-user-mode-installation-on-windows`
+
+**Session Log**: `.squad/log/20260421-162726-user-mode-installer-research.md`
