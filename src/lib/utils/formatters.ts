@@ -17,9 +17,24 @@ export function formatHuman(seconds: number): string {
   return `<1m`;
 }
 
+/**
+ * Parse a timestamp string to a Date object.
+ *
+ * Handles both RFC3339 (`2026-04-22T07:30:00Z`) and legacy SQLite space-separated
+ * format (`2026-04-22 07:30:00`). Space-separated strings without a timezone
+ * designator are treated as UTC (matching how the backend stores them).
+ */
+export function parseTimestamp(s: string): Date {
+  // Normalize SQLite space-separated format: "YYYY-MM-DD HH:MM:SS" → RFC3339 UTC
+  if (s.length === 19 && s[10] === ' ') {
+    return new Date(s.replace(' ', 'T') + 'Z');
+  }
+  return new Date(s);
+}
+
 /** Format ISO timestamp as "9:30 AM" */
 export function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return parseTimestamp(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 /** Format a "YYYY-MM-DD" date string as a human-readable day label (e.g. "Monday, April 21, 2026") */

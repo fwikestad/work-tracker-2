@@ -2,7 +2,7 @@
   import { sessionsStore } from '$lib/stores/sessions.svelte';
   import { timer } from '$lib/stores/timer.svelte';
   import { updateSession, deleteSession } from '$lib/api/sessions';
-  import { formatTime, formatHuman } from '$lib/utils/formatters';
+  import { formatTime, formatHuman, parseTimestamp } from '$lib/utils/formatters';
   import type { Session } from '$lib/types';
 
   type EditState = { 
@@ -25,18 +25,22 @@
     return session.id === timer.active?.sessionId && timer.isPaused;
   }
 
-  // Convert ISO 8601 to datetime-local format (YYYY-MM-DDTHH:mm)
+  // Convert ISO 8601 (UTC) to datetime-local format (YYYY-MM-DDTHH:mm) in local time
   function toDatetimeLocal(isoString: string | null | undefined): string {
     if (!isoString) return '';
-    // datetime-local format: YYYY-MM-DDTHH:mm (no seconds, no Z)
-    return isoString.slice(0, 16);
+    const dt = parseTimestamp(isoString);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
   }
 
-  // Convert datetime-local to RFC3339 (ISO 8601)
+  // Convert datetime-local (local time, YYYY-MM-DDTHH:mm) to RFC3339 UTC
   function fromDatetimeLocal(localString: string): string {
     if (!localString) return '';
-    // Add seconds and Z suffix for RFC3339
-    return localString + ':00Z';
+    // Parse components as local time (avoids engine-specific string parsing behavior)
+    const [datePart, timePart] = localString.split('T');
+    const [year, month, day] = datePart.split('-').map(Number);
+    const [hours, minutes] = timePart.split(':').map(Number);
+    return new Date(year, month - 1, day, hours, minutes, 0).toISOString();
   }
 
   function startEdit(session: Session) {
