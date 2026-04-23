@@ -200,3 +200,81 @@ fn tc_summary_07_get_report_date_boundaries() {
     assert_eq!(result.sessions.len(), 1, "should only include session within range");
     assert_eq!(result.total_seconds, 2000, "should only sum session within range");
 }
+
+
+// ---------------------------------------------------------------------------
+// TC-SUMMARY-SEC-001: escape_csv sanitizes CSV formula injection characters
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_summary_sec001_escape_csv_formula_prefix_equals() {
+    assert_eq!(
+        summary_service::escape_csv("=FORMULA"),
+        "'=FORMULA",
+        "= prefix should be escaped with single quote"
+    );
+}
+
+#[test]
+fn tc_summary_sec001_escape_csv_formula_prefix_plus() {
+    assert_eq!(
+        summary_service::escape_csv("+formula"),
+        "'+formula",
+        "+ prefix should be escaped with single quote"
+    );
+}
+
+#[test]
+fn tc_summary_sec001_escape_csv_formula_prefix_minus() {
+    assert_eq!(
+        summary_service::escape_csv("-formula"),
+        "'-formula",
+        "- prefix should be escaped with single quote"
+    );
+}
+
+#[test]
+fn tc_summary_sec001_escape_csv_formula_prefix_at() {
+    assert_eq!(
+        summary_service::escape_csv("@formula"),
+        "'@formula",
+        "@ prefix should be escaped with single quote"
+    );
+}
+
+#[test]
+fn tc_summary_sec001_escape_csv_normal_text_unchanged() {
+    assert_eq!(
+        summary_service::escape_csv("Normal note text"),
+        "Normal note text",
+        "normal text should not be modified"
+    );
+}
+
+#[test]
+fn tc_summary_sec001_escape_csv_normal_text_with_comma() {
+    assert_eq!(
+        summary_service::escape_csv("hello, world"),
+        "\"hello, world\"",
+        "text with comma should be quoted but otherwise unchanged"
+    );
+}
+
+#[test]
+fn tc_summary_sec001_escape_csv_formula_char_with_comma() {
+    // Comma in the value: prefixed AND then quoted
+    assert_eq!(
+        summary_service::escape_csv("=bad,formula"),
+        "\"'=bad,formula\"",
+        "formula injection payload with comma should be prefixed then quoted"
+    );
+}
+
+#[test]
+fn tc_summary_sec001_escape_csv_formula_tab_prefix() {
+    assert_eq!(
+        summary_service::escape_csv("\t=tab"),
+        "'\t=tab",
+        "tab-prefixed formula should be escaped with single quote"
+    );
+}
