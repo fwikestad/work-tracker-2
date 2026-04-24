@@ -145,3 +145,46 @@ Document: docs/security-review-001.md. Decisions merged into squad/decisions.md.
 All findings merged into .squad/decisions.md. GitHub Issues #6 and #9 tracking P1 fixes. No code changes required for MVP; findings are configuration/design-level.
 
 **Next steps**: Monitor GitHub for implementation status on CSP and withGlobalTauri fixes.
+
+---
+
+### 2026-04-23: Full Security Audit #003 — Complete
+
+**Purpose**: Comprehensive security audit of the work-tracker-2 codebase on main branch.
+
+**Result**: **LOW RISK** — 0 Critical, 0 High, 1 Medium, 2 Low findings.
+
+**Major Improvements Since Last Audit**:
+- ✅ **CSP now configured** — `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'`
+- ✅ **withGlobalTauri: false** — IPC no longer globally exposed
+- ✅ **Shell plugin removed** — Previously flagged, now fully removed
+
+**Automated Scans**:
+- `cargo audit`: 0 vulnerabilities (20 GTK3 warnings, transitive, not actionable)
+- `npm audit`: 3 low (cookie in @sveltejs/kit, not exploitable in desktop)
+
+**Remaining Findings**:
+
+| # | Severity | Title | Status |
+|---|----------|-------|--------|
+| SEC-001 | Medium (4.3) | CSV Formula Injection | Open |
+| SEC-002 | Low (2.8) | No Input Length Validation | Open |
+| SEC-003 | Info (0.0) | Dynamic SQL (Safe Pattern) | N/A |
+
+**Positive Security Observations**:
+- All SQL queries use parameterized statements
+- Dynamic UPDATE builders use hardcoded column names (safe)
+- Mutex-guarded DB access via `get_conn()`
+- Transactions for atomic operations
+- UUID v4 for all IDs
+- No unsafe DOM operations (`innerHTML`, `@html`, `eval()`)
+- No hardcoded secrets or credentials
+- Capability scope appropriate (`fs:allow-write-text-file` for export only)
+
+**Recommendations**:
+1. **P2**: Add formula prefix sanitization to `escape_csv()` (SEC-001)
+2. **P3**: Add input length validation to command handlers (SEC-002)
+
+**Documents**: 
+- `.squad/decisions/inbox/ackbar-security-audit-2026-04-23.md`
+- `.squad/decisions/inbox/ackbar-findings-summary.json`
