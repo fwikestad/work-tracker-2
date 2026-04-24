@@ -8,11 +8,13 @@
   let {
     options = [],
     value = $bindable(''),
+    newQuery = $bindable(''),
     placeholder = 'Select...',
     disabled = false
   }: {
     options: Option[];
     value: string;
+    newQuery?: string;
     placeholder?: string;
     disabled?: boolean;
   } = $props();
@@ -27,10 +29,25 @@
   const displayLabel = $derived(selectedOption?.label || placeholder);
   const isPlaceholder = $derived(!selectedOption);
 
-  const filteredOptions = $derived(() => {
-    if (!filterQuery.trim()) return options;
+  // Separate sticky options (value === '__new__') from regular options
+  const regularOptions = $derived(options.filter((o) => o.value !== '__new__'));
+  const stickyOption = $derived(options.find((o) => o.value === '__new__'));
+
+  // Filter only regular options
+  const filteredRegular = $derived(() => {
+    if (!filterQuery.trim()) return regularOptions;
     const lower = filterQuery.toLowerCase();
-    return options.filter((opt) => opt.label.toLowerCase().includes(lower));
+    return regularOptions.filter((opt) => opt.label.toLowerCase().includes(lower));
+  });
+
+  // Visible list: filtered regular + sticky always at bottom (with dynamic label)
+  const visibleOptions = $derived(() => {
+    const regular = filteredRegular();
+    if (!stickyOption) return regular;
+    const sticky: Option = filterQuery.trim()
+      ? { ...stickyOption, label: `+ Create "${filterQuery.trim()}"` }
+      : stickyOption;
+    return [...regular, sticky];
   });
 
   function open() {
@@ -47,7 +64,10 @@
     highlightIndex = 0;
   }
 
-  function selectOption(opt: Option) {
+  function selectOption(opt: Option, query: string = '') {
+    if (opt.value === '__new__') {
+      newQuery = query || filterQuery.trim();
+    }
     value = opt.value;
     close();
   }
@@ -55,16 +75,22 @@
   function handleKeydown(e: KeyboardEvent) {
     if (!isOpen) return;
 
-    const opts = filteredOptions();
+    const opts = visibleOptions();
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       highlightIndex = Math.min(highlightIndex + 1, opts.length - 1);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       highlightIndex = Math.max(highlightIndex - 1, 0);
-    } else if (e.key === 'Enter' && opts[highlightIndex]) {
+    } else if (e.key === 'Enter') {
       e.preventDefault();
-      selectOption(opts[highlightIndex]);
+      const regular = filteredRegular();
+      if (regular.length === 0 && stickyOption) {
+        // No regular matches — auto-select sticky option
+        selectOption({ ...stickyOption, label: stickyOption.label }, filterQuery.trim());
+      } else if (opts[highlightIndex]) {
+        selectOption(opts[highlightIndex], filterQuery.trim());
+      }
     } else if (e.key === 'Escape') {
       e.preventDefault();
       close();
@@ -106,15 +132,16 @@
         placeholder="Type to filter..."
       />
       <div class="dropdown">
-        {#if filteredOptions().length === 0}
+        {#if visibleOptions().length === 0}
           <div class="empty">No options found</div>
         {:else}
-          {#each filteredOptions() as opt, i}
+          {#each visibleOptions() as opt, i}
             <button
               type="button"
               class="option"
               class:highlighted={i === highlightIndex}
-              onclick={() => selectOption(opt)}
+              class:sticky={opt.value === '__new__'}
+              onclick={() => selectOption(opt, filterQuery.trim())}
             >
               {#if opt.color}
                 <span class="dot" style="background: {opt.color}"></span>
@@ -236,6 +263,12 @@
   .option:hover,
   .option.highlighted {
     background: #1f1f1f;
+  }
+
+  .option.sticky {
+    border-top: 1px solid var(--border);
+    color: var(--accent);
+    font-size: 13px;
   }
 
   .empty {
