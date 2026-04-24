@@ -16,6 +16,7 @@
   let error = $state('');
   let useNewCustomer = $state(false);
   let inputRef = $state<HTMLInputElement | undefined>(undefined);
+  let newQueryFromSearch = $state('');
 
   $effect(() => {
     if (uiStore.quickAdd) {
@@ -27,6 +28,7 @@
   $effect(() => {
     if (selectedCustomerId === '__new__') {
       useNewCustomer = true;
+      newCustomerName = newQueryFromSearch;
       selectedCustomerId = '';
     }
   });
@@ -70,6 +72,7 @@
       selectedCustomerId = '';
       newCustomerName = '';
       useNewCustomer = false;
+      newQueryFromSearch = '';
     } catch (e: any) {
       console.error('Quick add failed:', e);
       error = e?.message || e?.toString() || 'Something went wrong';
@@ -112,6 +115,7 @@
           {#if !useNewCustomer}
             <SearchableSelect
               bind:value={selectedCustomerId}
+              bind:newQuery={newQueryFromSearch}
               options={[
                 ...customers.map((c) => ({ value: c.id, label: c.name, color: c.color })),
                 { value: '__new__', label: '+ New customer' }
