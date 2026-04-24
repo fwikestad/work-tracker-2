@@ -407,10 +407,19 @@ pub fn get_report(conn: &Connection, start_date: &str, end_date: &str) -> Result
 /// # Returns
 ///
 /// CSV-safe string (either unchanged or quoted and escaped).
-fn escape_csv(value: &str) -> String {
-    if value.contains(',') || value.contains('"') || value.contains('\n') {
-        format!("\"{}\"", value.replace('"', "\"\""))
+pub fn escape_csv(value: &str) -> String {
+    // Sanitize CSV formula injection: prefix values starting with formula chars
+    // with a single quote to prevent Excel/Sheets from treating them as formulas.
+    // See: https://owasp.org/www-community/attacks/CSV_Injection
+    let sanitized = if value.trim_start().starts_with(['=', '+', '-', '@', '\t', '\r']) {
+        format!("'{}", value)
     } else {
         value.to_string()
+    };
+
+    if sanitized.contains(',') || sanitized.contains('"') || sanitized.contains('\n') {
+        format!("\"{}\"", sanitized.replace('"', "\"\""))
+    } else {
+        sanitized
     }
 }

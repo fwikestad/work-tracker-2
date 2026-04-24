@@ -11,6 +11,7 @@ import type { Session, WorkOrder } from '$lib/types';
 import { listSessions } from '$lib/api/sessions';
 import { getRecentWorkOrders } from '$lib/api/reports';
 import { listWorkOrders } from '$lib/api/workOrders';
+import { parseTimestamp } from '$lib/utils/formatters';
 
 /**
  * Represents a single day in the week view with its sessions.
@@ -224,7 +225,7 @@ export const sessionsStore = {
     const sessions = await listSessions(toIsoDate(monday), toIsoDate(sunday));
     const byDate = new Map<string, Session[]>();
     for (const s of sessions) {
-      const d = toIsoDate(new Date(s.startTime));
+      const d = toIsoDate(parseTimestamp(s.startTime));
       if (!byDate.has(d)) byDate.set(d, []);
       byDate.get(d)!.push(s);
     }
