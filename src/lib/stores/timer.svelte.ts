@@ -3,12 +3,12 @@
  *
  * This store manages the currently active work session, timer updates, and heartbeat
  * communication with the Rust backend. It maintains a single source of truth for
- * what the user is currently tracking and handles pause/resume functionality.
+ * what the user is currently tracking.
  *
  * @module timer
  */
 import type { ActiveSession, OrphanSession } from '$lib/types';
-import { getActiveSession, pauseSession as apiPauseSession, resumeSession as apiResumeSession } from '$lib/api/sessions';
+import { getActiveSession } from '$lib/api/sessions';
 import { invoke } from '@tauri-apps/api/core';
 
 /** The currently active tracking session, or null if no session is running. */
@@ -25,9 +25,6 @@ let timerInterval: ReturnType<typeof setInterval> | null = null;
 
 /** Interval handle for the 30-second heartbeat to the backend. */
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
-
-/** Derived state indicating whether the active session is paused. */
-const isPaused = $derived(activeSession?.isPaused ?? false);
 
 /**
  * Timer store for managing active time tracking sessions.
@@ -69,7 +66,7 @@ export const timer = {
   },
 
   /**
-   * Whether any session is currently being tracked (running or paused).
+   * Whether any session is currently being tracked.
    *
    * @returns True if a session exists, false otherwise.
    */
@@ -78,18 +75,9 @@ export const timer = {
   },
 
   /**
-   * Whether the active session is currently paused.
-   *
-   * @returns True if paused, false if running or no session exists.
-   */
-  get isPaused() {
-    return isPaused;
-  },
-
-  /**
    * Sets the active session and updates timer/heartbeat state accordingly.
    *
-   * When a session is provided, starts the timer tick (if not paused) and heartbeat.
+   * When a session is provided, starts the timer tick and heartbeat.
    * When null, stops all timers and resets elapsed time.
    *
    * @param session - The new active session, or null to clear the active session.
@@ -98,11 +86,7 @@ export const timer = {
     activeSession = session;
     if (session) {
       elapsedSeconds = session.elapsedSeconds;
-      if (!session.isPaused) {
-        startTick();
-      } else {
-        stopTick();
-      }
+      startTick();
       startHeartbeat();
     } else {
       stopTick();
@@ -125,51 +109,11 @@ export const timer = {
    * Refreshes the active session from the backend.
    *
    * Fetches the current active session state and updates the timer accordingly.
-   * Use this after operations that modify the session (start, stop, pause, resume).
+   * Use this after operations that modify the session (start, stop).
    */
   async refresh() {
     const session = await getActiveSession();
     timer.setActive(session);
-  },
-
-  /**
-   * Pauses the currently active session.
-   *
-   * Stops the timer tick but keeps the session active. The user can later resume
-   * to continue tracking on the same work order. Elapsed time is preserved.
-   *
-   * @throws Shows an alert if the pause operation fails.
-   */
-  async pause() {
-    try {
-      await apiPauseSession();
-      stopTick();
-      await timer.refresh();
-    } catch (e: any) {
-      console.error('Pause failed:', e);
-      const errorMsg = e?.message || e?.toString() || 'Unknown error occurred';
-      alert(`Failed to pause: ${errorMsg}`);
-    }
-  },
-
-  /**
-   * Resumes a paused session.
-   *
-   * Continues tracking on the current work order. The timer starts incrementing
-   * again from the previously accumulated elapsed time.
-   *
-   * @throws Shows an alert if the resume operation fails.
-   */
-  async resume() {
-    try {
-      await apiResumeSession();
-      await timer.refresh();
-      startTick();
-    } catch (e: any) {
-      console.error('Resume failed:', e);
-      const errorMsg = e?.message || e?.toString() || 'Unknown error occurred';
-      alert(`Failed to resume: ${errorMsg}`);
-    }
   }
 };
 
@@ -222,12 +166,11 @@ function stopHeartbeat() {
 
 /**
  * Updates the system tray icon and tooltip to reflect current tracking state.
- * Sends work order name and pause status to the Rust backend.
+ * Sends work order name to the Rust backend.
  */
 function updateTrayState() {
   invoke('update_tray_state', {
     workOrderName: activeSession?.workOrderName ?? null,
-    isPaused: activeSession?.isPaused ?? false,
   }).catch((e) => {
     console.error('Failed to update tray state:', e);
   });

@@ -30,7 +30,7 @@ import * as sessionsApi from '$lib/api/sessions';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeSession(isPaused: boolean): ActiveSession {
+function makeSession(): ActiveSession {
   return {
     sessionId: 'test-session-1',
     workOrderId: 'wo-1',
@@ -38,8 +38,7 @@ function makeSession(isPaused: boolean): ActiveSession {
     customerName: 'Test Customer',
     customerColor: '#ff0000',
     startedAt: new Date().toISOString(),
-    elapsedSeconds: 10,
-    isPaused,
+    elapsedSeconds: 10
   };
 }
 

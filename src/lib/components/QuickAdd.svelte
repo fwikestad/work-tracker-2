@@ -62,8 +62,7 @@
         customerName: result.customer.name,
         customerColor: result.customer.color ?? null,
         startedAt: result.session.startTime,
-        elapsedSeconds: 0,
-        isPaused: false
+        elapsedSeconds: 0
       };
       timer.setActive(active);
       await sessionsStore.refreshAll();

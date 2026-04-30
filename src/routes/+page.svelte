@@ -42,10 +42,11 @@
       searchSwitchRef?.focus();
     });
 
-    // Tray actions (pause/resume, direct work order switch) update DB in Rust
+    // Tray actions (direct work order switch, stop, continue) update DB in Rust
     // but don't go through normal invoke flow — refresh UI state here so the
     // timer, session list, and tray icon all reflect the new state.
-    const unlistenTrayAction = listen('tray-action', async () => {
+    const unlistenTrayAction = listen('tray-action', async (event) => {
+      const action = event.payload as string;
       await timer.refresh();
       await sessionsStore.refreshAll();
     });
@@ -129,8 +130,6 @@
       <span>Ctrl+N Quick add</span>
       <span>Ctrl+K Search</span>
       <span>Ctrl+S Stop</span>
-      <span>P Pause</span>
-      <span>R Resume</span>
       <span>Esc Cancel</span>
       <span>Ctrl+Alt+W Widget</span>
     </footer>

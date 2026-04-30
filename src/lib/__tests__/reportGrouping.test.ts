@@ -23,8 +23,6 @@ function makeSession(
 		startTime: overrides.startTime,
 		endTime: null,
 		durationSeconds: 3600,
-		durationOverride: null,
-		effectiveDuration: 3600,
 		activityType: null,
 		notes: null,
 		createdAt: overrides.startTime,
@@ -45,7 +43,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const result = groupSessionsByDay([session]);
@@ -76,7 +74,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const session2 = makeSession({
@@ -85,7 +83,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
-			effectiveDuration: 1800,
+			durationSeconds: 1800,
 		});
 
 		const result = groupSessionsByDay([session1, session2]);
@@ -111,7 +109,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const session2 = makeSession({
@@ -120,7 +118,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-456',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Beta',
-			effectiveDuration: 1800,
+			durationSeconds: 1800,
 		});
 
 		const result = groupSessionsByDay([session1, session2]);
@@ -146,7 +144,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Zebra Inc',
 			workOrderName: 'Project Z',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const session2 = makeSession({
@@ -155,7 +153,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-456',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project A',
-			effectiveDuration: 1800,
+			durationSeconds: 1800,
 		});
 
 		const result = groupSessionsByDay([session1, session2]);
@@ -181,7 +179,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const session2 = makeSession({
@@ -190,7 +188,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-456',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Beta',
-			effectiveDuration: 1800,
+			durationSeconds: 1800,
 		});
 
 		const result = groupSessionsByDay([session1, session2]);
@@ -208,7 +206,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const session2 = makeSession({
@@ -217,7 +215,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
-			effectiveDuration: null,
+			durationSeconds: null,
 		});
 
 		const result = groupSessionsByDay([session1, session2]);
@@ -241,7 +239,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-1',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project A',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const session2 = makeSession({
@@ -250,7 +248,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-2',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project B',
-			effectiveDuration: 1800,
+			durationSeconds: 1800,
 		});
 
 		const session3 = makeSession({
@@ -259,7 +257,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-3',
 			customerName: 'Other Inc',
 			workOrderName: 'Project C',
-			effectiveDuration: 900,
+			durationSeconds: 900,
 		});
 
 		const result = groupSessionsByDay([session1, session2, session3]);
@@ -282,7 +280,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-1',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project A',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const session2 = makeSession({
@@ -291,7 +289,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-2',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project B',
-			effectiveDuration: 1800,
+			durationSeconds: 1800,
 		});
 
 		const result = groupSessionsByDay([session1, session2]);
@@ -313,7 +311,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-c',
 			customerName: 'Acme Corp',
 			workOrderName: 'Zebra Task',
-			effectiveDuration: 1000,
+			durationSeconds: 1000,
 		});
 
 		const session2 = makeSession({
@@ -322,7 +320,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-a',
 			customerName: 'Acme Corp',
 			workOrderName: 'Alpha Task',
-			effectiveDuration: 2000,
+			durationSeconds: 2000,
 		});
 
 		const session3 = makeSession({
@@ -331,7 +329,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-b',
 			customerName: 'Acme Corp',
 			workOrderName: 'Beta Task',
-			effectiveDuration: 3000,
+			durationSeconds: 3000,
 		});
 
 		const result = groupSessionsByDay([session1, session2, session3]);
@@ -351,7 +349,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const session2 = makeSession({
@@ -360,7 +358,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
-			effectiveDuration: 1800,
+			durationSeconds: 1800,
 		});
 
 		const result = groupSessionsByDay([session1, session2]);
@@ -386,7 +384,7 @@ describe('groupSessionsByDay', () => {
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
 			customerColor: '#FF5733',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const result = groupSessionsByDay([session]);
@@ -406,7 +404,7 @@ describe('groupSessionsByDay', () => {
 				customerName: 'Acme Corp',
 				workOrderName: 'Alpha Task',
 				customerColor: '#FF0000',
-				effectiveDuration: 3600,
+				durationSeconds: 3600,
 			}),
 			// Day 2026-04-20, Customer Acme, WO Beta
 			makeSession({
@@ -416,7 +414,7 @@ describe('groupSessionsByDay', () => {
 				customerName: 'Acme Corp',
 				workOrderName: 'Beta Task',
 				customerColor: '#FF0000',
-				effectiveDuration: 5400,
+				durationSeconds: 5400,
 			}),
 			// Day 2026-04-20, Customer Other, WO Gamma
 			makeSession({
@@ -426,7 +424,7 @@ describe('groupSessionsByDay', () => {
 				customerName: 'Other Inc',
 				workOrderName: 'Gamma Task',
 				customerColor: '#0000FF',
-				effectiveDuration: 1800,
+				durationSeconds: 1800,
 			}),
 			// Day 2026-04-21, Customer Acme, WO Alpha (same WO, different day)
 			makeSession({
@@ -436,7 +434,7 @@ describe('groupSessionsByDay', () => {
 				customerName: 'Acme Corp',
 				workOrderName: 'Alpha Task',
 				customerColor: '#FF0000',
-				effectiveDuration: 2700,
+				durationSeconds: 2700,
 			}),
 			// Day 2026-04-21, Customer Other, WO Gamma (same WO, different day)
 			makeSession({
@@ -446,7 +444,7 @@ describe('groupSessionsByDay', () => {
 				customerName: 'Other Inc',
 				workOrderName: 'Gamma Task',
 				customerColor: '#0000FF',
-				effectiveDuration: null, // null duration
+				durationSeconds: null, // null duration
 			}),
 		];
 
@@ -521,7 +519,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-123',
 			customerName: null as any,
 			workOrderName: 'Project Alpha',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		// Should not throw; grouping should still work
@@ -541,7 +539,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: null as any,
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		// Should not throw
@@ -563,7 +561,7 @@ describe('groupSessionsByDay', () => {
 				workOrderId: 'wo-1',
 				customerName: 'Customer A',
 				workOrderName: 'Task 1',
-				effectiveDuration: 1000,
+				durationSeconds: 1000,
 			}),
 			makeSession({
 				id: 'sess-b',
@@ -571,7 +569,7 @@ describe('groupSessionsByDay', () => {
 				workOrderId: 'wo-1',
 				customerName: 'Customer A',
 				workOrderName: 'Task 1',
-				effectiveDuration: 2000,
+				durationSeconds: 2000,
 			}),
 			makeSession({
 				id: 'sess-c',
@@ -579,7 +577,7 @@ describe('groupSessionsByDay', () => {
 				workOrderId: 'wo-1',
 				customerName: 'Customer A',
 				workOrderName: 'Task 1',
-				effectiveDuration: 3000,
+				durationSeconds: 3000,
 			}),
 		];
 
@@ -599,7 +597,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-1',
 			customerName: 'Acme',
 			workOrderName: 'Task 1',
-			effectiveDuration: 100,
+			durationSeconds: 100,
 		});
 
 		const session2 = makeSession({
@@ -608,7 +606,7 @@ describe('groupSessionsByDay', () => {
 			workOrderId: 'wo-1',
 			customerName: 'Acme',
 			workOrderName: 'Task 1',
-			effectiveDuration: 200,
+			durationSeconds: 200,
 		});
 
 		const result = groupSessionsByDay([session1, session2]);
@@ -633,7 +631,7 @@ describe('groupSessionsByWeek', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const result = groupSessionsByWeek([session]);
@@ -654,7 +652,7 @@ describe('groupSessionsByWeek', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const result = groupSessionsByWeek([session]);
@@ -671,7 +669,7 @@ describe('groupSessionsByWeek', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const result = groupSessionsByWeek([session]);
@@ -688,7 +686,7 @@ describe('groupSessionsByWeek', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const session2 = makeSession({
@@ -696,7 +694,7 @@ describe('groupSessionsByWeek', () => {
 			workOrderId: 'wo-456',
 			customerName: 'Other Inc',
 			workOrderName: 'Project Beta',
-			effectiveDuration: 1800,
+			durationSeconds: 1800,
 		});
 
 		const result = groupSessionsByWeek([session1, session2]);
@@ -715,7 +713,7 @@ describe('groupSessionsByWeek', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const session2 = makeSession({
@@ -723,7 +721,7 @@ describe('groupSessionsByWeek', () => {
 			workOrderId: 'wo-456',
 			customerName: 'Other Inc',
 			workOrderName: 'Project Beta',
-			effectiveDuration: 1800,
+			durationSeconds: 1800,
 		});
 
 		const result = groupSessionsByWeek([session1, session2]);
@@ -743,7 +741,7 @@ describe('groupSessionsByWeek', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const result = groupSessionsByWeek([session]);
@@ -761,7 +759,7 @@ describe('groupSessionsByWeek', () => {
 			workOrderId: 'wo-123',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project Alpha',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const result = groupSessionsByWeek([session]);
@@ -781,7 +779,7 @@ describe('groupSessionsByWeek', () => {
 			workOrderId: 'wo-1',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project A',
-			effectiveDuration: 3600,
+			durationSeconds: 3600,
 		});
 
 		const session2 = makeSession({
@@ -789,7 +787,7 @@ describe('groupSessionsByWeek', () => {
 			workOrderId: 'wo-2',
 			customerName: 'Other Inc',
 			workOrderName: 'Project B',
-			effectiveDuration: 1800,
+			durationSeconds: 1800,
 		});
 
 		const session3 = makeSession({
@@ -797,7 +795,7 @@ describe('groupSessionsByWeek', () => {
 			workOrderId: 'wo-3',
 			customerName: 'Acme Corp',
 			workOrderName: 'Project C',
-			effectiveDuration: 900,
+			durationSeconds: 900,
 		});
 
 		const result = groupSessionsByWeek([session1, session2, session3]);
@@ -819,7 +817,7 @@ describe('groupSessionsByWeek', () => {
 			workOrderId: 'wo-1',
 			customerName: 'Acme Corp',
 			workOrderName: 'Task A',
-			effectiveDuration: 1000,
+			durationSeconds: 1000,
 		});
 
 		const sessionThu = makeSession({
@@ -827,7 +825,7 @@ describe('groupSessionsByWeek', () => {
 			workOrderId: 'wo-2',
 			customerName: 'Acme Corp',
 			workOrderName: 'Task B',
-			effectiveDuration: 2000,
+			durationSeconds: 2000,
 		});
 
 		const result = groupSessionsByWeek([sessionTue, sessionThu]);
@@ -853,35 +851,35 @@ describe('groupSessionsByWeek', () => {
 				workOrderId: 'wo-1',
 				customerName: 'Acme',
 				workOrderName: 'Task',
-				effectiveDuration: 1000,
+				durationSeconds: 1000,
 			}),
 			makeSession({
 				startTime: '2026-04-08T09:00:00Z',
 				workOrderId: 'wo-2',
 				customerName: 'Acme',
 				workOrderName: 'Task',
-				effectiveDuration: 1000,
+				durationSeconds: 1000,
 			}),
 			makeSession({
 				startTime: '2026-04-15T09:00:00Z',
 				workOrderId: 'wo-3',
 				customerName: 'Acme',
 				workOrderName: 'Task',
-				effectiveDuration: 1000,
+				durationSeconds: 1000,
 			}),
 			makeSession({
 				startTime: '2026-04-22T09:00:00Z',
 				workOrderId: 'wo-4',
 				customerName: 'Acme',
 				workOrderName: 'Task',
-				effectiveDuration: 1000,
+				durationSeconds: 1000,
 			}),
 			makeSession({
 				startTime: '2026-04-29T09:00:00Z',
 				workOrderId: 'wo-5',
 				customerName: 'Acme',
 				workOrderName: 'Task',
-				effectiveDuration: 1000,
+				durationSeconds: 1000,
 			}),
 		];
 
@@ -906,21 +904,21 @@ describe('groupSessionsByWeek', () => {
 				workOrderId: 'wo-1',
 				customerName: 'Acme Corp',
 				workOrderName: 'Project A',
-				effectiveDuration: 3600,
+				durationSeconds: 3600,
 			}),
 			makeSession({
 				startTime: '2026-04-22T14:00:00Z',
 				workOrderId: 'wo-2',
 				customerName: 'Other Inc',
 				workOrderName: 'Project B',
-				effectiveDuration: 1800,
+				durationSeconds: 1800,
 			}),
 			makeSession({
 				startTime: '2026-04-22T15:00:00Z',
 				workOrderId: 'wo-1',
 				customerName: 'Acme Corp',
 				workOrderName: 'Project A',
-				effectiveDuration: 900,
+				durationSeconds: 900,
 			}),
 		];
 

@@ -125,8 +125,6 @@ function makeSession(overrides: Partial<Session> = {}): Session {
     startTime: '2026-04-15T09:00:00Z',
     endTime: '2026-04-15T10:00:00Z',
     durationSeconds: 3600,
-    durationOverride: null,
-    effectiveDuration: 3600,
     activityType: null,
     notes: null,
     createdAt: '2026-04-15T09:00:00Z',
