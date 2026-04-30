@@ -22,17 +22,15 @@ pub struct WindowState {
 }
 
 /// Update the tray icon, tooltip, and menu to reflect the current session state.
-/// Frontend calls this after every start/stop/pause/resume/switch action.
+/// Frontend calls this after every start/stop/switch action.
 ///
 /// - `work_order_name`: Some("...") if a session is active, None if stopped.
-/// - `is_paused`: true when the active session is paused.
 #[tauri::command]
 fn update_tray_state(
     app: tauri::AppHandle,
     work_order_name: Option<String>,
-    is_paused: bool,
 ) -> Result<(), String> {
-    tray::update_tray_state(&app, work_order_name.as_deref(), is_paused)
+    tray::update_tray_state(&app, work_order_name.as_deref())
         .map_err(|e| e.to_string())
 }
 
@@ -137,8 +135,7 @@ pub fn run() {
             commands::sessions::quick_add,
             commands::sessions::recover_session,
             commands::sessions::discard_orphan_session,
-            commands::sessions::pause_session,
-            commands::sessions::resume_session,
+            commands::sessions::get_last_stopped_work_order,
             commands::sessions::update_heartbeat,
             commands::sessions::check_for_orphan_session,
             commands::reports::get_daily_summary,

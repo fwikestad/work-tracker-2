@@ -26,16 +26,6 @@
       onEscape: () => {
         uiStore.closeQuickAdd();
         uiStore.closeSearch();
-      },
-      onPause: async () => {
-        if (timer.isTracking && !timer.isPaused) {
-          await timer.pause();
-        }
-      },
-      onResume: async () => {
-        if (timer.isTracking && timer.isPaused) {
-          await timer.resume();
-        }
       }
     });
 

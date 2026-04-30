@@ -11,7 +11,6 @@ pub struct Session {
     pub start_time: String,
     pub end_time: Option<String>,
     pub duration_seconds: Option<i64>,
-    pub duration_override: Option<i64>,
     pub effective_duration: Option<i64>,
     pub activity_type: Option<String>,
     pub notes: Option<String>,
@@ -29,7 +28,6 @@ pub struct ActiveSession {
     pub customer_color: Option<String>,
     pub started_at: String,
     pub elapsed_seconds: i64,
-    pub is_paused: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -46,7 +44,6 @@ pub struct OrphanSession {
 pub struct UpdateSessionParams {
     pub start_time: Option<String>,
     pub end_time: Option<String>,
-    pub duration_override: Option<i64>,
     pub activity_type: Option<String>,
     pub notes: Option<String>,
 }

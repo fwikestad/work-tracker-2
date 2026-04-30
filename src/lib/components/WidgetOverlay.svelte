@@ -18,9 +18,7 @@
   const stateBadge = $derived(
     !timer.isTracking
       ? { icon: '⊘', label: 'Stopped', cls: 'stopped' }
-      : timer.isPaused
-        ? { icon: '🟡', label: 'Paused', cls: 'paused' }
-        : { icon: '🟢', label: 'Running', cls: 'running' }
+      : { icon: '🟢', label: 'Running', cls: 'running' }
   );
 
   let dropdownOpen = $state(false);
