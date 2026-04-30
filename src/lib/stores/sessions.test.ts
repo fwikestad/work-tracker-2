@@ -13,8 +13,6 @@ vi.mock('@tauri-apps/api/core', () => ({
 vi.mock('$lib/api/sessions', () => ({
   listSessions: vi.fn().mockResolvedValue([]),
   getActiveSession: vi.fn().mockResolvedValue(null),
-  pauseSession: vi.fn().mockResolvedValue(undefined),
-  resumeSession: vi.fn().mockResolvedValue(undefined),
   stopSession: vi.fn().mockResolvedValue(null),
   startSession: vi.fn().mockResolvedValue(null),
   deleteSession: vi.fn().mockResolvedValue(undefined),
@@ -127,8 +125,6 @@ function makeSession(overrides: Partial<Session> = {}): Session {
     startTime: '2026-04-15T09:00:00Z',
     endTime: '2026-04-15T10:00:00Z',
     durationSeconds: 3600,
-    durationOverride: null,
-    effectiveDuration: 3600,
     activityType: null,
     notes: null,
     createdAt: '2026-04-15T09:00:00Z',

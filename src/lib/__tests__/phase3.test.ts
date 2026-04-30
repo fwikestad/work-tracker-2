@@ -47,13 +47,10 @@ vi.mock('$lib/stores/timer.svelte', () => ({
     active: null,
     elapsed: 0,
     isTracking: false,
-    isPaused: false,
     orphan: null,
     setActive: vi.fn(),
     setOrphan: vi.fn(),
     refresh: vi.fn(),
-    pause: vi.fn(),
-    resume: vi.fn(),
   },
 }));
 
@@ -85,8 +82,6 @@ vi.mock('$lib/api/sessions', () => ({
   getActiveSession: vi.fn().mockResolvedValue(null),
   startSession: vi.fn().mockResolvedValue(undefined),
   stopSession: vi.fn().mockResolvedValue(undefined),
-  pauseSession: vi.fn().mockResolvedValue(undefined),
-  resumeSession: vi.fn().mockResolvedValue(undefined),
   updateSession: vi.fn().mockResolvedValue(undefined),
   deleteSession: vi.fn().mockResolvedValue(undefined),
   listSessions: vi.fn().mockResolvedValue([]),

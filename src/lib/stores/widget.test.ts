@@ -12,8 +12,6 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 vi.mock('$lib/api/sessions', () => ({
   getActiveSession: vi.fn().mockResolvedValue(null),
-  pauseSession: vi.fn().mockResolvedValue(undefined),
-  resumeSession: vi.fn().mockResolvedValue(undefined),
 }));
 
 // ---------------------------------------------------------------------------
@@ -49,9 +47,8 @@ function formatElapsed(seconds: number): string {
 }
 
 /** Return the session state badge emoji. */
-function getBadge(isTracking: boolean, isPaused: boolean): string {
+function getBadge(isTracking: boolean): string {
   if (!isTracking) return '⊘';
-  if (isPaused) return '🟡';
   return '🟢';
 }
 
@@ -150,7 +147,7 @@ describe('widget display values — pure logic', () => {
    * When not tracking, badge should show the "no session" symbol ⊘.
    */
   it('TC-WIDGET-DISPLAY-02: not tracking → badge shows ⊘', () => {
-    expect(getBadge(false, false)).toBe('⊘');
+    expect(getBadge(false)).toBe('⊘');
   });
 
   /**
@@ -158,15 +155,7 @@ describe('widget display values — pure logic', () => {
    * When tracking and running, badge should show green circle 🟢.
    */
   it('TC-WIDGET-DISPLAY-03: tracking and running → badge shows 🟢', () => {
-    expect(getBadge(true, false)).toBe('🟢');
-  });
-
-  /**
-   * TC-WIDGET-DISPLAY-04
-   * When tracking but paused, badge should show yellow circle 🟡.
-   */
-  it('TC-WIDGET-DISPLAY-04: tracking and paused → badge shows 🟡', () => {
-    expect(getBadge(true, true)).toBe('🟡');
+    expect(getBadge(true)).toBe('🟢');
   });
 
   /**

@@ -48,10 +48,15 @@ export const discardOrphanSession = (sessionId: string) =>
 export const checkForOrphanSession = () =>
   invoke<OrphanSession | null>('check_for_orphan_session');
 
-/** Pauses the currently active session without stopping it. */
-export const pauseSession = () =>
-  invoke<void>('pause_session');
+/** Gets the work order ID of the most recently stopped session. */
+export const getLastStoppedWorkOrder = async (): Promise<string | null> => {
+  return await invoke<string | null>('get_last_stopped_work_order');
+};
 
-/** Resumes a paused session. */
-export const resumeSession = () =>
-  invoke<void>('resume_session');
+/** Continues tracking on the most recently stopped work order. */
+export const continueLastSession = async (): Promise<void> => {
+  const workOrderId = await getLastStoppedWorkOrder();
+  if (workOrderId) {
+    await startSession(workOrderId);
+  }
+};

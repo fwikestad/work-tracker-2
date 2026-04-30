@@ -18,11 +18,7 @@
   let validationError = $state<string | null>(null);
 
   function isRunning(session: Session) {
-    return session.id === timer.active?.sessionId && !timer.isPaused;
-  }
-
-  function isPaused(session: Session) {
-    return session.id === timer.active?.sessionId && timer.isPaused;
+    return session.id === timer.active?.sessionId;
   }
 
   // Convert ISO 8601 (UTC) to datetime-local format (YYYY-MM-DDTHH:mm) in local time
@@ -50,7 +46,7 @@
       endTime: toDatetimeLocal(session.endTime),
       notes: session.notes ?? '',
       activityType: session.activityType ?? '',
-      duration: session.effectiveDuration ? String(Math.round(session.effectiveDuration / 60)) : ''
+      duration: session.durationSeconds ? String(Math.round(session.durationSeconds / 60)) : ''
     };
     validationError = null;
   }
@@ -76,13 +72,11 @@
     
     saving = true;
     try {
-      const durationMins = parseInt(editState.duration);
       await updateSession(sessionId, {
         startTime: editState.startTime ? fromDatetimeLocal(editState.startTime) : undefined,
         endTime: editState.endTime ? fromDatetimeLocal(editState.endTime) : undefined,
         notes: editState.notes || undefined,
-        activityType: editState.activityType || undefined,
-        durationOverride: editState.duration && !isNaN(durationMins) ? durationMins * 60 : undefined
+        activityType: editState.activityType || undefined
       });
       await sessionsStore.refreshWeek();
       editState = null;
@@ -102,10 +96,6 @@
     } catch (e: any) {
       alert(e?.message ?? 'Failed to delete');
     }
-  }
-
-  async function handleResume() {
-    await timer.resume();
   }
 
   const hasAnySessions = $derived(sessionsStore.weekSessions.some(d => d.sessions.length > 0));
@@ -166,10 +156,6 @@
                     <div class="hint-note">Stop the session before editing times</div>
                   {/if}
                   <label>
-                    <span>Duration (minutes)</span>
-                    <input type="number" bind:value={editState.duration} placeholder="Auto" disabled={saving} />
-                  </label>
-                  <label>
                     <span>Activity type</span>
                     <select bind:value={editState.activityType} disabled={saving}>
                       <option value="">—</option>
@@ -199,7 +185,6 @@
               <div
                 class="session"
                 class:running={isRunning(session)}
-                class:paused-session={isPaused(session)}
                 role="button"
                 tabindex="0"
                 onclick={() => startEdit(session)}
@@ -210,17 +195,13 @@
                   <div class="session-main">
                     {#if isRunning(session)}
                       <span class="state-dot running" title="Running">●</span>
-                    {:else if isPaused(session)}
-                      <span class="state-dot paused" title="Paused">●</span>
                     {/if}
                     <span class="session-name">{session.workOrderName}</span>
-                    {#if isPaused(session)}
-                      <span class="activity-badge paused-label">Paused</span>
-                    {:else if session.activityType}
+                    {#if session.activityType}
                       <span class="activity-badge">{session.activityType}</span>
                     {/if}
                   </div>
-                  <span class="session-duration">{formatHuman(session.effectiveDuration ?? 0)}</span>
+                  <span class="session-duration">{formatHuman(session.durationSeconds ?? 0)}</span>
                   <button
                     class="btn-delete"
                     onclick={(e) => {
@@ -246,19 +227,6 @@
                 </div>
                 {#if session.notes}
                   <div class="session-notes">{session.notes}</div>
-                {/if}
-                {#if isPaused(session)}
-                  <div class="inline-actions">
-                    <button
-                      class="btn-sm btn-resume"
-                      onclick={(e) => {
-                        e.stopPropagation();
-                        handleResume();
-                      }}
-                    >
-                      ▶ Resume
-                    </button>
-                  </div>
                 {/if}
               </div>
             {/if}
@@ -382,12 +350,6 @@
     border-bottom-color: var(--accent);
   }
 
-  .session.paused-session {
-    border-top-color: #f59e0b;
-    border-right-color: #f59e0b;
-    border-bottom-color: #f59e0b;
-  }
-
   .state-dot {
     font-size: 10px;
     line-height: 1;
@@ -396,10 +358,6 @@
 
   .state-dot.running {
     color: var(--accent);
-  }
-
-  .state-dot.paused {
-    color: #f59e0b;
   }
 
   .session-header {
@@ -430,11 +388,6 @@
     background: var(--border);
     color: var(--text-muted);
     font-weight: 500;
-  }
-
-  .paused-label {
-    background: #f59e0b22;
-    color: #f59e0b;
   }
 
   .session-duration {
@@ -488,21 +441,6 @@
     color: var(--text-muted);
     font-style: italic;
     line-height: 1.5;
-  }
-
-  .inline-actions {
-    margin-top: 8px;
-  }
-
-  .btn-resume {
-    background: var(--accent);
-    color: white;
-    min-height: 44px;
-    width: 100%;
-  }
-
-  .btn-resume:hover:not(:disabled) {
-    background: #3d9e6a;
   }
 
   .edit-form {

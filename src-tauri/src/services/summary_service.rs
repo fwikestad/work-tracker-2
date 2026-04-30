@@ -13,12 +13,11 @@ use crate::models::{session::*, work_order::WorkOrder, error::AppError};
 
 /// SQL fragment for calculating effective duration.
 ///
-/// `duration_seconds` stores gross wall-clock time (end_time - start_time, including paused
-/// intervals) per decisions.md Section 618. `duration_override` lets the user substitute
-/// a manual value. The COALESCE prefers the manual override when set.
+/// `duration_seconds` stores gross wall-clock time (end_time - start_time) per decisions.md Section 618.
+/// After removing pause functionality and duration_override, this is simply the duration_seconds field.
 ///
 /// Used consistently across all summary and report queries to ensure correct duration totals.
-const EFFECTIVE_DURATION_SQL: &str = "COALESCE(ts.duration_override, ts.duration_seconds)";
+const EFFECTIVE_DURATION_SQL: &str = "ts.duration_seconds";
 
 /// Fetch sessions with work order and customer details joined.
 ///
@@ -63,7 +62,6 @@ fn fetch_sessions(
             ts.start_time,
             ts.end_time,
             ts.duration_seconds,
-            ts.duration_override,
             {},
             ts.activity_type,
             ts.notes,
@@ -88,12 +86,11 @@ fn fetch_sessions(
             start_time: row.get(5)?,
             end_time: row.get(6)?,
             duration_seconds: row.get(7)?,
-            duration_override: row.get(8)?,
-            effective_duration: row.get(9)?,
-            activity_type: row.get(10)?,
-            notes: row.get(11)?,
-            created_at: row.get(12)?,
-            updated_at: row.get(13)?,
+            effective_duration: row.get(8)?,
+            activity_type: row.get(9)?,
+            notes: row.get(10)?,
+            created_at: row.get(11)?,
+            updated_at: row.get(12)?,
         })
     })?.collect();
     
@@ -270,7 +267,7 @@ pub fn export_csv(conn: &Connection, start_date: &str, end_date: &str) -> Result
             wo.name,
             ts.start_time,
             ts.end_time,
-            COALESCE(ts.duration_override, ts.duration_seconds),
+            ts.duration_seconds,
             ts.activity_type,
             ts.notes
         FROM time_sessions ts

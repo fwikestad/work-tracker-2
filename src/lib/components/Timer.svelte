@@ -26,27 +26,14 @@
   function toggleNotes() {
     showNotes = !showNotes;
   }
-
-  async function handlePause() {
-    await timer.pause();
-  }
-
-  async function handleResume() {
-    await timer.resume();
-  }
 </script>
 
-<section class="timer-section" class:active={timer.isTracking} class:paused={timer.isPaused}>
+<section class="timer-section" class:active={timer.isTracking}>
   {#if timer.isTracking && timer.active}
     <div class="timer-display">
       <div class="status-indicator">
-        {#if timer.isPaused}
-          <span class="indicator paused">●</span>
-          <span class="badge paused">Paused</span>
-        {:else}
-          <span class="indicator running">●</span>
-          <span class="badge running">Running</span>
-        {/if}
+        <span class="indicator running">●</span>
+        <span class="badge running">Running</span>
       </div>
       <div class="elapsed">{formatDuration(timer.elapsed)}</div>
       <div class="work-order">{timer.active.workOrderName}</div>
@@ -85,15 +72,6 @@
           Add details
         </button>
       {/if}
-      {#if timer.isPaused}
-        <button class="btn-primary" onclick={handleResume} disabled={stopping}>
-          ▶ Resume
-        </button>
-      {:else}
-        <button class="btn-secondary" onclick={handlePause} disabled={stopping}>
-          ⏸ Pause
-        </button>
-      {/if}
       <button class="btn-danger" onclick={handleStop} disabled={stopping}>
         {stopping ? 'Stopping...' : 'Stop tracking'}
       </button>
@@ -117,10 +95,6 @@
     border-left-color: var(--accent);
   }
 
-  .timer-section.paused {
-    border-left-color: #f59e0b;
-  }
-
   .timer-display {
     text-align: left;
   }
@@ -141,10 +115,6 @@
     color: var(--accent);
   }
 
-  .indicator.paused {
-    color: #f59e0b;
-  }
-
   .badge {
     font-size: 11px;
     padding: 3px 8px;
@@ -156,11 +126,6 @@
 
   .badge.running {
     background: var(--accent);
-    color: white;
-  }
-
-  .badge.paused {
-    background: #f59e0b;
     color: white;
   }
 
@@ -253,7 +218,6 @@
     gap: 8px;
   }
 
-  .btn-primary,
   .btn-secondary,
   .btn-danger {
     flex: 1;
@@ -265,15 +229,6 @@
     font-weight: 500;
     cursor: pointer;
     min-height: 44px;
-  }
-
-  .btn-primary {
-    background: var(--accent);
-    color: white;
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    background: #3d9e6a;
   }
 
   .btn-secondary {
@@ -294,7 +249,6 @@
     background: #c73e3e;
   }
 
-  .btn-primary:disabled,
   .btn-secondary:disabled,
   .btn-danger:disabled {
     opacity: 0.5;

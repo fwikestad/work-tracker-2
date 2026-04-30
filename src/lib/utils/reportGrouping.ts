@@ -36,7 +36,7 @@ export function groupSessionsByDay(sessions: Session[]): DayGroup[] {
     const customerName = session.customerName ?? 'Unknown Customer';
     const woId = session.workOrderId;
     const woName = session.workOrderName ?? 'Unknown Work Order';
-    const seconds = session.effectiveDuration ?? 0;
+    const seconds = session.durationSeconds ?? 0;
 
     if (!dayMap.has(date)) {
       dayMap.set(date, new Map());

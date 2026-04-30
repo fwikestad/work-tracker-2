@@ -107,29 +107,27 @@ pub fn setup_tray(app: &App) -> tauri::Result<()> {
 pub fn update_tray_state(
     app: &AppHandle,
     work_order_name: Option<&str>,
-    is_paused: bool,
 ) -> tauri::Result<()> {
     let tray = match app.tray_by_id("main") {
         Some(t) => t,
         None => return Ok(()),
     };
 
-    // active=green (#16a34a), paused=amber (#f59e0b), stopped=grey (#6b7280)
+    // active=green (#16a34a), stopped=grey (#6b7280)
     let icon = match work_order_name {
-        None                  => make_circle_icon(107, 114, 128),
-        Some(_) if is_paused  => make_circle_icon(245, 158, 11),
-        Some(_)               => make_circle_icon(22, 163, 74),
+        None => make_circle_icon(107, 114, 128),
+        Some(_) => make_circle_icon(22, 163, 74),
     };
     tray.set_icon(Some(icon))?;
 
     let tooltip = match work_order_name {
-        None       => "Work Tracker 2 — Not tracking".to_string(),
-        Some(name) if is_paused => format!("Work Tracker 2 — ⏸ {}", name),
+        None => "Work Tracker 2 — Not tracking".to_string(),
         Some(name) => format!("Work Tracker 2 — ▶ {}", name),
     };
     tray.set_tooltip(Some(&tooltip))?;
 
-    let menu = build_menu(app, work_order_name.unwrap_or("Not tracking"), is_paused)?;
+    let has_active_session = work_order_name.is_some();
+    let menu = build_menu(app, work_order_name.unwrap_or("Not tracking"), has_active_session)?;
     tray.set_menu(Some(menu))?;
 
     Ok(())
@@ -169,9 +167,7 @@ fn make_circle_icon(r: u8, g: u8, b: u8) -> tauri::image::Image<'static> {
     tauri::image::Image::new_owned(rgba, ICON_SIZE, ICON_SIZE)
 }
 
-fn build_menu(app: &AppHandle, work_order: &str, is_paused: bool) -> tauri::Result<Menu<Wry>> {
-    let pause_label = if is_paused { "Resume" } else { "Pause" };
-    
+fn build_menu(app: &AppHandle, work_order: &str, has_active_session: bool) -> tauri::Result<Menu<Wry>> {
     // Get tray menu data from database
     let menu_data = {
         let state = app.state::<AppState>();
@@ -214,7 +210,11 @@ fn build_menu(app: &AppHandle, work_order: &str, is_paused: bool) -> tauri::Resu
     }
     
     // Add standard menu items
-    items.push(Box::new(MenuItem::with_id(app, "pause-resume", pause_label, true, None::<&str>)?));
+    if has_active_session {
+        items.push(Box::new(MenuItem::with_id(app, "stop", "Stop", true, None::<&str>)?));
+    } else {
+        items.push(Box::new(MenuItem::with_id(app, "continue", "Continue", true, None::<&str>)?));
+    }
     items.push(Box::new(MenuItem::with_id(app, "switch-project", "Switch Project...", true, None::<&str>)?));
     items.push(Box::new(MenuItem::with_id(app, "view-reports", "View Reports", true, None::<&str>)?));
     items.push(Box::new(PredefinedMenuItem::separator(app)?));
@@ -267,7 +267,22 @@ fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
             app.exit(0);
         }
         "open-app" => show_main_window(app),
-        "pause-resume" => toggle_pause_resume(app),
+        "stop" => {
+            let state = app.state::<AppState>();
+            if let Ok(conn) = state.db.lock() {
+                let _ = session_service::stop_active_session(&conn);
+            }
+            let _ = app.emit("tray-action", "stop");
+        }
+        "continue" => {
+            let state = app.state::<AppState>();
+            if let Ok(conn) = state.db.lock() {
+                if let Ok(Some(work_order_id)) = session_service::get_last_stopped_work_order(&conn) {
+                    let _ = session_service::switch_to_work_order(&conn, &work_order_id);
+                }
+            }
+            let _ = app.emit("tray-action", "continue");
+        }
         "switch-project" => {
             show_main_window(app);
             let _ = app.emit("open-search-switch", ());
@@ -295,42 +310,5 @@ fn show_main_window(app: &AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.show();
         let _ = win.set_focus();
-    }
-}
-
-fn toggle_pause_resume(app: &AppHandle) {
-    // Use a local `result` so the match expression (and its temporaries, including
-    // the MutexGuard and State borrow) are fully dropped before `app.emit` is called.
-    let did_toggle = {
-        let state = app.state::<AppState>();
-        let result = match state.db.lock() {
-            Ok(conn) => {
-                let (has_session, is_paused): (i64, i64) = conn
-                    .query_row(
-                        "SELECT CASE WHEN session_id IS NOT NULL THEN 1 ELSE 0 END, \
-                         COALESCE(is_paused, 0) FROM active_session WHERE id = 1",
-                        [],
-                        |row| Ok((row.get(0)?, row.get(1)?)),
-                    )
-                    .unwrap_or((0, 0));
-
-                if has_session == 1 {
-                    if is_paused == 1 {
-                        let _ = session_service::resume_session(&conn);
-                    } else {
-                        let _ = session_service::pause_session(&conn);
-                    }
-                    true
-                } else {
-                    false
-                }
-            }
-            Err(_) => false,
-        };
-        result
-    };
-
-    if did_toggle {
-        let _ = app.emit("tray-action", "pause-resume");
     }
 }

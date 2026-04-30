@@ -32,8 +32,6 @@ export interface Session {
   startTime: string;
   endTime: string | null;
   durationSeconds: number | null;
-  durationOverride: number | null;
-  effectiveDuration: number | null;
   activityType: string | null;
   notes: string | null;
   createdAt: string;
@@ -48,7 +46,6 @@ export interface ActiveSession {
   customerColor: string | null;
   startedAt: string;
   elapsedSeconds: number;
-  isPaused: boolean;
 }
 
 export interface OrphanSession {
@@ -117,7 +114,6 @@ export interface UpdateWorkOrderParams {
 export interface UpdateSessionParams {
   startTime?: string;
   endTime?: string;
-  durationOverride?: number;
   activityType?: string;
   notes?: string;
 }
