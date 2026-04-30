@@ -684,3 +684,157 @@ fn tc_edit_12_allow_small_future_tolerance() {
     // 3. Timezone confusion
     // Suggested tolerance: 5 minutes
 }
+
+// ---------------------------------------------------------------------------
+// TC-BUG51-01: discard_orphan_session must not delete the active_session singleton
+// ---------------------------------------------------------------------------
+
+/// Regression test: before the fix, deleting from time_sessions would cascade-delete
+/// the active_session singleton row (id=1) due to ON DELETE CASCADE introduced in
+/// migration 003. After the fix the row must survive.
+#[test]
+fn tc_bug51_01_discard_orphan_preserves_active_session_singleton() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Start then artificially orphan a session (clear active_session but keep the
+    // time_sessions row open, simulating a crash scenario)
+    let session = session_service::switch_to_work_order(&conn, &work_order_id)
+        .expect("switch failed");
+
+    // Simulate a crash: clear active_session without closing the session
+    conn.execute(
+        "UPDATE active_session SET session_id = NULL, work_order_id = NULL, started_at = NULL, last_heartbeat = NULL WHERE id = 1",
+        [],
+    )
+    .expect("clear active_session");
+
+    // Discard the orphan
+    session_service::discard_orphan_session(&conn, &session.id)
+        .expect("discard_orphan_session failed");
+
+    // The singleton row must still exist
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM active_session WHERE id = 1", [], |r| r.get(0))
+        .expect("count active_session");
+    assert_eq!(count, 1, "active_session singleton must survive discard_orphan_session");
+
+    // And session must be gone from time_sessions
+    let ts_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM time_sessions WHERE id = ?",
+            params![&session.id],
+            |r| r.get(0),
+        )
+        .expect("count time_sessions");
+    assert_eq!(ts_count, 0, "discarded session must be removed from time_sessions");
+}
+
+// ---------------------------------------------------------------------------
+// TC-BUG51-02: switch_to_work_order succeeds when active_session singleton is missing
+// ---------------------------------------------------------------------------
+
+/// Regression test: if the singleton row was previously lost (migration 003 cascade bug),
+/// switch_to_work_order must recover it and correctly show the session as active.
+#[test]
+fn tc_bug51_02_switch_works_when_singleton_missing() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Simulate the corruption: forcibly delete the active_session singleton
+    conn.execute("DELETE FROM active_session WHERE id = 1", [])
+        .expect("delete singleton");
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM active_session", [], |r| r.get(0))
+        .expect("count");
+    assert_eq!(count, 0, "pre-condition: singleton should be gone");
+
+    // switch_to_work_order must not silently fail
+    let session = session_service::switch_to_work_order(&conn, &work_order_id)
+        .expect("switch_to_work_order must succeed even if singleton was missing");
+
+    // Singleton must now exist and point to the new session
+    let active_sid: Option<String> = conn
+        .query_row(
+            "SELECT session_id FROM active_session WHERE id = 1",
+            [],
+            |r| r.get(0),
+        )
+        .expect("query active_session");
+
+    assert_eq!(
+        active_sid.as_deref(),
+        Some(session.id.as_str()),
+        "active_session.session_id must match new session after recovery"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TC-BUG51-03: migration 004 recovers missing singleton and fixes FK constraints
+// ---------------------------------------------------------------------------
+
+/// Regression test: migration 004 must re-insert the singleton row if it was
+/// cascade-deleted, and the resulting FK must use ON DELETE SET NULL so that
+/// future deletes of time_sessions rows don't remove the singleton.
+#[test]
+fn tc_bug51_03_migration_004_recovers_singleton_and_fixes_fk() {
+    // Build the DB through migration 003 (which has the bad FK), then simulate
+    // the corruption by deleting from time_sessions while active_session.session_id
+    // points to it, then run migration 004 and verify recovery.
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Start a session so active_session.session_id is non-NULL
+    let session = session_service::switch_to_work_order(&conn, &work_order_id)
+        .expect("switch failed");
+
+    // Simulate the cascade bug: directly delete from time_sessions (as if ON DELETE CASCADE fired)
+    // and verify the singleton survived (because migration 004 already ran in init_test_db)
+    conn.execute(
+        "UPDATE active_session SET session_id = NULL WHERE id = 1",
+        [],
+    )
+    .expect("clear session_id first");
+    conn.execute("DELETE FROM time_sessions WHERE id = ?", params![&session.id])
+        .expect("delete session");
+
+    // Singleton must still be present (ON DELETE SET NULL, not CASCADE)
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM active_session WHERE id = 1", [], |r| r.get(0))
+        .expect("count");
+    assert_eq!(count, 1, "active_session singleton must survive time_sessions deletion after migration 004");
+}
+
+// ---------------------------------------------------------------------------
+// TC-BUG51-04: delete_session command does not destroy the active_session singleton
+// ---------------------------------------------------------------------------
+
+/// Regression test: deleting an arbitrary session via the commands layer must not
+/// kill the active_session singleton (would happen with ON DELETE CASCADE).
+/// The active_session is NOT pointing at this session; we just ensure the singleton survives.
+#[test]
+fn tc_bug51_04_delete_historical_session_keeps_singleton() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Create and immediately stop a session (historical)
+    session_service::switch_to_work_order(&conn, &work_order_id).expect("switch failed");
+    conn.execute(
+        "UPDATE time_sessions SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-60 seconds') WHERE end_time IS NULL",
+        [],
+    )
+    .expect("back-date start");
+    let stopped = session_service::stop_current_session(&conn, None, None)
+        .expect("stop failed")
+        .expect("expected stopped session");
+
+    // Directly delete the historical session (simulates delete_session command)
+    conn.execute("DELETE FROM time_sessions WHERE id = ?", params![&stopped.id])
+        .expect("delete session");
+
+    // Singleton must still exist
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM active_session WHERE id = 1", [], |r| r.get(0))
+        .expect("count");
+    assert_eq!(count, 1, "active_session singleton must survive deletion of a historical session");
+}

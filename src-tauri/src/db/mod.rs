@@ -108,5 +108,14 @@ fn run_migrations(conn: &Connection) -> SqlResult<()> {
         conn.execute("INSERT INTO schema_migrations (version) VALUES (3)", [])?;
     }
 
+    // Migration 004: Fix active_session FK (ON DELETE CASCADE → ON DELETE SET NULL)
+    // and recover the singleton row if it was accidentally cascade-deleted by migration 003.
+    let v4: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM schema_migrations WHERE version = 4", [], |r| r.get(0))?;
+    if v4 == 0 {
+        conn.execute_batch(include_str!("../../migrations/004_fix_active_session_fk.sql"))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (4)", [])?;
+    }
+
     Ok(())
 }

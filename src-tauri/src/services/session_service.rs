@@ -111,11 +111,17 @@ pub fn switch_to_work_order(conn: &Connection, work_order_id: &str) -> Result<Se
         params![&session_id, work_order_id, &now, &now, &now]
     )?;
     
-    // Update active session
-    tx.execute(
+    // Update active session — use upsert so a missing singleton is recovered automatically
+    let rows = tx.execute(
         "UPDATE active_session SET session_id = ?, work_order_id = ?, started_at = ?, last_heartbeat = ? WHERE id = 1",
         params![&session_id, work_order_id, &now, &now]
     )?;
+    if rows == 0 {
+        tx.execute(
+            "INSERT INTO active_session (id, session_id, work_order_id, started_at, last_heartbeat) VALUES (1, ?, ?, ?, ?)",
+            params![&session_id, work_order_id, &now, &now]
+        )?;
+    }
     
     // Update recent work orders
     tx.execute(
@@ -343,11 +349,15 @@ pub fn recover_session(conn: &Connection, session_id: &str) -> Result<Session, A
 ///
 /// Returns `AppError::Database` on deletion failure.
 pub fn discard_orphan_session(conn: &Connection, session_id: &str) -> Result<(), AppError> {
-    conn.execute("DELETE FROM time_sessions WHERE id = ?", params![session_id])?;
-    conn.execute(
+    let tx = conn.unchecked_transaction()?;
+    // Clear active_session reference FIRST so the subsequent DELETE does not
+    // cascade-delete the singleton row (guard against future schema issues).
+    tx.execute(
         "UPDATE active_session SET session_id = NULL, work_order_id = NULL, started_at = NULL, last_heartbeat = NULL WHERE id = 1",
         params![]
     )?;
+    tx.execute("DELETE FROM time_sessions WHERE id = ?", params![session_id])?;
+    tx.commit()?;
     Ok(())
 }
 
