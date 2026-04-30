@@ -183,6 +183,7 @@ fn tc_session_03_switch_auto_stops_previous_session() {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[ignore = "pause functionality removed in #49"]
 fn tc_session_04_pause_sets_is_paused() {
     let conn = init_test_db().expect("DB init failed");
     let (_, work_order_id) = setup_customer_and_work_order(&conn);
@@ -228,6 +229,7 @@ fn tc_session_04_pause_sets_is_paused() {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[ignore = "pause functionality removed in #49"]
 fn tc_session_05_resume_accumulates_paused_time() {
     let conn = init_test_db().expect("DB init failed");
     let (_, work_order_id) = setup_customer_and_work_order(&conn);
@@ -389,6 +391,7 @@ fn tc_data_02_migrations_run_cleanly() {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[ignore = "pause functionality removed in #49"]
 fn tc_session_07_pause_when_already_paused_errors() {
     let conn = init_test_db().expect("DB init failed");
     let (_, work_order_id) = setup_customer_and_work_order(&conn);
@@ -409,6 +412,7 @@ fn tc_session_07_pause_when_already_paused_errors() {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[ignore = "pause functionality removed in #49"]
 fn tc_session_08_pause_when_no_active_session_errors() {
     let conn = init_test_db().expect("DB init failed");
 
@@ -424,6 +428,7 @@ fn tc_session_08_pause_when_no_active_session_errors() {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[ignore = "pause functionality removed in #49"]
 fn tc_session_09_resume_when_not_paused_errors() {
     let conn = init_test_db().expect("DB init failed");
     let (_, work_order_id) = setup_customer_and_work_order(&conn);
@@ -442,6 +447,7 @@ fn tc_session_09_resume_when_not_paused_errors() {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[ignore = "pause functionality removed in #49"]
 fn tc_session_10_stop_paused_session_uses_gross_duration() {
     let conn = init_test_db().expect("DB init failed");
     let (_, work_order_id) = setup_customer_and_work_order(&conn);
@@ -488,6 +494,7 @@ fn tc_session_10_stop_paused_session_uses_gross_duration() {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[ignore = "pause functionality removed in #49"]
 fn tc_session_11_multiple_pause_resume_cycles_accumulate() {
     let conn = init_test_db().expect("DB init failed");
     let (_, work_order_id) = setup_customer_and_work_order(&conn);
@@ -546,6 +553,7 @@ fn tc_session_11_multiple_pause_resume_cycles_accumulate() {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[ignore = "pause functionality removed in #49"]
 fn tc_session_12_switch_while_paused_stops_old_session() {
     let conn = init_test_db().expect("DB init failed");
     let (customer_id, work_order_a) = setup_customer_and_work_order(&conn);
@@ -607,6 +615,7 @@ fn tc_session_12_switch_while_paused_stops_old_session() {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[ignore = "pause functionality removed in #49"]
 fn tc_session_13_daily_summary_includes_paused_session_gross_duration() {
     let conn = init_test_db().expect("DB init failed");
     let (_, work_order_id) = setup_customer_and_work_order(&conn);
@@ -660,6 +669,7 @@ fn tc_session_13_daily_summary_includes_paused_session_gross_duration() {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[ignore = "pause functionality removed in #49"]
 fn tc_session_14_heartbeat_during_pause_preserves_pause_state() {
     let conn = init_test_db().expect("DB init failed");
     let (_, work_order_id) = setup_customer_and_work_order(&conn);
@@ -1066,17 +1076,7 @@ fn tc_edit_09_duration_override_cleared_on_time_edit() {
     let updated = session_service::update_session_times(&conn, &stopped.id, Some(&new_start_str), None)
         .expect("update_session_times failed");
     
-    // DECISION: Duration override should be cleared when times are edited
-    // Rationale: If user manually edits times, calculated duration is the new source of truth
-    // Manual override would be stale/misleading
-    
-    // Verify duration_override is cleared
-    assert!(updated.duration_override.is_none(), 
-        "duration_override should be cleared when times are edited");
-    
-    // Alternative decision: KEEP duration_override (if team decides manual override always wins)
-    // assert_eq!(updated.duration_override, Some(7200), 
-    //     "duration_override should be preserved when times are edited");
+    // NOTE: duration_override removed in #49
 }
 
 // ---------------------------------------------------------------------------

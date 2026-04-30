@@ -13,6 +13,7 @@ use rusqlite::{Connection, params};
 use uuid::Uuid;
 use chrono::Utc;
 use crate::models::{session::*, customer::*, work_order::*, error::AppError};
+use rusqlite::OptionalExtension;
 
 /// Stop the currently active session (if any).
 ///
@@ -55,7 +56,7 @@ pub fn stop_active_session(conn: &Connection) -> Result<Option<String>, AppError
         
         // Clear active session
         conn.execute(
-            "UPDATE active_session SET session_id = NULL, work_order_id = NULL, started_at = NULL, last_heartbeat = NULL, is_paused = 0, paused_session_at = NULL WHERE id = 1",
+            "UPDATE active_session SET session_id = NULL, work_order_id = NULL, started_at = NULL, last_heartbeat = NULL WHERE id = 1",
             params![]
         )?;
         
@@ -204,10 +205,7 @@ pub fn get_active_session(conn: &Connection) -> Result<Option<ActiveSession>, Ap
             wo.name,
             c.name,
             c.color,
-            ts.start_time,
-            ts.total_paused_seconds,
-            a.is_paused,
-            a.paused_session_at
+            ts.start_time
         FROM active_session a
         JOIN time_sessions ts ON a.session_id = ts.id
         JOIN work_orders wo ON ts.work_order_id = wo.id
@@ -217,17 +215,7 @@ pub fn get_active_session(conn: &Connection) -> Result<Option<ActiveSession>, Ap
     
     let result = stmt.query_row([], |row| {
         let start_time: String = row.get(5)?;
-        let total_paused_seconds: i64 = row.get::<_, Option<i64>>(6)?.unwrap_or(0);
-        let is_paused: i64 = row.get(7)?;
-        let paused_at: Option<String> = row.get(8)?;
-        
-        let gross_elapsed = calculate_elapsed(&start_time).unwrap_or(0);
-        let current_pause = if is_paused == 1 {
-            paused_at.as_deref().and_then(|t| calculate_elapsed(t).ok()).unwrap_or(0)
-        } else {
-            0
-        };
-        let elapsed = gross_elapsed - total_paused_seconds - current_pause;
+        let elapsed = calculate_elapsed(&start_time).unwrap_or(0);
         
         Ok(ActiveSession {
             session_id: row.get(0)?,
@@ -237,7 +225,6 @@ pub fn get_active_session(conn: &Connection) -> Result<Option<ActiveSession>, Ap
             customer_color: row.get(4)?,
             started_at: start_time,
             elapsed_seconds: elapsed,
-            is_paused: is_paused == 1,
         })
     });
     
@@ -424,97 +411,32 @@ pub fn quick_add(conn: &Connection, params: &QuickAddParams) -> Result<QuickAddR
     })
 }
 
-/// Pause the currently active session (Phase 2 feature).
+/// Get the work order ID of the most recently stopped session.
 ///
-/// Sets `is_paused = 1` and records `paused_session_at` timestamp. Timer freezes but session
-/// remains open (not closed). Pause duration will be subtracted from effective duration on resume.
-///
-/// # Arguments
-///
-/// * `conn` - Database connection
-///
-/// # Errors
-///
-/// Returns `AppError::Validation` if no session is active or session is already paused.
-/// Returns `AppError::Database` on update failure.
-pub fn pause_session(conn: &Connection) -> Result<(), AppError> {
-    let now = Utc::now().to_rfc3339();
-    
-    // Check if there's an active session and it's not already paused
-    let (session_id, is_paused): (Option<String>, i64) = conn.query_row(
-        "SELECT session_id, is_paused FROM active_session WHERE id = 1",
-        [],
-        |row| Ok((row.get(0)?, row.get(1)?))
-    )?;
-    
-    let session_id = session_id.ok_or_else(|| AppError::Validation("No active session to pause".into()))?;
-    
-    if is_paused == 1 {
-        return Err(AppError::Validation("Session is already paused".into()));
-    }
-    
-    // Update active_session
-    conn.execute(
-        "UPDATE active_session SET is_paused = 1, paused_session_at = ? WHERE id = 1",
-        params![&now]
-    )?;
-    
-    // Update time_sessions
-    conn.execute(
-        "UPDATE time_sessions SET paused_at = ? WHERE id = ?",
-        params![&now, &session_id]
-    )?;
-    
-    Ok(())
-}
-
-/// Resume the currently paused session (Phase 2 feature).
-///
-/// Calculates pause duration (now - paused_session_at) and adds it to `total_paused_seconds`.
-/// Clears `is_paused` and `paused_session_at`. Timer resumes accumulating elapsed time.
+/// Used by the "Continue" feature to start a new session on the last work order.
+/// Only considers sessions that have been completed (end_time IS NOT NULL).
 ///
 /// # Arguments
 ///
 /// * `conn` - Database connection
 ///
+/// # Returns
+///
+/// The work order ID of the most recent stopped session, or `None` if no sessions exist.
+///
 /// # Errors
 ///
-/// Returns `AppError::Validation` if no session is active, session is not paused, or pause state is invalid.
-/// Returns `AppError::Database` on update failure.
-pub fn resume_session(conn: &Connection) -> Result<(), AppError> {
-    let now = Utc::now().to_rfc3339();
-    
-    // Get active session info
-    let (session_id, is_paused, paused_at): (Option<String>, i64, Option<String>) = conn.query_row(
-        "SELECT session_id, is_paused, paused_session_at FROM active_session WHERE id = 1",
-        [],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+/// Returns `AppError::Database` on query failure.
+pub fn get_last_stopped_work_order(conn: &Connection) -> Result<Option<String>, AppError> {
+    let mut stmt = conn.prepare(
+        "SELECT work_order_id FROM time_sessions 
+         WHERE end_time IS NOT NULL 
+         ORDER BY end_time DESC 
+         LIMIT 1"
     )?;
     
-    let session_id = session_id.ok_or_else(|| AppError::Validation("No active session to resume".into()))?;
-    
-    if is_paused == 0 {
-        return Err(AppError::Validation("Session is not paused".into()));
-    }
-    
-    let paused_at = paused_at.ok_or_else(|| AppError::Validation("Invalid pause state".into()))?;
-    
-    // Calculate pause duration
-    let pause_duration = calculate_duration(&paused_at, &now)?;
-    
-    // Update time_sessions: add pause duration to total_paused_seconds, clear paused_at
-    conn.execute(
-        "UPDATE time_sessions SET total_paused_seconds = total_paused_seconds + ?, paused_at = NULL WHERE id = ?",
-        params![pause_duration, &session_id]
-    )?;
-    
-    // Update active_session
-    conn.execute(
-        "UPDATE active_session SET is_paused = 0, paused_session_at = NULL WHERE id = 1",
-        params![]
-    )?;
-    
-    Ok(())
+    let result = stmt.query_row([], |row| row.get(0)).optional()?;
+    Ok(result)
 }
 
 /// Update the heartbeat timestamp for crash detection.
@@ -649,8 +571,7 @@ fn get_session_by_id(conn: &Connection, id: &str) -> Result<Session, AppError> {
             ts.start_time,
             ts.end_time,
             ts.duration_seconds,
-            ts.duration_override,
-            COALESCE(ts.duration_override, ts.duration_seconds),
+            ts.duration_seconds,
             ts.activity_type,
             ts.notes,
             ts.created_at,
@@ -671,12 +592,11 @@ fn get_session_by_id(conn: &Connection, id: &str) -> Result<Session, AppError> {
             start_time: row.get(5)?,
             end_time: row.get(6)?,
             duration_seconds: row.get(7)?,
-            duration_override: row.get(8)?,
-            effective_duration: row.get(9)?,
-            activity_type: row.get(10)?,
-            notes: row.get(11)?,
-            created_at: row.get(12)?,
-            updated_at: row.get(13)?,
+            effective_duration: row.get(8)?,
+            activity_type: row.get(9)?,
+            notes: row.get(10)?,
+            created_at: row.get(11)?,
+            updated_at: row.get(12)?,
         })
     }).map_err(|e| match e {
         rusqlite::Error::QueryReturnedNoRows => AppError::NotFound(format!("Session {} not found", id)),
@@ -751,8 +671,7 @@ fn get_work_order_by_id(conn: &Connection, id: &str) -> Result<WorkOrder, AppErr
 /// Update start and/or end times of a completed session.
 ///
 /// Validates that the session is not currently active, parses timestamps,
-/// ensures start < end, and recalculates duration_seconds. Also clears any
-/// duration_override (times become the new source of truth).
+/// ensures start < end, and recalculates duration_seconds.
 ///
 /// # Arguments
 ///
@@ -842,9 +761,9 @@ pub fn update_session_times(
         ));
     }
     
-    // Update session (clear duration_override since times are now source of truth)
+    // Update session
     let now_str = Utc::now().to_rfc3339();
-    let mut updates = vec!["duration_seconds = ?", "duration_override = NULL", "updated_at = ?"];
+    let mut updates = vec!["duration_seconds = ?", "updated_at = ?"];
     let mut values: Vec<Box<dyn rusqlite::ToSql>> = vec![
         Box::new(new_duration),
         Box::new(now_str.clone()),

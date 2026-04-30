@@ -100,5 +100,13 @@ fn run_migrations(conn: &Connection) -> SqlResult<()> {
         conn.execute("INSERT INTO schema_migrations (version) VALUES (2)", [])?;
     }
 
+    // Migration 003: Remove pause functionality and duration_override
+    let v3: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM schema_migrations WHERE version = 3", [], |r| r.get(0))?;
+    if v3 == 0 {
+        conn.execute_batch(include_str!("../../migrations/003_remove_pause.sql"))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (3)", [])?;
+    }
+
     Ok(())
 }
