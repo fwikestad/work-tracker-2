@@ -6,6 +6,43 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 
 ## Learnings
 
+### Phase 4a Wave 2: ServiceNow Export UI + Activity Types Management
+
+**Tasks Completed**: F1 (ServiceNow export + Work Order field) and F2 (Activity Types tab + dynamic stop dialog dropdown).
+
+#### F1: ServiceNow Export Button in ReportView
+- Added `exportServiceNow()` API function to `src/lib/api/reports.ts` — mirrors `exportCsv()` calling `invoke('export_servicenow', { startDate, endDate })`
+- Added `exportingSnow` and `exportSnowSuccess` state variables alongside existing export state
+- Wrapped both export buttons in a `<div class="export-buttons">` flex container for proper side-by-side layout
+- Added `.btn-export-sn` CSS class styled as secondary (transparent background, border) to visually differentiate from primary Export CSV button
+
+#### F1: servicenowTaskId in Work Order Forms
+- Added `servicenowTaskId: string | null` to `WorkOrder` interface in `types.ts`
+- Added `servicenowTaskId?: string | null` to both `CreateWorkOrderParams` and `UpdateWorkOrderParams`
+- Added `editServicenowTaskId` and `newServicenowTaskId` state vars to `WorkOrderList.svelte`
+- `startEdit()` populates from `wo.servicenowTaskId ?? ''`
+- Both create and edit forms send the field with `trim() || null` pattern (empty string → null)
+
+#### F2: ActivityTypeList Component
+- Created `src/lib/components/ActivityTypeList.svelte` — self-contained CRUD component
+- Uses `$effect(() => { load(); })` for initial load
+- Inline editing: click edit icon → input replaces text label; Enter/Escape keyboard shortcuts work
+- Reorder: up/down arrow buttons swap `sortOrder` values between adjacent items (two sequential invoke calls)
+- Delete: `confirm()` dialog warns that sessions keep the label string but it won't appear in dropdowns
+- Style matches `WorkOrderList.svelte` — same surface/border/radius/accent variables
+
+#### F2: Activity Types Tab in Manage
+- `manage/+page.svelte` extended with `'activitytypes'` union type, third tab button, and `{:else if activeTab === 'activitytypes'}` branch
+
+#### F2: Dynamic Dropdown in Timer.svelte
+- Replaced 6 hardcoded `<option>` values with `list_activity_types` invoke on `onMount`
+- `value={at.name}` — stores the string name, not ID, for backward compatibility with existing session records
+- If no activity types configured, dropdown shows only the blank option
+
+**Quality Gate**: ✅ cargo clippy clean | ✅ cargo test (7 tests pass) | ✅ 128 frontend tests pass | ✅ npm run build succeeds
+
+**Commit**: `fc4bfa5` on `main`
+
 ### Phase 4a Frontend: Sticky Footer, Session Expansion, Last Week Quick-Select
 
 **Tasks Completed**: F3, F4, F5 — three independent frontend improvements.
