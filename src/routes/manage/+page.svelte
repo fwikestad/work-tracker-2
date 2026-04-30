@@ -91,6 +91,9 @@
     border-top: 1px solid var(--border);
     padding: 12px 16px;
     text-align: center;
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
   }
 
   .back-link {

@@ -204,7 +204,8 @@ pub fn get_recent_work_orders(conn: &Connection, limit: i64) -> Result<Vec<WorkO
             wo.is_favorite,
             wo.created_at,
             wo.updated_at,
-            wo.archived_at
+            wo.archived_at,
+            wo.servicenow_task_id
         FROM recent_work_orders r
         JOIN work_orders wo ON r.work_order_id = wo.id
         JOIN customers c ON wo.customer_id = c.id
@@ -228,6 +229,7 @@ pub fn get_recent_work_orders(conn: &Connection, limit: i64) -> Result<Vec<WorkO
             created_at: row.get(9)?,
             updated_at: row.get(10)?,
             archived_at: row.get(11)?,
+            servicenow_task_id: row.get(12)?,
         })
     })?.collect();
     
@@ -390,6 +392,87 @@ pub fn get_report(conn: &Connection, start_date: &str, end_date: &str) -> Result
         entries,
         sessions,
     })
+}
+
+/// Export time tracking data in ServiceNow-compatible CSV format.
+///
+/// Aggregates sessions per day per work order. Duration is rounded up to the nearest 0.5h.
+/// Only includes completed sessions (`end_time IS NOT NULL`).
+///
+/// # Columns
+///
+/// `Date,Task ID,Work Order,Time Worked (hours),Category,Work Notes`
+///
+/// - `Task ID`: `servicenow_task_id` → `code` → `name` (first non-null)
+/// - `Time Worked (hours)`: rounded up to nearest 0.5h
+/// - `Category`: most common activity_type for that WO/day (first distinct value)
+/// - `Work Notes`: all non-empty notes concatenated with "; "
+pub fn export_servicenow(conn: &Connection, start_date: &str, end_date: &str) -> Result<String, AppError> {
+    let mut stmt = conn.prepare("
+        SELECT 
+            date(ts.start_time),
+            COALESCE(wo.servicenow_task_id, wo.code, wo.name),
+            wo.name,
+            SUM(ts.duration_seconds),
+            GROUP_CONCAT(DISTINCT ts.activity_type),
+            GROUP_CONCAT(ts.notes, '; ')
+        FROM time_sessions ts
+        JOIN work_orders wo ON ts.work_order_id = wo.id
+        JOIN customers c ON wo.customer_id = c.id
+        WHERE date(ts.start_time) >= date(?)
+          AND date(ts.start_time) <= date(?)
+          AND ts.end_time IS NOT NULL
+        GROUP BY date(ts.start_time), wo.id
+        ORDER BY date(ts.start_time), c.name, wo.name
+    ")?;
+
+    let mut csv = String::from("Date,Task ID,Work Order,Time Worked (hours),Category,Work Notes\n");
+
+    let rows = stmt.query_map(params![start_date, end_date], |row| {
+        let date: String = row.get(0)?;
+        let task_id: String = row.get(1)?;
+        let work_order: String = row.get(2)?;
+        let total_seconds: Option<i64> = row.get(3)?;
+        let activity_types_concat: Option<String> = row.get(4)?;
+        let notes_concat: Option<String> = row.get(5)?;
+
+        let secs = total_seconds.unwrap_or(0);
+        let hours = (secs as f64 / 1800.0).ceil() * 0.5;
+
+        // Take first distinct activity type as category
+        let category = activity_types_concat
+            .as_deref()
+            .unwrap_or("")
+            .split(',')
+            .find(|s| !s.is_empty())
+            .unwrap_or("")
+            .to_string();
+
+        // Filter out empty note segments from GROUP_CONCAT
+        let notes = notes_concat
+            .as_deref()
+            .unwrap_or("")
+            .split("; ")
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("; ");
+
+        Ok(format!(
+            "{},{},{},{:.1},{},{}\n",
+            escape_csv(&date),
+            escape_csv(&task_id),
+            escape_csv(&work_order),
+            hours,
+            escape_csv(&category),
+            escape_csv(&notes)
+        ))
+    })?;
+
+    for row in rows {
+        csv.push_str(&row?);
+    }
+
+    Ok(csv)
 }
 
 /// Escape CSV field values according to RFC 4180.

@@ -28,7 +28,7 @@ pub fn create_work_order(state: State<AppState>, params: CreateWorkOrderParams) 
     
     // Fetch with customer info
     conn.query_row(
-        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
+        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at, wo.servicenow_task_id
          FROM work_orders wo 
          JOIN customers c ON wo.customer_id = c.id 
          WHERE wo.id = ?",
@@ -47,6 +47,7 @@ pub fn create_work_order(state: State<AppState>, params: CreateWorkOrderParams) 
                 created_at: row.get(9)?,
                 updated_at: row.get(10)?,
                 archived_at: row.get(11)?,
+                servicenow_task_id: row.get(12)?,
             })
         }
     ).map_err(AppError::Database)
@@ -69,7 +70,7 @@ pub fn list_work_orders(
     
     let sql = format!(
         "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, 
-                wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at
+                wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at, wo.servicenow_task_id
          FROM work_orders wo
          JOIN customers c ON wo.customer_id = c.id
          WHERE 1=1 {archived_clause}{favorites_clause}{customer_clause}
@@ -93,6 +94,7 @@ pub fn list_work_orders(
                 created_at: row.get(9)?,
                 updated_at: row.get(10)?,
                 archived_at: row.get(11)?,
+                servicenow_task_id: row.get(12)?,
             })
         })?.collect()
     } else {
@@ -110,6 +112,7 @@ pub fn list_work_orders(
                 created_at: row.get(9)?,
                 updated_at: row.get(10)?,
                 archived_at: row.get(11)?,
+                servicenow_task_id: row.get(12)?,
             })
         })?.collect()
     };
@@ -142,6 +145,10 @@ pub fn update_work_order(state: State<AppState>, id: String, params: UpdateWorkO
         updates.push("status = ?");
         values.push(Box::new(status.clone()));
     }
+    if params.servicenow_task_id.is_some() {
+        updates.push("servicenow_task_id = ?");
+        values.push(Box::new(params.servicenow_task_id.clone()));
+    }
     
     values.push(Box::new(id.clone()));
     
@@ -156,7 +163,7 @@ pub fn update_work_order(state: State<AppState>, id: String, params: UpdateWorkO
     
     // Fetch updated work order
     conn.query_row(
-        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
+        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at, wo.servicenow_task_id
          FROM work_orders wo 
          JOIN customers c ON wo.customer_id = c.id 
          WHERE wo.id = ?",
@@ -175,6 +182,7 @@ pub fn update_work_order(state: State<AppState>, id: String, params: UpdateWorkO
                 created_at: row.get(9)?,
                 updated_at: row.get(10)?,
                 archived_at: row.get(11)?,
+                servicenow_task_id: row.get(12)?,
             })
         }
     ).map_err(AppError::Database)
@@ -220,7 +228,7 @@ pub fn toggle_favorite(state: State<AppState>, work_order_id: String) -> Result<
     
     // Fetch updated work order
     conn.query_row(
-        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
+        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at, wo.servicenow_task_id
          FROM work_orders wo 
          JOIN customers c ON wo.customer_id = c.id 
          WHERE wo.id = ?",
@@ -239,6 +247,7 @@ pub fn toggle_favorite(state: State<AppState>, work_order_id: String) -> Result<
                 created_at: row.get(9)?,
                 updated_at: row.get(10)?,
                 archived_at: row.get(11)?,
+                servicenow_task_id: row.get(12)?,
             })
         }
     ).map_err(AppError::Database)

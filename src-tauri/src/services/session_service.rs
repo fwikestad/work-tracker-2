@@ -651,7 +651,7 @@ fn get_customer_by_id(conn: &Connection, id: &str) -> Result<Customer, AppError>
 /// Returns `AppError::NotFound` if the work order does not exist.
 fn get_work_order_by_id(conn: &Connection, id: &str) -> Result<WorkOrder, AppError> {
     conn.query_row(
-        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at 
+        "SELECT wo.id, wo.customer_id, c.name, c.color, wo.name, wo.code, wo.description, wo.status, wo.is_favorite, wo.created_at, wo.updated_at, wo.archived_at, wo.servicenow_task_id
          FROM work_orders wo 
          JOIN customers c ON wo.customer_id = c.id 
          WHERE wo.id = ?",
@@ -670,6 +670,7 @@ fn get_work_order_by_id(conn: &Connection, id: &str) -> Result<WorkOrder, AppErr
                 created_at: row.get(9)?,
                 updated_at: row.get(10)?,
                 archived_at: row.get(11)?,
+                servicenow_task_id: row.get(12)?,
             })
         }
     ).map_err(|e| match e {

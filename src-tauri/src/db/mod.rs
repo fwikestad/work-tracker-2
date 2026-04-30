@@ -117,5 +117,21 @@ fn run_migrations(conn: &Connection) -> SqlResult<()> {
         conn.execute("INSERT INTO schema_migrations (version) VALUES (4)", [])?;
     }
 
+    // Migration 005: Add servicenow_task_id to work_orders
+    let v5: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM schema_migrations WHERE version = 5", [], |r| r.get(0))?;
+    if v5 == 0 {
+        conn.execute_batch(include_str!("../../migrations/005_servicenow.sql"))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (5)", [])?;
+    }
+
+    // Migration 006: Create activity_types table with default seed data
+    let v6: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM schema_migrations WHERE version = 6", [], |r| r.get(0))?;
+    if v6 == 0 {
+        conn.execute_batch(include_str!("../../migrations/006_activity_types.sql"))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (6)", [])?;
+    }
+
     Ok(())
 }

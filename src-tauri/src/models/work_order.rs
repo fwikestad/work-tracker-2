@@ -15,6 +15,7 @@ pub struct WorkOrder {
     pub created_at: String,
     pub updated_at: String,
     pub archived_at: Option<String>,
+    pub servicenow_task_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -33,4 +34,5 @@ pub struct UpdateWorkOrderParams {
     pub code: Option<String>,
     pub description: Option<String>,
     pub status: Option<String>,
+    pub servicenow_task_id: Option<String>,
 }

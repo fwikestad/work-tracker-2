@@ -24,3 +24,9 @@ pub fn get_report(state: State<AppState>, start_date: String, end_date: String) 
     let conn = get_conn(&state)?;
     summary_service::get_report(&conn, &start_date, &end_date)
 }
+
+#[tauri::command]
+pub fn export_servicenow(state: State<AppState>, start_date: String, end_date: String) -> Result<String, AppError> {
+    let conn = get_conn(&state)?;
+    summary_service::export_servicenow(&conn, &start_date, &end_date)
+}

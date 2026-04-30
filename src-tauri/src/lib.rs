@@ -142,9 +142,14 @@ pub fn run() {
             commands::reports::get_recent_work_orders,
             commands::reports::export_csv,
             commands::reports::get_report,
+            commands::reports::export_servicenow,
             update_tray_state,
             commands::window::toggle_widget_mode,
             commands::window::resize_widget,
+            commands::activity_types::list_activity_types,
+            commands::activity_types::create_activity_type,
+            commands::activity_types::update_activity_type,
+            commands::activity_types::delete_activity_type,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
