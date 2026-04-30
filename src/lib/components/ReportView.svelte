@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getReport } from '$lib/api/reports';
-  import { formatHuman, formatDay } from '$lib/utils/formatters';
-  import { exportCsv } from '$lib/api/reports';
+  import { formatHuman, formatDay, formatTimeRange } from '$lib/utils/formatters';
+  import { exportCsv, exportServiceNow } from '$lib/api/reports';
   import { save } from '@tauri-apps/plugin-dialog';
   import { writeTextFile } from '@tauri-apps/plugin-fs';
   import type { ReportData } from '$lib/types';
@@ -11,19 +11,22 @@
   let reportData = $state<ReportData | null>(null);
   let loading = $state(false);
   let exporting = $state(false);
+  let exportingSnow = $state(false);
   let error = $state('');
   let exportSuccess = $state(false);
-  let rangeType = $state<'week' | 'month' | 'custom'>('week');
+  let exportSnowSuccess = $state(false);
+  let rangeType = $state<'week' | 'lastweek' | 'month' | 'custom'>('week');
   let startDate = $state('');
   let endDate = $state('');
   let expandedDays = $state<Set<string>>(new Set());
   let expandedCustomers = $state<Set<string>>(new Set());
   let expandedWeeks = $state<Set<string>>(new Set());
+  let expandedWorkOrders = $state<Set<string>>(new Set());
 
   // Initialize with "this week" once mounted (client-only; avoids SSR invoke failure)
   onMount(() => updateDateRange('week'));
 
-  function updateDateRange(type: 'week' | 'month' | 'custom') {
+  function updateDateRange(type: 'week' | 'lastweek' | 'month' | 'custom') {
     rangeType = type;
     const now = new Date();
 
@@ -34,6 +37,18 @@
       const monday = new Date(now.setDate(diff));
       startDate = monday.toISOString().split('T')[0];
       endDate = new Date().toISOString().split('T')[0];
+      loadReport();
+    } else if (type === 'lastweek') {
+      // Previous Monday to previous Sunday (ISO week, Monday-based)
+      const now2 = new Date();
+      const day = now2.getDay(); // 0=Sun, 1=Mon...6=Sat
+      const daysSinceMonday = day === 0 ? 6 : day - 1;
+      const lastMonday = new Date(now2);
+      lastMonday.setDate(now2.getDate() - daysSinceMonday - 7);
+      const lastSunday = new Date(lastMonday);
+      lastSunday.setDate(lastMonday.getDate() + 6);
+      startDate = lastMonday.toISOString().split('T')[0];
+      endDate = lastSunday.toISOString().split('T')[0];
       loadReport();
     } else if (type === 'month') {
       // 1st of current month
@@ -94,6 +109,32 @@
     }
   }
 
+  async function handleExportServiceNow() {
+    if (!startDate || !endDate) {
+      error = 'Please select date range';
+      return;
+    }
+    exportingSnow = true;
+    error = '';
+    exportSnowSuccess = false;
+    try {
+      const csv = await exportServiceNow(startDate, endDate);
+      const path = await save({
+        filters: [{ name: 'CSV', extensions: ['csv'] }],
+        defaultPath: `servicenow-${startDate}-${endDate}.csv`
+      });
+      if (path) {
+        await writeTextFile(path, csv);
+        exportSnowSuccess = true;
+        setTimeout(() => (exportSnowSuccess = false), 3000);
+      }
+    } catch (e: any) {
+      error = e?.message ?? 'Export failed';
+    } finally {
+      exportingSnow = false;
+    }
+  }
+
   function toggleDay(date: string) {
     if (expandedDays.has(date)) {
       expandedDays.delete(date);
@@ -120,6 +161,22 @@
       expandedWeeks.add(weekStart);
     }
     expandedWeeks = new Set(expandedWeeks);
+  }
+
+  function toggleWorkOrder(key: string) {
+    if (expandedWorkOrders.has(key)) {
+      expandedWorkOrders.delete(key);
+    } else {
+      expandedWorkOrders.add(key);
+    }
+    expandedWorkOrders = new Set(expandedWorkOrders);
+  }
+
+  function getSessionsForWO(date: string, workOrderId: string) {
+    return (reportData?.sessions ?? []).filter(s => {
+      const sDate = s.startTime.split('T')[0];
+      return s.workOrderId === workOrderId && sDate === date;
+    });
   }
 
   function isCustomerExpanded(date: string, customerName: string): boolean {
@@ -155,6 +212,13 @@
       </button>
       <button
         class="range-btn"
+        class:active={rangeType === 'lastweek'}
+        onclick={() => updateDateRange('lastweek')}
+      >
+        Last week
+      </button>
+      <button
+        class="range-btn"
         class:active={rangeType === 'month'}
         onclick={() => updateDateRange('month')}
       >
@@ -180,9 +244,14 @@
       </div>
     {/if}
 
-    <button class="btn-export" onclick={handleExport} disabled={exporting || !reportData}>
-      {exporting ? 'Exporting...' : exportSuccess ? '✓ Exported!' : 'Export CSV'}
-    </button>
+    <div class="export-buttons">
+      <button class="btn-export" onclick={handleExport} disabled={exporting || !reportData}>
+        {exporting ? 'Exporting...' : exportSuccess ? '✓ Exported!' : 'Export CSV'}
+      </button>
+      <button class="btn-export-sn" onclick={handleExportServiceNow} disabled={exportingSnow || !reportData}>
+        {exportingSnow ? 'Exporting...' : exportSnowSuccess ? '✓ Exported!' : 'Export ServiceNow'}
+      </button>
+    </div>
   </div>
 
   {#if error}
@@ -249,13 +318,36 @@
                                 <div class="work-orders">
                                   {#each customer.workOrders as wo}
                                     <div class="work-order-entry">
-                                      <div class="work-order-info">
-                                        <span class="work-order-name">{wo.workOrderName}</span>
-                                        <span class="session-count"
-                                          >{wo.sessionCount} session{wo.sessionCount !== 1 ? 's' : ''}</span
-                                        >
-                                      </div>
-                                      <span class="work-order-total">{formatHuman(wo.totalSeconds)}</span>
+                                      <button
+                                        class="wo-toggle"
+                                        onclick={() => toggleWorkOrder(`${dayGroup.date}::${customer.customerName}::${wo.workOrderId}`)}
+                                        aria-expanded={expandedWorkOrders.has(`${dayGroup.date}::${customer.customerName}::${wo.workOrderId}`)}
+                                      >
+                                        <div class="work-order-info">
+                                          <span class="wo-expand-icon">
+                                            {expandedWorkOrders.has(`${dayGroup.date}::${customer.customerName}::${wo.workOrderId}`) ? '▼' : '▶'}
+                                          </span>
+                                          <span class="work-order-name">{wo.workOrderName}</span>
+                                          <span class="session-count">{wo.sessionCount} session{wo.sessionCount !== 1 ? 's' : ''}</span>
+                                        </div>
+                                        <span class="work-order-total">{formatHuman(wo.totalSeconds)}</span>
+                                      </button>
+
+                                      {#if expandedWorkOrders.has(`${dayGroup.date}::${customer.customerName}::${wo.workOrderId}`)}
+                                        <div class="session-rows">
+                                          {#each getSessionsForWO(dayGroup.date, wo.workOrderId) as session}
+                                            <div class="session-row">
+                                              <div class="session-meta">
+                                                <span class="session-time">{formatTimeRange(session.startTime, session.endTime)}</span>
+                                                <span class="session-duration">{formatHuman(session.durationSeconds ?? 0)}</span>
+                                              </div>
+                                              {#if session.notes}
+                                                <p class="session-notes">{session.notes}</p>
+                                              {/if}
+                                            </div>
+                                          {/each}
+                                        </div>
+                                      {/if}
                                     </div>
                                   {/each}
                                 </div>
@@ -306,13 +398,36 @@
                         <div class="work-orders">
                           {#each customer.workOrders as wo}
                             <div class="work-order-entry">
-                              <div class="work-order-info">
-                                <span class="work-order-name">{wo.workOrderName}</span>
-                                <span class="session-count"
-                                  >{wo.sessionCount} session{wo.sessionCount !== 1 ? 's' : ''}</span
-                                >
-                              </div>
-                              <span class="work-order-total">{formatHuman(wo.totalSeconds)}</span>
+                              <button
+                                class="wo-toggle"
+                                onclick={() => toggleWorkOrder(`${dayGroup.date}::${customer.customerName}::${wo.workOrderId}`)}
+                                aria-expanded={expandedWorkOrders.has(`${dayGroup.date}::${customer.customerName}::${wo.workOrderId}`)}
+                              >
+                                <div class="work-order-info">
+                                  <span class="wo-expand-icon">
+                                    {expandedWorkOrders.has(`${dayGroup.date}::${customer.customerName}::${wo.workOrderId}`) ? '▼' : '▶'}
+                                  </span>
+                                  <span class="work-order-name">{wo.workOrderName}</span>
+                                  <span class="session-count">{wo.sessionCount} session{wo.sessionCount !== 1 ? 's' : ''}</span>
+                                </div>
+                                <span class="work-order-total">{formatHuman(wo.totalSeconds)}</span>
+                              </button>
+
+                              {#if expandedWorkOrders.has(`${dayGroup.date}::${customer.customerName}::${wo.workOrderId}`)}
+                                <div class="session-rows">
+                                  {#each getSessionsForWO(dayGroup.date, wo.workOrderId) as session}
+                                    <div class="session-row">
+                                      <div class="session-meta">
+                                        <span class="session-time">{formatTimeRange(session.startTime, session.endTime)}</span>
+                                        <span class="session-duration">{formatHuman(session.durationSeconds ?? 0)}</span>
+                                      </div>
+                                      {#if session.notes}
+                                        <p class="session-notes">{session.notes}</p>
+                                      {/if}
+                                    </div>
+                                  {/each}
+                                </div>
+                              {/if}
                             </div>
                           {/each}
                         </div>
@@ -422,6 +537,33 @@
   .btn-export:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .btn-export-sn {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px 16px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .btn-export-sn:hover:not(:disabled) {
+    color: var(--text);
+    border-color: #333;
+  }
+
+  .btn-export-sn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .export-buttons {
+    display: flex;
+    gap: 8px;
   }
 
   .error-message {
@@ -581,18 +723,79 @@
   }
 
   .work-order-entry {
+    background: var(--surface);
+    border-radius: var(--radius);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .wo-toggle {
+    width: 100%;
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--text);
+  }
+
+  .wo-toggle:hover {
     background: var(--surface);
+  }
+
+  .wo-expand-icon {
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-right: 4px;
+  }
+
+  .session-rows {
+    border-top: 1px solid var(--border);
+    padding: 4px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .session-row {
+    padding: 6px 12px;
+    background: var(--bg);
     border-radius: var(--radius);
+    font-size: 12px;
+  }
+
+  .session-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .session-time {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .session-duration {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .session-notes {
+    margin: 4px 0 0;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-style: italic;
+    white-space: pre-wrap;
   }
 
   .work-order-info {
     display: flex;
-    flex-direction: column;
-    gap: 2px;
+    align-items: center;
+    gap: 6px;
   }
 
   .work-order-name {

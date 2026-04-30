@@ -3,11 +3,19 @@
   import { sessionsStore } from '$lib/stores/sessions.svelte';
   import { stopSession } from '$lib/api/sessions';
   import { formatDuration } from '$lib/utils/formatters';
+  import { invoke } from '@tauri-apps/api/core';
+  import { onMount } from 'svelte';
+  import type { ActivityType } from '$lib/types';
 
   let stopping = $state(false);
   let showNotes = $state(false);
   let notes = $state('');
   let activityType = $state('');
+  let activityTypes = $state<ActivityType[]>([]);
+
+  onMount(async () => {
+    activityTypes = await invoke<ActivityType[]>('list_activity_types');
+  });
 
   async function handleStop() {
     stopping = true;
@@ -54,13 +62,10 @@
         <label>
           <span>Activity type</span>
           <select bind:value={activityType}>
-            <option value="">—</option>
-            <option value="meeting">Meeting</option>
-            <option value="development">Development</option>
-            <option value="design">Design</option>
-            <option value="review">Review</option>
-            <option value="admin">Admin</option>
-            <option value="other">Other</option>
+            <option value="">— Select activity type —</option>
+            {#each activityTypes as at}
+              <option value={at.name}>{at.name}</option>
+            {/each}
           </select>
         </label>
       </div>

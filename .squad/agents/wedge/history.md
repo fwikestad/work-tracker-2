@@ -6,6 +6,44 @@ Tester for work-tracker-2 — native desktop time tracker for consultant Fredrik
 
 ## Learnings
 
+### 2026-05-XX: Phase 4a — ServiceNow Export + Activity Types Tests (13 new tests)
+
+**Task Completed**: Written 13 integration tests for Chewie's Phase 4a features: `export_servicenow` (A1–A7) and `activity_types` CRUD (B1–B6). All 13 pass; zero regressions against existing 45 tests.
+
+**Key Patterns Established**:
+
+**For export_servicenow (summary_service)**:
+- Call `summary_service::export_servicenow(&conn, start, end)` directly — same pattern as session_service tests.
+- Use direct SQL INSERTs (`insert_completed_session`, `insert_open_session`) to set up test data with precise `duration_seconds` values, bypassing session_service business rules. This is intentional: export tests only care about data shape, not session lifecycle rules.
+- `insert_completed_session` takes `start_hour` to allow multiple sessions on same day without timestamp collision (though collisions don't break SQL aggregation tests).
+- The `EFFECTIVE_DURATION_SQL` constant is just `ts.duration_seconds` (no duration_override after migration 003). Tests set this field directly.
+- Rounding formula: `hours = (secs as f64 / 1800.0).ceil() * 0.5`. Test boundary: 1799s → 0.5h, 1800s → 0.5h, 1801s → 1.0h.
+- SQLite `GROUP_CONCAT(notes, '; ')` skips NULL values. Empty-string notes are included by GROUP_CONCAT but filtered by Rust `split("; ").filter(!empty)`.
+- CSV formula injection protection in `escape_csv` prefixes values starting with `=`, `+`, `-`, `@`, `\t`, `\r` with `'`. Values like "WO-001" are fine (start with 'W').
+
+**For activity_types CRUD**:
+- Commands in `activity_types.rs` use `State<AppState>` (Tauri-bound). Cannot call them directly from integration tests without a full Tauri mock.
+- Pattern: write thin `at_list/at_create/at_update_name/at_delete` helpers in the test file that replicate command logic using `&Connection` directly. This matches the spirit of how session_service tests work (service layer = direct Connection).
+- Seeded IDs from migration 006: `at-development`, `at-meeting`, `at-code-review`, `at-documentation`, `at-admin`, `at-testing`, `at-support`. Tests can reference these IDs directly (stable, deterministic).
+- Duplicate name error: `AppError::Database(rusqlite::Error)` wrapping a UNIQUE constraint failure — NOT `AppError::Conflict`. Match on `Err(AppError::Database(_))`.
+- `at_create` helper uses `COALESCE(MAX(sort_order), -1)` to get current max, then inserts at `max + 1`. This matches the command implementation exactly.
+
+**For `add_work_order_with_sn_id`**:
+- Migration 005 adds `servicenow_task_id TEXT` (nullable) via ALTER TABLE.
+- Helper inserts work orders with explicit `servicenow_task_id`. Pass `None` for fallback-to-code tests; pass `Some("INC...")` for ServiceNow ID tests.
+- The COALESCE in export query: `COALESCE(wo.servicenow_task_id, wo.code, wo.name)` — so NULL sn_id falls back to code, then to name.
+
+**Test Results** ✓ **ALL PASSING**:
+- File: `src-tauri/tests/session_service_tests.rs` (appended)
+- New tests: 13 passing (A1–A7 export, B1–B6 activity types)
+- Total session_service_tests.rs: 33 passing, 1 ignored (pre-existing TC-EDIT-08)
+- Full suite: 67 passing across all test files, 0 failed, 3 ignored
+- Commit: `9ab1530`
+
+**No Production Bugs Found**: Chewie's implementation is correct. The rounding logic, fallback chain, note concatenation, open session exclusion, and CRUD all behave exactly as specified.
+
+---
+
 ### 2026-04-21: Issue #35 — Reports Grouping Test Suite (17 tests)
 
 **Task Completed**: Written comprehensive test suite for `groupSessionsByDay()` utility function.

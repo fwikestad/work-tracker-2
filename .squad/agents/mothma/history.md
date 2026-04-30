@@ -451,3 +451,38 @@ All refactoring patterns documented immediately after implementation. Architectu
 
 **Status**: Ready for git commit
 
+
+
+## Phase 4a Documentation (2026-05-XX - Complete)
+
+**Task**: Write developer guide, user guide, and changelog for Phase 4a features.
+
+**Deliverables**: 3 files created
+
+**Changes Made**:
+
+1. **docs/phase4a.md** (new) — developer guide
+   - Feature summary table
+   - Migration 005 and 006 details (schema, seed data, stable IDs)
+   - New Tauri command signatures with TypeScript types
+   - Design decisions: Task ID fallback chain, 0.5h ceiling rounding, orphaned activity types, notes aggregation, last-week date logic
+   - Key files changed (backend + frontend)
+
+2. **docs/servicenow-export.md** (new) — user guide
+   - Setup: how to add ServiceNow Task IDs to work orders
+   - Export walkthrough
+   - Column reference table
+   - Duration rounding table with examples
+   - Tips (missing ID fallback, open sessions excluded)
+
+3. **CHANGELOG.md** (new, repo root) — full project changelog
+   - Phase 4a entry with Added/Changed/Database sections
+   - Backfilled Phase 1, 2, 3 summaries for historical completeness
+
+## Learnings
+
+9. **CHANGELOG is a user artifact** — Changelog should live at repo root (not docs/), use plain language, and be structured for readers who care about what changed not how. Separate "Added / Changed / Database" is cleaner than prose for release notes.
+
+10. **User docs and dev docs are different audiences** — docs/servicenow-export.md is for Fredrik using the app; docs/phase4a.md is for a developer picking up the code. Same feature, different depth and tone. Write them separately.
+
+11. **Seeded migration IDs are worth documenting** — The t-{slug} IDs from migration 006 are stable and testable. Noting them in the dev guide (and that they use INSERT OR IGNORE) prevents accidental re-seeding confusion and helps test authors reference them safely.

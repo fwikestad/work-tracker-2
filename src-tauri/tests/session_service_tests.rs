@@ -1,8 +1,9 @@
 /// Phase 1 + Phase 2 integration tests for the session service layer.
 /// Uses an in-memory SQLite database for isolation.
 use app_lib::db::{init_test_db, initialize};
-use app_lib::services::session_service;
+use app_lib::services::{session_service, summary_service};
 use app_lib::models::error::AppError;
+use app_lib::models::activity_type::ActivityType;
 use rusqlite::{Connection, params};
 
 // ---------------------------------------------------------------------------
@@ -837,4 +838,454 @@ fn tc_bug51_04_delete_historical_session_keeps_singleton() {
         .query_row("SELECT COUNT(*) FROM active_session WHERE id = 1", [], |r| r.get(0))
         .expect("count");
     assert_eq!(count, 1, "active_session singleton must survive deletion of a historical session");
+}
+
+// ===========================================================================
+// PHASE 4a TEST HELPERS
+// ===========================================================================
+
+/// Insert a completed time_session with a specific duration and optional notes.
+/// `date` is "YYYY-MM-DD". The start/end times are placed within that day;
+/// exact wall-clock values don't matter because export uses stored duration_seconds.
+fn insert_completed_session(
+    conn: &Connection,
+    work_order_id: &str,
+    date: &str,
+    start_hour: u8,
+    duration_seconds: i64,
+    notes: Option<&str>,
+) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    let start_time = format!("{}T{:02}:00:00Z", date, start_hour);
+    let end_time = format!("{}T{:02}:59:00Z", date, (start_hour as i64 + duration_seconds / 3600 + 1).min(23));
+    conn.execute(
+        "INSERT INTO time_sessions \
+         (id, work_order_id, start_time, end_time, duration_seconds, notes, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))",
+        params![&id, work_order_id, &start_time, &end_time, duration_seconds, notes],
+    )
+    .expect("insert completed session");
+    id
+}
+
+/// Insert an open (running) time_session — no end_time, no duration.
+fn insert_open_session(conn: &Connection, work_order_id: &str, date: &str) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    let start_time = format!("{}T15:00:00Z", date);
+    conn.execute(
+        "INSERT INTO time_sessions \
+         (id, work_order_id, start_time, created_at, updated_at) \
+         VALUES (?, ?, ?, datetime('now'), datetime('now'))",
+        params![&id, work_order_id, &start_time],
+    )
+    .expect("insert open session");
+    id
+}
+
+/// Create a work order with an explicit code and optional ServiceNow task ID.
+fn add_work_order_with_sn_id(
+    conn: &Connection,
+    customer_id: &str,
+    code: &str,
+    sn_id: Option<&str>,
+) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO work_orders \
+         (id, customer_id, name, code, servicenow_task_id, created_at, updated_at) \
+         VALUES (?, ?, 'SN Work Order', ?, ?, datetime('now'), datetime('now'))",
+        params![&id, customer_id, code, sn_id],
+    )
+    .expect("insert work_order_with_sn_id");
+    id
+}
+
+// ---------------------------------------------------------------------------
+// Activity-type helpers — mirror the command logic but accept &Connection
+// ---------------------------------------------------------------------------
+
+fn at_list(conn: &Connection) -> Result<Vec<ActivityType>, AppError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, sort_order, created_at \
+         FROM activity_types ORDER BY sort_order, name",
+    )?;
+    let items: Result<Vec<_>, _> = stmt
+        .query_map([], |row| {
+            Ok(ActivityType {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                sort_order: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })?
+        .collect();
+    items.map_err(AppError::Database)
+}
+
+fn at_create(conn: &Connection, name: &str) -> Result<ActivityType, AppError> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    let max_order: i64 = conn.query_row(
+        "SELECT COALESCE(MAX(sort_order), -1) FROM activity_types",
+        [],
+        |row| row.get(0),
+    )?;
+    conn.execute(
+        "INSERT INTO activity_types (id, name, sort_order, created_at) VALUES (?, ?, ?, ?)",
+        params![&id, name, max_order + 1, &now],
+    )?;
+    Ok(ActivityType {
+        id,
+        name: name.to_string(),
+        sort_order: max_order + 1,
+        created_at: now,
+    })
+}
+
+fn at_update_name(conn: &Connection, id: &str, new_name: &str) -> Result<ActivityType, AppError> {
+    conn.execute(
+        "UPDATE activity_types SET name = ? WHERE id = ?",
+        params![new_name, id],
+    )?;
+    conn.query_row(
+        "SELECT id, name, sort_order, created_at FROM activity_types WHERE id = ?",
+        params![id],
+        |row| {
+            Ok(ActivityType {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                sort_order: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        },
+    )
+    .map_err(|_| AppError::NotFound(format!("Activity type {} not found", id)))
+}
+
+fn at_delete(conn: &Connection, id: &str) -> Result<(), AppError> {
+    let rows = conn.execute("DELETE FROM activity_types WHERE id = ?", params![id])?;
+    if rows == 0 {
+        return Err(AppError::NotFound(format!("Activity type {} not found", id)));
+    }
+    Ok(())
+}
+
+// ===========================================================================
+// GROUP A: export_servicenow tests
+// ===========================================================================
+
+const SN_HEADER: &str = "Date,Task ID,Work Order,Time Worked (hours),Category,Work Notes";
+
+// ---------------------------------------------------------------------------
+// TC-SN-A1: basic export aggregates two sessions on the same day into one row
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_sn_a1_basic_export_aggregates_by_day() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Two sessions on the same day totalling 3600 s (1 h)
+    insert_completed_session(&conn, &work_order_id, "2026-05-01", 9, 1800, None);
+    insert_completed_session(&conn, &work_order_id, "2026-05-01", 11, 1800, None);
+
+    let csv = summary_service::export_servicenow(&conn, "2026-05-01", "2026-05-01")
+        .expect("export_servicenow failed");
+
+    let lines: Vec<&str> = csv.lines().collect();
+    assert_eq!(lines[0], SN_HEADER, "header must match expected columns");
+    assert_eq!(lines.len(), 2, "should have header + exactly 1 aggregated data row");
+    assert!(lines[1].contains("2026-05-01"), "data row must contain the date");
+    assert!(lines[1].contains("1.0"), "3600 s = 1.0 h");
+}
+
+// ---------------------------------------------------------------------------
+// TC-SN-A2: servicenow_task_id appears in Task ID column when set
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_sn_a2_uses_servicenow_task_id_when_set() {
+    let conn = init_test_db().expect("DB init failed");
+    let (customer_id, _) = setup_customer_and_work_order(&conn);
+
+    let wo_id = add_work_order_with_sn_id(&conn, &customer_id, "WO-SN", Some("INC1234567"));
+    insert_completed_session(&conn, &wo_id, "2026-05-02", 9, 3600, None);
+
+    let csv = summary_service::export_servicenow(&conn, "2026-05-02", "2026-05-02")
+        .expect("export_servicenow failed");
+
+    assert!(
+        csv.contains("INC1234567"),
+        "Task ID column must contain servicenow_task_id 'INC1234567'; got:\n{}",
+        csv
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TC-SN-A3: falls back to work order code when servicenow_task_id is NULL
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_sn_a3_falls_back_to_code_when_no_sn_id() {
+    let conn = init_test_db().expect("DB init failed");
+    let (customer_id, _) = setup_customer_and_work_order(&conn);
+
+    let wo_id = add_work_order_with_sn_id(&conn, &customer_id, "WO-001", None);
+    insert_completed_session(&conn, &wo_id, "2026-05-03", 9, 3600, None);
+
+    let csv = summary_service::export_servicenow(&conn, "2026-05-03", "2026-05-03")
+        .expect("export_servicenow failed");
+
+    let lines: Vec<&str> = csv.lines().collect();
+    assert_eq!(lines.len(), 2, "header + 1 data row");
+    // Second CSV field is Task ID
+    let fields: Vec<&str> = lines[1].splitn(6, ',').collect();
+    assert_eq!(fields[1], "WO-001", "Task ID must fall back to code when no sn_id");
+}
+
+// ---------------------------------------------------------------------------
+// TC-SN-A4: rounds up to nearest 0.5 h
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_sn_a4_rounds_up_to_half_hour() {
+    let conn = init_test_db().expect("DB init failed");
+    let (customer_id, _) = setup_customer_and_work_order(&conn);
+
+    // 1799 s → ceil(1799/1800)*0.5 = 1*0.5 = 0.5
+    let wo_half = add_work_order_with_sn_id(&conn, &customer_id, "WO-HALF", None);
+    insert_completed_session(&conn, &wo_half, "2026-05-04", 9, 1799, None);
+
+    // 1801 s → ceil(1801/1800)*0.5 = 2*0.5 = 1.0
+    let wo_full = add_work_order_with_sn_id(&conn, &customer_id, "WO-FULL", None);
+    insert_completed_session(&conn, &wo_full, "2026-05-04", 12, 1801, None);
+
+    let csv = summary_service::export_servicenow(&conn, "2026-05-04", "2026-05-04")
+        .expect("export_servicenow failed");
+
+    let lines: Vec<&str> = csv.lines().collect();
+    assert_eq!(lines.len(), 3, "header + 2 data rows");
+
+    // Find the WO-HALF row and WO-FULL row
+    let half_row = lines.iter().find(|l| l.contains("WO-HALF"))
+        .expect("WO-HALF row not found");
+    let full_row = lines.iter().find(|l| l.contains("WO-FULL"))
+        .expect("WO-FULL row not found");
+
+    let half_fields: Vec<&str> = half_row.splitn(6, ',').collect();
+    let full_fields: Vec<&str> = full_row.splitn(6, ',').collect();
+
+    assert_eq!(half_fields[3], "0.5", "1799 s must round up to 0.5 h");
+    assert_eq!(full_fields[3], "1.0", "1801 s must round up to 1.0 h");
+}
+
+// ---------------------------------------------------------------------------
+// TC-SN-A5: notes from multiple sessions are concatenated with "; "
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_sn_a5_concatenates_notes() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    insert_completed_session(&conn, &work_order_id, "2026-05-05", 9, 1800, Some("fix bug"));
+    insert_completed_session(&conn, &work_order_id, "2026-05-05", 11, 1800, Some("deploy"));
+
+    let csv = summary_service::export_servicenow(&conn, "2026-05-05", "2026-05-05")
+        .expect("export_servicenow failed");
+
+    assert!(
+        csv.contains("fix bug"),
+        "Work Notes must contain 'fix bug'; got:\n{}",
+        csv
+    );
+    assert!(
+        csv.contains("deploy"),
+        "Work Notes must contain 'deploy'; got:\n{}",
+        csv
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TC-SN-A6: open sessions (no end_time) are excluded from export
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_sn_a6_excludes_open_sessions() {
+    let conn = init_test_db().expect("DB init failed");
+    let (_, work_order_id) = setup_customer_and_work_order(&conn);
+
+    // Completed session: 3600 s
+    insert_completed_session(&conn, &work_order_id, "2026-05-06", 9, 3600, None);
+    // Open session: no end_time, no duration — must not count
+    insert_open_session(&conn, &work_order_id, "2026-05-06");
+
+    let csv = summary_service::export_servicenow(&conn, "2026-05-06", "2026-05-06")
+        .expect("export_servicenow failed");
+
+    let lines: Vec<&str> = csv.lines().collect();
+    assert_eq!(lines.len(), 2, "header + 1 data row (open session excluded)");
+
+    let fields: Vec<&str> = lines[1].splitn(6, ',').collect();
+    assert_eq!(fields[3], "1.0", "only the 3600-s completed session should be counted → 1.0 h");
+}
+
+// ---------------------------------------------------------------------------
+// TC-SN-A7: empty date range returns only the header row
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_sn_a7_empty_range_returns_header_only() {
+    let conn = init_test_db().expect("DB init failed");
+
+    // No sessions at all
+    let csv = summary_service::export_servicenow(&conn, "2020-01-01", "2020-01-31")
+        .expect("export_servicenow must not fail on empty range");
+
+    let lines: Vec<&str> = csv.lines().collect();
+    assert_eq!(lines.len(), 1, "empty range must return exactly 1 line (header only)");
+    assert_eq!(lines[0], SN_HEADER, "that line must be the header");
+}
+
+// ===========================================================================
+// GROUP B: activity_types CRUD tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// TC-AT-B1: migration 006 seeds exactly 7 activity types with expected names
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_at_b1_seeded_on_migration() {
+    let conn = init_test_db().expect("DB init failed");
+
+    let types = at_list(&conn).expect("list_activity_types failed");
+
+    assert_eq!(types.len(), 7, "migration 006 must seed exactly 7 activity types");
+
+    let names: Vec<&str> = types.iter().map(|t| t.name.as_str()).collect();
+    for expected in &["Development", "Meeting", "Code Review", "Documentation", "Admin", "Testing", "Support"] {
+        assert!(
+            names.contains(expected),
+            "seeded types must include '{}'; got: {:?}",
+            expected,
+            names
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TC-AT-B2: create_activity_type appends at end (sort_order > all existing)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_at_b2_create_appends_at_end() {
+    let conn = init_test_db().expect("DB init failed");
+
+    let types_before = at_list(&conn).expect("list before");
+    let max_order_before = types_before.iter().map(|t| t.sort_order).max().unwrap_or(-1);
+
+    let new_type = at_create(&conn, "My Custom Type").expect("create failed");
+
+    assert!(
+        new_type.sort_order > max_order_before,
+        "new type sort_order ({}) must be greater than previous max ({})",
+        new_type.sort_order,
+        max_order_before
+    );
+
+    let types_after = at_list(&conn).expect("list after");
+    assert_eq!(types_after.len(), 8, "should have 7 seeded + 1 new = 8");
+    assert!(
+        types_after.iter().any(|t| t.name == "My Custom Type"),
+        "new type must appear in list"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TC-AT-B3: creating a duplicate name returns a Database error
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_at_b3_duplicate_name_fails() {
+    let conn = init_test_db().expect("DB init failed");
+
+    // "Development" is already seeded
+    let result = at_create(&conn, "Development");
+
+    assert!(result.is_err(), "duplicate name must return an error");
+    match result {
+        Err(AppError::Database(_)) => {} // expected: UNIQUE constraint violation
+        other => panic!("expected AppError::Database for duplicate, got {:?}", other),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TC-AT-B4: update_activity_type changes name and is reflected in list
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_at_b4_update_name() {
+    let conn = init_test_db().expect("DB init failed");
+
+    // Use the seeded "Admin" type (id = "at-admin")
+    let updated = at_update_name(&conn, "at-admin", "Administration")
+        .expect("update failed");
+
+    assert_eq!(updated.name, "Administration", "updated name must be returned");
+
+    let types = at_list(&conn).expect("list failed");
+    assert!(
+        types.iter().any(|t| t.id == "at-admin" && t.name == "Administration"),
+        "updated name must be visible in list"
+    );
+    assert!(
+        !types.iter().any(|t| t.name == "Admin"),
+        "'Admin' must no longer exist after rename"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TC-AT-B5: delete_activity_type removes it from the list
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_at_b5_delete_removes_type() {
+    let conn = init_test_db().expect("DB init failed");
+
+    // Create a throw-away type so we don't disturb the seeded ones
+    let new_type = at_create(&conn, "Temporary Type").expect("create failed");
+    let id = new_type.id.clone();
+
+    at_delete(&conn, &id).expect("delete failed");
+
+    let types = at_list(&conn).expect("list failed");
+    assert!(
+        !types.iter().any(|t| t.id == id),
+        "deleted type must not appear in list"
+    );
+    assert_eq!(types.len(), 7, "list should be back to 7 after deleting the new type");
+}
+
+// ---------------------------------------------------------------------------
+// TC-AT-B6: delete non-existent activity type returns NotFound error
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tc_at_b6_delete_nonexistent_returns_not_found() {
+    let conn = init_test_db().expect("DB init failed");
+
+    let result = at_delete(&conn, "nonexistent-id-that-does-not-exist");
+
+    assert!(result.is_err(), "deleting non-existent type must return error");
+    match result {
+        Err(AppError::NotFound(msg)) => {
+            assert!(
+                msg.contains("nonexistent-id-that-does-not-exist"),
+                "error message should mention the id: {}",
+                msg
+            );
+        }
+        other => panic!("expected AppError::NotFound, got {:?}", other),
+    }
 }

@@ -6,7 +6,70 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 
 ## Learnings
 
-### 2026-04-22: Weekly Grouping for Monthly Reports
+### Phase 4a Wave 2: ServiceNow Export UI + Activity Types Management
+
+**Tasks Completed**: F1 (ServiceNow export + Work Order field) and F2 (Activity Types tab + dynamic stop dialog dropdown).
+
+#### F1: ServiceNow Export Button in ReportView
+- Added `exportServiceNow()` API function to `src/lib/api/reports.ts` — mirrors `exportCsv()` calling `invoke('export_servicenow', { startDate, endDate })`
+- Added `exportingSnow` and `exportSnowSuccess` state variables alongside existing export state
+- Wrapped both export buttons in a `<div class="export-buttons">` flex container for proper side-by-side layout
+- Added `.btn-export-sn` CSS class styled as secondary (transparent background, border) to visually differentiate from primary Export CSV button
+
+#### F1: servicenowTaskId in Work Order Forms
+- Added `servicenowTaskId: string | null` to `WorkOrder` interface in `types.ts`
+- Added `servicenowTaskId?: string | null` to both `CreateWorkOrderParams` and `UpdateWorkOrderParams`
+- Added `editServicenowTaskId` and `newServicenowTaskId` state vars to `WorkOrderList.svelte`
+- `startEdit()` populates from `wo.servicenowTaskId ?? ''`
+- Both create and edit forms send the field with `trim() || null` pattern (empty string → null)
+
+#### F2: ActivityTypeList Component
+- Created `src/lib/components/ActivityTypeList.svelte` — self-contained CRUD component
+- Uses `$effect(() => { load(); })` for initial load
+- Inline editing: click edit icon → input replaces text label; Enter/Escape keyboard shortcuts work
+- Reorder: up/down arrow buttons swap `sortOrder` values between adjacent items (two sequential invoke calls)
+- Delete: `confirm()` dialog warns that sessions keep the label string but it won't appear in dropdowns
+- Style matches `WorkOrderList.svelte` — same surface/border/radius/accent variables
+
+#### F2: Activity Types Tab in Manage
+- `manage/+page.svelte` extended with `'activitytypes'` union type, third tab button, and `{:else if activeTab === 'activitytypes'}` branch
+
+#### F2: Dynamic Dropdown in Timer.svelte
+- Replaced 6 hardcoded `<option>` values with `list_activity_types` invoke on `onMount`
+- `value={at.name}` — stores the string name, not ID, for backward compatibility with existing session records
+- If no activity types configured, dropdown shows only the blank option
+
+**Quality Gate**: ✅ cargo clippy clean | ✅ cargo test (7 tests pass) | ✅ 128 frontend tests pass | ✅ npm run build succeeds
+
+**Commit**: `fc4bfa5` on `main`
+
+### Phase 4a Frontend: Sticky Footer, Session Expansion, Last Week Quick-Select
+
+**Tasks Completed**: F3, F4, F5 — three independent frontend improvements.
+
+#### F3: Sticky Footer in Manage View
+- Added `position: sticky; bottom: 0; z-index: 10` to `.page-footer` in `manage/+page.svelte`
+- CSS-only change; no JS or component logic needed
+
+#### F4: Session Expansion in Report View
+- `WorkOrderGroup` already had `workOrderId` — no `reportGrouping.ts` changes needed
+- Added `formatTimeRange(startTime, endTime)` to `formatters.ts` — reuses `parseTimestamp()` for RFC3339/SQLite compat; formats as 24h "HH:MM – HH:MM" or "HH:MM – ongoing"
+- Added `expandedWorkOrders: Set<string>` state with key `"date::customerName::workOrderId"`
+- Added `toggleWorkOrder(key)` and `getSessionsForWO(date, workOrderId)` helpers
+- Replaced static `.work-order-entry` divs with `<button class="wo-toggle">` + conditional `.session-rows` in **both** the month (week-grouped) and week/custom (flat day-grouped) template blocks
+- Updated `.work-order-entry` CSS to `flex-direction: column` (container); `.wo-toggle` handles the horizontal layout
+- Updated `.work-order-info` from `flex-direction: column` to `flex-direction: row` (inline info with expand icon)
+
+#### F5: "Last Week" Quick Select
+- Added `'lastweek'` to `rangeType` union type
+- Logic: `daysSinceMonday = day === 0 ? 6 : day - 1`, then `lastMonday = today - daysSinceMonday - 7`, `lastSunday = lastMonday + 6`
+- Button inserted between "This week" and "This month" in the range-buttons bar
+
+**Side fix**: `session_service.rs:660` was missing `servicenow_task_id: None` in `WorkOrder` initializer — added it to unblock clippy (pre-existing in-progress backend work from another agent).
+
+**Quality Gate**: ✅ cargo clippy clean | ⚠️ cargo test has pre-existing compilation errors in test files (unrelated to task) | ✅ 128 frontend tests pass | ✅ npm run build succeeds
+
+
 
 **Task Completed**: Added Week → Day → Customer → Work Order grouping structure for monthly report view.
 

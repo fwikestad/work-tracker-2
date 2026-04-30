@@ -1,8 +1,9 @@
 <script lang="ts">
   import CustomerList from '$lib/components/customers/CustomerList.svelte';
   import WorkOrderList from '$lib/components/workorders/WorkOrderList.svelte';
+  import ActivityTypeList from '$lib/components/ActivityTypeList.svelte';
 
-  let activeTab = $state<'customers' | 'workorders'>('customers');
+  let activeTab = $state<'customers' | 'workorders' | 'activitytypes'>('customers');
 </script>
 
 <div class="manage-page">
@@ -22,6 +23,13 @@
       >
         Work Orders
       </button>
+      <button
+        class="tab-btn"
+        class:active={activeTab === 'activitytypes'}
+        onclick={() => (activeTab = 'activitytypes')}
+      >
+        Activity Types
+      </button>
     </nav>
   </header>
 
@@ -30,6 +38,8 @@
       <CustomerList />
     {:else if activeTab === 'workorders'}
       <WorkOrderList />
+    {:else if activeTab === 'activitytypes'}
+      <ActivityTypeList />
     {/if}
   </div>
 
@@ -91,6 +101,9 @@
     border-top: 1px solid var(--border);
     padding: 12px 16px;
     text-align: center;
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
   }
 
   .back-link {

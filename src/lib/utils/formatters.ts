@@ -44,6 +44,16 @@ export function formatDay(dateStr: string): string {
   return d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
+/** Format a time range from two ISO timestamps as "HH:MM – HH:MM" (24h) */
+export function formatTimeRange(startTime: string, endTime: string | null): string {
+  const fmt = (iso: string) => {
+    const d = parseTimestamp(iso);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  };
+  if (!endTime) return `${fmt(startTime)} – ongoing`;
+  return `${fmt(startTime)} – ${fmt(endTime)}`;
+}
+
 /** Today's date as YYYY-MM-DD in local timezone */
 export function today(): string {
   const d = new Date();

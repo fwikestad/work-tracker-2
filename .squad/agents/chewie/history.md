@@ -64,6 +64,16 @@ Backend Dev for work-tracker-2 — native desktop time tracker for consultant Fr
 
 **Duration Calculation**: Store gross time (end - start) in `duration_seconds`. Use `COALESCE(duration_override, duration_seconds)` for effective (no subtraction). Supports auto + manual override.
 
+### 2026-04-30: Phase 4a Backend
+
+**Adding columns to WorkOrder**: When adding a column to the WorkOrder struct, must update every SELECT query that constructs a WorkOrder — including `session_service.rs::get_work_order_by_id`, `commands/work_orders.rs` (5 places), and `services/summary_service.rs::get_recent_work_orders`. Always add new column last in SELECT and read with `row.get(N)?` at the correct 0-based index.
+
+**ServiceNow export rounding**: `((seconds as f64 / 1800.0).ceil() * 0.5)` rounded up to nearest 0.5h. Format with `{:.1}`. GROUP_CONCAT skips NULLs in SQLite; filter empty strings in Rust by splitting and filtering.
+
+**Activity types table**: Seeded with 7 defaults (Development, Meeting, Code Review, Documentation, Admin, Testing, Support). CRUD uses max(sort_order)+1 for new items. Delete returns NotFound if 0 rows affected.
+
+**Migration pattern**: Migrations are hardcoded in `db/mod.rs` using `include_str!()`, not auto-discovered by directory scan. New migrations must be registered explicitly with version checks.
+
 **Timestamp Format**: RFC3339 (`"2024-01-15T10:30:00Z"`) is standard. parse_timestamp() handles both RFC3339 and SQLite format for backward compat.
 
 **Error Handling**: All commands return `Result<T>` with AppError. JSON serialization → Tauri IPC. Never swallow errors in catch blocks.

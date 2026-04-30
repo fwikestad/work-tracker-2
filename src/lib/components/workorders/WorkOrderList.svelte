@@ -19,6 +19,7 @@
   let editingId = $state<string | null>(null);
   let editName = $state('');
   let editDescription = $state('');
+  let editServicenowTaskId = $state('');
   let editStatus = $state<'active' | 'paused' | 'closed'>('active');
   let showArchived = $state(false);
   let filterCustomerId = $state('');
@@ -26,6 +27,7 @@
   let newCustomerId = $state('');
   let newName = $state('');
   let newDescription = $state('');
+  let newServicenowTaskId = $state('');
   let saving = $state(false);
 
   async function loadData() {
@@ -51,11 +53,13 @@
       await createWorkOrder({
         customerId: newCustomerId,
         name: newName.trim(),
-        description: newDescription.trim() || undefined
+        description: newDescription.trim() || undefined,
+        servicenowTaskId: newServicenowTaskId.trim() || null
       });
       await loadData();
       newName = '';
       newDescription = '';
+      newServicenowTaskId = '';
       newCustomerId = '';
       showAddForm = false;
     } catch (e: any) {
@@ -69,6 +73,7 @@
     editingId = wo.id;
     editName = wo.name;
     editDescription = wo.description ?? '';
+    editServicenowTaskId = wo.servicenowTaskId ?? '';
     editStatus = wo.status;
   }
 
@@ -78,6 +83,7 @@
       await updateWorkOrder(woId, {
         name: editName.trim() || undefined,
         description: editDescription.trim() || undefined,
+        servicenowTaskId: editServicenowTaskId.trim() || null,
         status: editStatus
       });
       await loadData();
@@ -155,6 +161,10 @@
         <span>Description</span>
         <textarea bind:value={newDescription} rows="3" placeholder="Optional description"></textarea>
       </label>
+      <label>
+        <span>ServiceNow Task ID</span>
+        <input type="text" bind:value={newServicenowTaskId} placeholder="e.g. INC1234567 (optional)" />
+      </label>
       <button class="btn-primary" onclick={handleCreate} disabled={saving}>
         {saving ? 'Creating...' : 'Create'}
       </button>
@@ -197,6 +207,10 @@
             <label>
               <span>Description</span>
               <textarea bind:value={editDescription} rows="3"></textarea>
+            </label>
+            <label>
+              <span>ServiceNow Task ID</span>
+              <input type="text" bind:value={editServicenowTaskId} placeholder="e.g. INC1234567 (optional)" />
             </label>
             <label>
               <span>Status</span>
