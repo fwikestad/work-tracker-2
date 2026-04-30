@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getReport } from '$lib/api/reports';
   import { formatHuman, formatDay, formatTimeRange } from '$lib/utils/formatters';
-  import { exportCsv } from '$lib/api/reports';
+  import { exportCsv, exportServiceNow } from '$lib/api/reports';
   import { save } from '@tauri-apps/plugin-dialog';
   import { writeTextFile } from '@tauri-apps/plugin-fs';
   import type { ReportData } from '$lib/types';
@@ -11,8 +11,10 @@
   let reportData = $state<ReportData | null>(null);
   let loading = $state(false);
   let exporting = $state(false);
+  let exportingSnow = $state(false);
   let error = $state('');
   let exportSuccess = $state(false);
+  let exportSnowSuccess = $state(false);
   let rangeType = $state<'week' | 'lastweek' | 'month' | 'custom'>('week');
   let startDate = $state('');
   let endDate = $state('');
@@ -104,6 +106,32 @@
       error = e?.message ?? 'Export failed';
     } finally {
       exporting = false;
+    }
+  }
+
+  async function handleExportServiceNow() {
+    if (!startDate || !endDate) {
+      error = 'Please select date range';
+      return;
+    }
+    exportingSnow = true;
+    error = '';
+    exportSnowSuccess = false;
+    try {
+      const csv = await exportServiceNow(startDate, endDate);
+      const path = await save({
+        filters: [{ name: 'CSV', extensions: ['csv'] }],
+        defaultPath: `servicenow-${startDate}-${endDate}.csv`
+      });
+      if (path) {
+        await writeTextFile(path, csv);
+        exportSnowSuccess = true;
+        setTimeout(() => (exportSnowSuccess = false), 3000);
+      }
+    } catch (e: any) {
+      error = e?.message ?? 'Export failed';
+    } finally {
+      exportingSnow = false;
     }
   }
 
@@ -216,9 +244,14 @@
       </div>
     {/if}
 
-    <button class="btn-export" onclick={handleExport} disabled={exporting || !reportData}>
-      {exporting ? 'Exporting...' : exportSuccess ? '✓ Exported!' : 'Export CSV'}
-    </button>
+    <div class="export-buttons">
+      <button class="btn-export" onclick={handleExport} disabled={exporting || !reportData}>
+        {exporting ? 'Exporting...' : exportSuccess ? '✓ Exported!' : 'Export CSV'}
+      </button>
+      <button class="btn-export-sn" onclick={handleExportServiceNow} disabled={exportingSnow || !reportData}>
+        {exportingSnow ? 'Exporting...' : exportSnowSuccess ? '✓ Exported!' : 'Export ServiceNow'}
+      </button>
+    </div>
   </div>
 
   {#if error}
@@ -504,6 +537,33 @@
   .btn-export:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .btn-export-sn {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px 16px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .btn-export-sn:hover:not(:disabled) {
+    color: var(--text);
+    border-color: #333;
+  }
+
+  .btn-export-sn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .export-buttons {
+    display: flex;
+    gap: 8px;
   }
 
   .error-message {

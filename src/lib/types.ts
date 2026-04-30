@@ -16,11 +16,19 @@ export interface WorkOrder {
   name: string;
   code: string | null;
   description: string | null;
+  servicenowTaskId: string | null;
   status: 'active' | 'paused' | 'closed';
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
   isFavorite: boolean;
+}
+
+export interface ActivityType {
+  id: string;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
 }
 
 export interface Session {
@@ -102,6 +110,7 @@ export interface CreateWorkOrderParams {
   name: string;
   code?: string;
   description?: string;
+  servicenowTaskId?: string | null;
 }
 
 export interface UpdateWorkOrderParams {
@@ -109,6 +118,7 @@ export interface UpdateWorkOrderParams {
   code?: string;
   description?: string;
   status?: 'active' | 'paused' | 'closed';
+  servicenowTaskId?: string | null;
 }
 
 export interface UpdateSessionParams {

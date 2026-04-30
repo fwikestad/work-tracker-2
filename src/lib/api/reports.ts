@@ -13,6 +13,10 @@ export const getRecentWorkOrders = (limit?: number) =>
 export const exportCsv = (startDate: string, endDate: string) =>
   invoke<string>('export_csv', { startDate, endDate });
 
+/** Exports sessions within a date range as ServiceNow-formatted CSV text. */
+export const exportServiceNow = (startDate: string, endDate: string) =>
+  invoke<string>('export_servicenow', { startDate, endDate });
+
 /** Fetches a report summarizing time tracked within a date range. */
 export const getReport = (startDate: string, endDate: string) =>
   invoke<ReportData>('get_report', { startDate, endDate });
