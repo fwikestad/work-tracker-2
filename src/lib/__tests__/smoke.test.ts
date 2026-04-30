@@ -28,8 +28,6 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 vi.mock('$lib/api/sessions', () => ({
   getActiveSession: vi.fn().mockResolvedValue(null),
-  pauseSession: vi.fn().mockResolvedValue(undefined),
-  resumeSession: vi.fn().mockResolvedValue(undefined),
   listSessions: vi.fn().mockResolvedValue([]),
   startSession: vi.fn().mockResolvedValue(undefined),
   stopSession: vi.fn().mockResolvedValue(undefined),
@@ -72,11 +70,8 @@ describe('timer store — can be imported without throwing', () => {
     expect(timer).toHaveProperty('active');
     expect(timer).toHaveProperty('elapsed');
     expect(timer).toHaveProperty('isTracking');
-    expect(timer).toHaveProperty('isPaused');
     expect(typeof timer.setActive).toBe('function');
     expect(typeof timer.refresh).toBe('function');
-    expect(typeof timer.pause).toBe('function');
-    expect(typeof timer.resume).toBe('function');
   });
 
   it('timer starts in idle state (no active session)', () => {
@@ -84,7 +79,6 @@ describe('timer store — can be imported without throwing', () => {
     // Note: state may have been set by other tests in the suite; we just
     // verify the shape is correct, not the exact value.
     expect(typeof timer.isTracking).toBe('boolean');
-    expect(typeof timer.isPaused).toBe('boolean');
     expect(typeof timer.elapsed).toBe('number');
   });
 });
