@@ -6,7 +6,33 @@ Frontend Dev for work-tracker-2 — native desktop time tracker for consultant F
 
 ## Learnings
 
-### 2026-04-22: Weekly Grouping for Monthly Reports
+### Phase 4a Frontend: Sticky Footer, Session Expansion, Last Week Quick-Select
+
+**Tasks Completed**: F3, F4, F5 — three independent frontend improvements.
+
+#### F3: Sticky Footer in Manage View
+- Added `position: sticky; bottom: 0; z-index: 10` to `.page-footer` in `manage/+page.svelte`
+- CSS-only change; no JS or component logic needed
+
+#### F4: Session Expansion in Report View
+- `WorkOrderGroup` already had `workOrderId` — no `reportGrouping.ts` changes needed
+- Added `formatTimeRange(startTime, endTime)` to `formatters.ts` — reuses `parseTimestamp()` for RFC3339/SQLite compat; formats as 24h "HH:MM – HH:MM" or "HH:MM – ongoing"
+- Added `expandedWorkOrders: Set<string>` state with key `"date::customerName::workOrderId"`
+- Added `toggleWorkOrder(key)` and `getSessionsForWO(date, workOrderId)` helpers
+- Replaced static `.work-order-entry` divs with `<button class="wo-toggle">` + conditional `.session-rows` in **both** the month (week-grouped) and week/custom (flat day-grouped) template blocks
+- Updated `.work-order-entry` CSS to `flex-direction: column` (container); `.wo-toggle` handles the horizontal layout
+- Updated `.work-order-info` from `flex-direction: column` to `flex-direction: row` (inline info with expand icon)
+
+#### F5: "Last Week" Quick Select
+- Added `'lastweek'` to `rangeType` union type
+- Logic: `daysSinceMonday = day === 0 ? 6 : day - 1`, then `lastMonday = today - daysSinceMonday - 7`, `lastSunday = lastMonday + 6`
+- Button inserted between "This week" and "This month" in the range-buttons bar
+
+**Side fix**: `session_service.rs:660` was missing `servicenow_task_id: None` in `WorkOrder` initializer — added it to unblock clippy (pre-existing in-progress backend work from another agent).
+
+**Quality Gate**: ✅ cargo clippy clean | ⚠️ cargo test has pre-existing compilation errors in test files (unrelated to task) | ✅ 128 frontend tests pass | ✅ npm run build succeeds
+
+
 
 **Task Completed**: Added Week → Day → Customer → Work Order grouping structure for monthly report view.
 
