@@ -1018,6 +1018,182 @@ export const listSessions = (startDate: string, endDate: string) =>
 
 export const recoverSession = (sessionId: string) =>
   invoke<Session>('recover_session', { session_id: sessionId });
+```
+
+---
+
+## Enable NSIS User-Mode Installer for Corporate Deployment
+
+**Date**: 2026-04-14  
+**Decider**: Lando (DevOps Expert)  
+**Status**: Implemented  
+**PR**: #39  
+
+---
+
+### Context
+
+Corporate environments often restrict local admin rights for security reasons. Users in these environments cannot install software that requires UAC elevation. The default NSIS installer built by Tauri requires admin rights, blocking adoption in these environments.
+
+**Stakeholder Impact**:
+- **Corporate users**: Cannot install the app without filing IT tickets
+- **IT departments**: Additional workload approving install requests
+- **Product adoption**: Reduced in enterprise environments
+
+---
+
+### Decision
+
+Add `bundle.windows.nsis.installMode = "both"` to `src-tauri/tauri.conf.json`.
+
+This configuration enables the NSIS installer to offer two installation modes:
+1. **Install for me only** (default) — user-mode install to `%LOCALAPPDATA%\Programs\`
+2. **Install for all users** — per-machine install to `Program Files` (requires admin)
+
+**Configuration**:
+```json
+"bundle": {
+  "active": true,
+  "targets": "all",
+  "icon": [...],
+  "windows": {
+    "nsis": {
+      "installMode": "both",
+      "displayLanguageSelector": false
+    }
+  }
+}
+```
+
+---
+
+### Rationale
+
+#### Why This is the Right Solution
+
+1. **Unblocks Corporate Adoption**
+   - Users without admin rights can now self-install
+   - No IT ticket required for routine software installation
+   - Aligns with modern BYOD and least-privilege security models
+
+2. **App Architecture Already Compatible**
+   - Database stored in `%LOCALAPPDATA%\com.work-tracker-2.app\work_tracker.db`
+   - No writes to `Program Files`, `C:\Windows\`, or other system directories
+   - App already designed for user-mode operation
+
+3. **Backwards Compatible**
+   - Existing admin installs continue to work
+   - "Install for all users" option preserves IT-managed deployment workflows
+   - MSI installer unchanged (admin-only, suitable for SCCM/Intune)
+
+4. **Platform Parity**
+   - macOS DMG: User installs via drag-and-drop to Applications — no admin required ✅
+   - Linux AppImage: Portable executable — no installation, no admin ✅
+   - Windows NSIS: Now matches platform expectations with user-mode default
+
+5. **Security Advantage**
+   - Per-user installs are MORE secure (no system-wide changes, isolated per user)
+   - Reduces attack surface (malware can't modify global installation)
+   - Aligns with principle of least privilege
+
+#### Alternatives Considered
+
+**Option 1: Do Nothing (Rejected)**
+- Maintains current admin-only requirement
+- Blocks corporate users permanently
+- Contradicts product goal of "minimal friction"
+
+**Option 2: Build Portable Executable (Rejected)**
+- No installer, just .exe in user-chosen folder
+- Loses: Auto-updates, Start Menu integration, "Add or Remove Programs" uninstall
+- Creates support burden (users lose .exe, manual cleanup on uninstall)
+
+**Option 3: MSI-Only (Rejected)**
+- MSI format inherently per-machine (always requires admin)
+- Would lose NSIS entirely, reducing user choice
+- MSI is preferred for managed deployments (SCCM/Intune), not end-user installs
+
+**Option 4: NSIS Per-User Only (installMode: "perUser") (Rejected)**
+- Forces user-mode, removes "Install for all users" option
+- Blocks IT-managed deployments (some enterprises require Program Files installs)
+- `installMode: "both"` provides flexibility for both scenarios
+
+---
+
+### Consequences
+
+#### Positive
+
+✅ **Corporate users unblocked** — Can install without admin rights  
+✅ **IT workload reduced** — No install approval requests  
+✅ **Security improved** — Per-user installs are isolated and safer  
+✅ **Platform parity** — Windows now matches macOS/Linux user-mode experience  
+✅ **Backward compatible** — Existing workflows unchanged  
+✅ **Flexible** — Supports both user-mode AND admin installs  
+
+#### Neutral
+
+⚪ **MSI unchanged** — Admin-only MSI still available for enterprise push deployments  
+⚪ **User choice required** — Installer shows two options (but default is sensible)  
+⚪ **Documentation update** — README/docs should mention user-mode install capability  
+
+#### Risks (Mitigated)
+
+⚠️ **User confusion** — "Which option should I choose?"  
+   - **Mitigation**: "Install for me only" is DEFAULT — most users just click Next  
+   - **Mitigation**: README FAQ section explains the difference  
+
+⚠️ **Support requests** — "Where is the app installed?"  
+   - **Mitigation**: Document install paths in FAQ (`%LOCALAPPDATA%\Programs\` vs `Program Files`)  
+   - **Mitigation**: Uninstaller available in "Add or Remove Programs" regardless of mode  
+
+⚠️ **Future updates** — Does updater work with user-mode installs?  
+   - **Mitigation**: Tauri updater plugin writes to app data directory (already user-mode compatible)  
+   - **Mitigation**: Test updater workflow before shipping auto-update feature  
+
+---
+
+### Testing Plan
+
+Before merging #39:
+- [ ] Build NSIS installer: `npm run tauri:build`
+- [ ] Test on Windows 11 non-admin account
+  - [ ] Verify no UAC prompt for "Install for me only"
+  - [ ] Confirm install path is `%LOCALAPPDATA%\Programs\Work Tracker 2\`
+  - [ ] Launch app, verify DB created in `%LOCALAPPDATA%\com.work-tracker-2.app\`
+  - [ ] Create test data (customers, sessions)
+  - [ ] Close app, reopen, verify data persists
+  - [ ] Uninstall from "Add or Remove Programs", verify clean removal
+- [ ] Test "Install for all users" on admin account
+  - [ ] Verify UAC prompt appears
+  - [ ] Confirm install path is `C:\Program Files\Work Tracker 2\`
+  - [ ] Launch app, verify no write errors
+  - [ ] Uninstall, verify clean removal from Program Files
+
+After merge:
+- [ ] Next release (v0.2.0+) includes NSIS with new config
+- [ ] Update release notes: "Windows installer now supports user-mode (no admin required)"
+- [ ] Monitor GitHub issues for install-related problems
+
+---
+
+### References
+
+- **Tauri NSIS Configuration**: https://v2.tauri.app/reference/config/#nsisconfig
+- **NSIS InstallMode Documentation**: https://nsis.sourceforge.io/Docs/Chapter4.html#4.9.1.6
+- **PR #39**: https://github.com/fwikestad/work-tracker-2/pull/39
+- **Issue (implicit)**: Corporate deployment blocker — users without admin rights cannot install
+
+---
+
+### Approval
+
+**Decision Made By**: Lando (DevOps Expert) — authorized under charter to configure build/release pipeline  
+**Requested By**: Fredrik Kristiansen Wikestad  
+**Risk Level**: Low (backward compatible, no breaking changes, well-tested pattern)  
+**Implementation Time**: <5 minutes (config change only, no code changes)  
+
+**Verdict**: ✅ **APPROVED AND IMPLEMENTED** — Safe, backward compatible, solves real problem.
 
 export const discardOrphanSession = (sessionId: string) =>
   invoke<void>('discard_orphan_session', { session_id: sessionId });

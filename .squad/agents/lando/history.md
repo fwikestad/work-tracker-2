@@ -554,3 +554,54 @@ _Populated as Lando works on the project._
 **Decision Documented**: `.squad/decisions/decisions.md#enable-user-mode-installation-on-windows`
 
 **Session Log**: `.squad/log/20260421-162726-user-mode-installer-research.md`
+
+### NSIS User-Mode Installer Configuration (2026-04-14)
+
+**Task**: Enable corporate users without local admin rights to install Work Tracker 2.
+
+**Problem**: Default NSIS installer requires admin rights (UAC elevation), blocking deployment in locked-down corporate environments where users don't have local admin privileges.
+
+**Root Cause**: Without explicit configuration, Tauri NSIS installers default to per-machine install mode (installMode not set), which always installs to Program Files and requires elevation.
+
+**Solution**: Added undle.windows.nsis.installMode = "both" to src-tauri/tauri.conf.json.
+
+**Configuration Added**:
+```json
+"bundle": {
+  "active": true,
+  "targets": "all",
+  "icon": [...],
+  "windows": {
+    "nsis": {
+      "installMode": "both",
+      "displayLanguageSelector": false
+    }
+  }
+}
+```
+
+**Behavior Change**:
+- **Before**: Installer always required admin rights, installed to C:\Program Files\Work Tracker 2\
+- **After**: User gets choice at install time:
+  - **Install for me only** (default) → %LOCALAPPDATA%\Programs\Work Tracker 2\ — NO admin required ✅
+  - **Install for all users** → C:\Program Files\Work Tracker 2\ — requires admin (for IT-managed installs)
+
+**Why This is Safe**:
+1. App already writes data to %LOCALAPPDATA%\com.work-tracker-2.app\work_tracker.db — no system paths touched
+2. Backwards compatible — admin installs still work
+3. MSI installer unchanged (admin-only, suitable for SCCM/Intune push deployments)
+4. macOS DMG and Linux AppImage already user-mode — no changes needed
+
+**Testing Recommendations**:
+- [ ] Build NSIS installer: 
+pm run tauri:build
+- [ ] Test .exe on a non-admin Windows account — verify no UAC prompt for "Install for me only"
+- [ ] Verify app launches and writes DB to %LOCALAPPDATA%\com.work-tracker-2.app\
+- [ ] Verify clean uninstall from "Add or Remove Programs"
+- [ ] Test "Install for all users" option still requires elevation correctly
+
+**Key Insight**: installMode: "both" gives users flexibility while maintaining security — per-user installs are safer (no system-wide changes) and more convenient (no admin approval process), while IT can still do managed deployments if needed.
+
+**Files Changed**: src-tauri/tauri.conf.json (added 7 lines)
+
+**PR Created**: #39 — "fix: enable user-mode NSIS installer for corporate deployment"
